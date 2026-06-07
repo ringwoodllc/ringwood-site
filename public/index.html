@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ringwood — The single accountable partner for your office</title>
+<meta name="description" content="Ringwood is the single accountable partner for companies that lease and run their own space. We run the work, keep a living record of your space, and stay on call." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#f4efe4;
+    --bg-2:#efe8d8;
+    --ink:#23282a;
+    --muted:#5f5d52;
+    --green:#2f5d50;
+    --green-deep:#21443a;
+    --clay:#a9633a;
+    --line:rgba(35,40,42,.14);
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Hanken Grotesk",-apple-system,sans-serif;
+    font-size:18px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  h1,h2,h3{font-family:"Fraunces",Georgia,serif;font-weight:500;line-height:1.08;letter-spacing:-.01em;color:var(--green-deep)}
+  a{color:inherit}
+
+  /* Header */
+  header{position:relative;z-index:5}
+  .bar{display:flex;align-items:center;justify-content:space-between;padding:26px 0}
+  .brand{display:flex;align-items:center;gap:12px;font-family:"Fraunces",serif;font-size:1.35rem;font-weight:600;color:var(--green-deep);letter-spacing:.01em}
+  .brand svg{display:block}
+  .nav-cta{font-size:.97rem;font-weight:500;text-decoration:none;color:var(--green-deep);border-bottom:2px solid var(--clay);padding-bottom:2px;transition:opacity .2s}
+  .nav-cta:hover{opacity:.65}
+
+  /* Hero */
+  .hero{position:relative;padding:64px 0 92px}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:48px;align-items:center}
+  .eyebrow{font-size:.82rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:22px}
+  .hero h1{font-size:clamp(2.6rem,6vw,4.4rem)}
+  .hero p.lead{margin-top:26px;font-size:1.18rem;color:var(--muted);max-width:34ch}
+  .hero .actions{margin-top:36px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+  .btn{display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:1rem;padding:15px 26px;border-radius:2px;transition:background .2s,transform .2s}
+  .btn:hover{background:var(--green-deep);transform:translateY(-1px)}
+  .quiet{font-size:.95rem;color:var(--muted)}
+
+  /* Rings motif */
+  .rings{width:100%;max-width:420px;margin-left:auto;display:block}
+  .rings circle{fill:none;stroke:var(--green);transform-origin:center}
+  .ring-bg{position:absolute;right:-220px;top:-120px;width:680px;opacity:.05;z-index:0;pointer-events:none}
+  .ring-bg circle{fill:none;stroke:var(--green-deep)}
+
+  /* Section base */
+  section{position:relative;z-index:2}
+  .band{background:var(--bg-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .sec-head{max-width:30ch;margin-bottom:54px}
+  .sec-head .eyebrow{margin-bottom:16px}
+  .sec-head h2{font-size:clamp(1.9rem,3.6vw,2.7rem)}
+
+  /* What we do */
+  .do{padding:96px 0}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--line)}
+  .card{padding:38px 30px 34px;border-bottom:1px solid var(--line)}
+  .card:not(:last-child){border-right:1px solid var(--line)}
+  .card .num{font-family:"Fraunces",serif;font-size:1rem;color:var(--clay);font-weight:600;margin-bottom:20px}
+  .card h3{font-size:1.42rem;margin-bottom:14px}
+  .card p{color:var(--muted);font-size:1.02rem}
+
+  /* Two ways */
+  .ways{padding:92px 0}
+  .ways-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:8px}
+  .way{background:var(--bg);border:1px solid var(--line);border-radius:3px;padding:36px 32px}
+  .way h3{font-size:1.3rem;margin-bottom:12px;color:var(--green-deep)}
+  .way .tag{font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:18px}
+  .way p{color:var(--muted);font-size:1.02rem}
+
+  /* Closing CTA */
+  .end{background:var(--green-deep);color:#ede7d7;padding:104px 0;text-align:center;position:relative;overflow:hidden}
+  .end h2{color:#f4efe4;font-size:clamp(2rem,4.5vw,3.2rem);max-width:18ch;margin:0 auto}
+  .end p{margin-top:22px;color:#c7d3cb;font-size:1.12rem}
+  .end .btn{margin-top:38px;background:var(--clay);color:#fff}
+  .end .btn:hover{background:#925329}
+  .end .ring-bg{opacity:.08;right:auto;left:50%;top:50%;transform:translate(-50%,-50%);width:900px}
+  .end .ring-bg circle{stroke:#eaf0ec}
+
+  /* Footer */
+  footer{padding:42px 0;font-size:.92rem;color:var(--muted)}
+  .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}
+  .foot a{color:var(--green-deep);text-decoration:none;border-bottom:1px solid var(--clay)}
+
+  /* Reveal animation */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  [data-d="1"]{transition-delay:.08s}[data-d="2"]{transition-delay:.16s}
+  [data-d="3"]{transition-delay:.24s}[data-d="4"]{transition-delay:.32s}
+  @keyframes grow{from{stroke-dasharray:0 999;opacity:0}to{opacity:1}}
+
+  @media(max-width:860px){
+    .hero-grid{grid-template-columns:1fr;gap:30px}
+    .rings{max-width:300px;margin:0 0 6px}
+    .cards{grid-template-columns:1fr}
+    .card:not(:last-child){border-right:none}
+    .ways-grid{grid-template-columns:1fr}
+    .ring-bg{right:-260px;width:520px}
+  }
+  @media(prefers-reduced-motion:reduce){.reveal{transition:none;opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
+          <circle cx="13" cy="13" r="2.2"/>
+          <circle cx="13" cy="13" r="5"/>
+          <circle cx="13" cy="13" r="8"/>
+          <circle cx="13" cy="13" r="11"/>
+        </g>
+      </svg>
+      Ringwood
+    </div>
+    <a class="nav-cta" href="mailto:hello@ringwood.ai">Talk to us</a>
+  </div>
+</header>
+
+<section class="hero">
+  <svg class="ring-bg" viewBox="0 0 600 600" aria-hidden="true">
+    <g stroke-width="1.5">
+      <circle cx="300" cy="300" r="40"/><circle cx="300" cy="300" r="80"/>
+      <circle cx="300" cy="300" r="125"/><circle cx="300" cy="300" r="172"/>
+      <circle cx="300" cy="300" r="220"/><circle cx="300" cy="300" r="270"/>
+    </g>
+  </svg>
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow reveal in" data-d="1">Workplace project management</div>
+      <h1 class="reveal in" data-d="2">The single accountable partner for your office.</h1>
+      <p class="lead reveal in" data-d="3">Leasing and running your own space means juggling the buildout, the vendors, the equipment, and a hundred details no one wrote down. Ringwood runs the work and leaves behind a living record of your space — so nothing gets lost.</p>
+      <div class="actions reveal in" data-d="4">
+        <a class="btn" href="mailto:hello@ringwood.ai">Talk to us before you sign a vendor</a>
+        <span class="quiet">We&rsquo;ll scope it — no obligation.</span>
+      </div>
+    </div>
+    <div class="reveal in" data-d="3">
+      <svg class="rings" viewBox="0 0 360 360" aria-hidden="true">
+        <g stroke-width="1.6">
+          <circle cx="182" cy="180" r="14"/>
+          <circle cx="180" cy="181" r="34"/>
+          <circle cx="181" cy="179" r="56"/>
+          <circle cx="179" cy="180" r="80"/>
+          <circle cx="180" cy="180" r="104"/>
+          <circle cx="181" cy="181" r="128"/>
+          <circle cx="180" cy="179" r="152"/>
+          <circle cx="180" cy="180" r="174"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section class="do band">
+  <div class="wrap" style="padding-top:92px;padding-bottom:92px">
+    <div class="sec-head reveal">
+      <div class="eyebrow">What we do</div>
+      <h2>One partner for the work, the record, and everything after.</h2>
+    </div>
+    <div class="cards">
+      <div class="card reveal" data-d="1">
+        <div class="num">01</div>
+        <h3>Run the work, end to end</h3>
+        <p>One accountable contact for the buildout, the move, the reconfiguration — and the dozen vendors who don&rsquo;t talk to each other: IT, AV, furniture, signage, permits, COIs. Your team stays on the company, not the logistics.</p>
+      </div>
+      <div class="card reveal" data-d="2">
+        <div class="num">02</div>
+        <h3>Build a living record of your space</h3>
+        <p>Every asset tagged; every warranty, system, and contract in one place. When a question comes up — today or two years out — the answer&rsquo;s already there: what it is, who installed it, who&rsquo;s responsible. So no one has to keep it all in their head.</p>
+      </div>
+      <div class="card reveal" data-d="3">
+        <div class="num">03</div>
+        <h3>Stay on for whatever&rsquo;s next</h3>
+        <p>One photo and a couple of questions, and we solve it or send the right fix — and manage it to done. The kind of thing that used to eat an afternoon now takes a message.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ways">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Where to start</div>
+      <h2>Two ways in.</h2>
+    </div>
+    <div class="ways-grid">
+      <div class="way reveal" data-d="1">
+        <div class="tag">Moving or building out</div>
+        <h3>Start at the move</h3>
+        <p>The easiest place to begin. We run the whole project, and the record of your space gets built as a byproduct of work you&rsquo;re already doing — no separate effort, no extra disruption.</p>
+      </div>
+      <div class="way reveal" data-d="2">
+        <div class="tag">Already settled</div>
+        <h3>Start with a feasibility audit</h3>
+        <p>Already in your space? We capture it as it stands — floor plan, systems, equipment, warranties, and who&rsquo;s responsible for what — and stand up the same living record without touching your day to day.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="end">
+  <svg class="ring-bg" viewBox="0 0 600 600" aria-hidden="true">
+    <g stroke-width="1.5">
+      <circle cx="300" cy="300" r="60"/><circle cx="300" cy="300" r="120"/>
+      <circle cx="300" cy="300" r="180"/><circle cx="300" cy="300" r="240"/>
+      <circle cx="300" cy="300" r="295"/>
+    </g>
+  </svg>
+  <div class="wrap reveal">
+    <h2>Moving in, building out, or already settled?</h2>
+    <p>Talk to us before you contract a vendor. We&rsquo;ll scope it — no obligation.</p>
+    <a class="btn" href="mailto:hello@ringwood.ai">hello@ringwood.ai</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div class="brand" style="font-size:1.1rem">
+      <svg width="20" height="20" viewBox="0 0 26 26" aria-hidden="true">
+        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
+          <circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/>
+        </g>
+      </svg>
+      Ringwood
+    </div>
+    <div>Ringwood Holdings LLC &middot; <a href="mailto:hello@ringwood.ai">hello@ringwood.ai</a></div>
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+  },{threshold:.15});
+  document.querySelectorAll('.reveal:not(.in)').forEach(function(el){ io.observe(el); });
+</script>
+</body>
+</html>
