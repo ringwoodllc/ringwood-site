@@ -1,7 +1,14 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ringwood-site",
-  "compatibility_date": "2025-06-01",
+  "compatibility_date": "2026-06-07",
+  "observability": {
+    "enabled": true
+  },
   "assets": {
-    "directory": "./public"
-  }
+    "directory": "."
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
 }
