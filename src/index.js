@@ -62,6 +62,9 @@ export default {
     if (url.pathname === "/api/service" && request.method === "POST") {
       return createService(request, env, ctx);
     }
+    if (url.pathname === "/api/service/list" && request.method === "GET") {
+      return listServices(url, env);
+    }
     if (url.pathname === "/api/categories" && request.method === "GET") {
       return getCategories(env);
     }
@@ -301,6 +304,30 @@ async function listAssets(env) {
     return Response.json(list);
   } catch {
     return Response.json([], { status: 200 });
+  }
+}
+
+// Service history for one asset (newest first).
+async function listServices(url, env) {
+  const assetId = url.searchParams.get("assetId") || "";
+  if (!assetId || !env.AIRTABLE_TOKEN) return Response.json([]);
+  try {
+    const r = await fetch(
+      `https://api.airtable.com/v0/${ASSET_BASE_ID}/${SERVICE_TABLE}?pageSize=100`,
+      { headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` } }
+    );
+    const data = await r.json();
+    const rows = (data.records || [])
+      .filter((x) => Array.isArray(x.fields.Asset) && x.fields.Asset.indexOf(assetId) !== -1)
+      .map((x) => ({
+        date: x.fields["Service Date"] || "",
+        type: x.fields["Service Type"] || "",
+        notes: x.fields["Notes"] || "",
+      }))
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+    return Response.json(rows);
+  } catch {
+    return Response.json([]);
   }
 }
 

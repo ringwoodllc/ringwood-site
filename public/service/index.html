@@ -53,6 +53,15 @@
   .msg{margin-top:16px;padding:14px 16px;border-radius:4px;font-size:.98rem;display:none}
   .msg.ok{display:block;background:#e3efe7;color:var(--green-deep);border:1px solid rgba(47,93,80,.3)}
   .msg.err{display:block;background:#f4e2d8;color:#8a3d1c;border:1px solid rgba(169,99,58,.35)}
+
+  .history{margin:2px 0 20px}
+  .history h3{font-family:"Spectral",serif;font-weight:500;font-size:1.05rem;color:var(--green-deep);margin-bottom:8px}
+  .history table{width:100%;border-collapse:collapse;background:var(--bg);border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:.9rem}
+  .history th,.history td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .history th{background:var(--bg-2);font-weight:600;color:var(--green-deep);font-size:.74rem;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+  .history td:first-child{white-space:nowrap}
+  .history tr:last-child td{border-bottom:none}
+  .history .empty{color:var(--muted);font-size:.92rem;padding:2px}
 </style>
 </head>
 <body>
@@ -84,6 +93,8 @@
       <input id="assetFilter" type="text" autocomplete="off" placeholder="Type to filter…" style="margin-bottom:8px" />
       <select id="asset"><option value="">Loading assets…</option></select>
     </div>
+
+    <div id="history" class="history"></div>
 
     <div class="row">
       <div class="field">
@@ -153,7 +164,33 @@
     renderAssets("");
   }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load assets</option>"; });
 
-  assetFilter.addEventListener("input", function(){ renderAssets(assetFilter.value); });
+  assetFilter.addEventListener("input", function(){ renderAssets(assetFilter.value); historyEl.innerHTML = ""; });
+
+  // ---- live service history for the selected asset ----
+  var historyEl = document.getElementById("history");
+  function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function loadHistory(){
+    var assetId = assetSel.value;
+    var name = assetSel.options[assetSel.selectedIndex] ? assetSel.options[assetSel.selectedIndex].textContent : "";
+    if (!assetId){ historyEl.innerHTML = ""; return; }
+    historyEl.innerHTML = "<h3>Service history</h3><div class='empty'>Loading…</div>";
+    fetch("/api/service/list?assetId=" + encodeURIComponent(assetId)).then(function(r){ return r.json(); }).then(function(rows){
+      if (!rows || !rows.length){
+        historyEl.innerHTML = "<h3>Service history</h3><div class='empty'>No service history yet for " + escapeHtml(name) + ".</div>";
+        return;
+      }
+      var html = "<h3>Service history — " + escapeHtml(name) + "</h3>" +
+        "<table><thead><tr><th>Date</th><th>Type</th><th>Notes</th></tr></thead><tbody>";
+      rows.forEach(function(s){
+        html += "<tr><td>" + escapeHtml(s.date || "—") + "</td><td>" + escapeHtml(s.type || "—") +
+                "</td><td>" + escapeHtml(s.notes || "") + "</td></tr>";
+      });
+      html += "</tbody></table>";
+      historyEl.innerHTML = html;
+    }).catch(function(){ historyEl.innerHTML = "<h3>Service history</h3><div class='empty'>Couldn't load history.</div>"; });
+  }
+  assetSel.addEventListener("change", loadHistory);
 
   // default date = today
   document.getElementById("serviceDate").value = new Date().toISOString().slice(0,10);
@@ -230,11 +267,17 @@
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
     }).then(function(r){ return r.json(); }).then(function(data){
       if (data && data.ok){
-        form.reset();
-        photos = []; thumbs.innerHTML = "";
+        var keepId = payload.assetId;
+        document.getElementById("serviceType").value = "";
+        document.getElementById("technician").value = "";
+        document.getElementById("notes").value = "";
+        document.getElementById("cost").value = "";
         document.getElementById("serviceDate").value = new Date().toISOString().slice(0,10);
-        renderAssets("");
-        showMsg("ok", "Service record saved to that asset's history.");
+        photos = []; thumbs.innerHTML = "";
+        renderAssets(assetFilter.value);
+        assetSel.value = keepId;
+        loadHistory();
+        showMsg("ok", "Saved. Added to this asset's history below.");
       } else {
         showMsg("err", (data && data.error) || "Something went wrong. Please try again.");
       }
