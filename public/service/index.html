@@ -162,6 +162,8 @@
     allAssets = Array.isArray(list) ? list : [];
     if (!allAssets.length){ assetSel.innerHTML = "<option value=''>No assets yet</option>"; return; }
     renderAssets("");
+    var pre = new URLSearchParams(location.search).get("asset");
+    if (pre){ assetSel.value = pre; if (assetSel.value === pre) loadHistory(); }
   }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load assets</option>"; });
 
   assetFilter.addEventListener("input", function(){ renderAssets(assetFilter.value); historyEl.innerHTML = ""; });

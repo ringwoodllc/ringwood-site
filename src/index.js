@@ -66,6 +66,9 @@ export default {
     if (url.pathname === "/api/assets/get" && request.method === "GET") {
       return getAsset(url, env);
     }
+    if (url.pathname === "/api/asset" && request.method === "GET") {
+      return getAssetFull(url, env);
+    }
     if (url.pathname === "/api/service" && request.method === "POST") {
       return createService(request, env, ctx);
     }
@@ -80,6 +83,11 @@ export default {
     }
     if (url.pathname === "/api/tickets" && request.method === "POST") {
       return createTicket(request, env);
+    }
+
+    // Asset view page (QR target): /a/<recordId> on any host.
+    if (url.pathname.startsWith("/a/") && env.ASSETS) {
+      return env.ASSETS.fetch(rewrite(url, "/a/index.html", request));
     }
 
     // Each app's subdomain serves its form at the root.
@@ -315,6 +323,66 @@ async function getAsset(url, env) {
       model: f["Model"] || "",
       serial: f["Serial Number"] || "",
       aiReading: f["Nameplate Reading (AI)"] || "",
+    });
+  } catch {
+    return json({ ok: false }, 502);
+  }
+}
+
+// Full asset detail + service history, for the /a/<id> view page and QR scans.
+async function getAssetFull(url, env) {
+  const id = url.searchParams.get("id") || "";
+  if (!id || !env.AIRTABLE_TOKEN) return json({ ok: false }, 400);
+  const photoUrl = (arr) => {
+    if (!Array.isArray(arr) || !arr[0]) return "";
+    const a = arr[0];
+    return a.thumbnails && a.thumbnails.large ? a.thumbnails.large.url : a.url;
+  };
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    if (!r.ok) return json({ ok: false }, 404);
+    const data = await r.json();
+    const f = data.fields || {};
+
+    let services = [];
+    try {
+      const sr = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${SERVICE_TABLE}?pageSize=100`, {
+        headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+      });
+      const sd = await sr.json();
+      services = (sd.records || [])
+        .filter((x) => Array.isArray(x.fields.Asset) && x.fields.Asset.indexOf(id) !== -1)
+        .map((x) => ({
+          date: x.fields["Service Date"] || "",
+          type: x.fields["Service Type"] || "",
+          technician: x.fields["Technician"] || "",
+          notes: x.fields["Notes"] || "",
+          cost: x.fields["Cost"] != null ? x.fields["Cost"] : "",
+        }))
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
+    } catch {
+      /* leave services empty */
+    }
+
+    return json({
+      ok: true,
+      id,
+      name: f["Asset"] || f["Description"] || "Asset",
+      description: f["Description"] || "",
+      manufacturer: f["Manufacturer"] || "",
+      model: f["Model"] || "",
+      serial: f["Serial Number"] || "",
+      equipmentType: f["Equipment Type"] || "",
+      client: f["Client"] || "",
+      location: f["Location"] || "",
+      status: f["Status"] || "Pending",
+      aiReading: f["Nameplate Reading (AI)"] || "",
+      overallPhoto: photoUrl(f["Overall Photo"]),
+      nameplatePhoto: photoUrl(f["Nameplate Photo"]),
+      serialPhoto: photoUrl(f["Serial Photo"]),
+      services,
     });
   } catch {
     return json({ ok: false }, 502);
