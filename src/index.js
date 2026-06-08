@@ -315,8 +315,9 @@ async function runAgent(images, env) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 700,
+      model: "claude-opus-4-8",
+      max_tokens: 2500,
+      thinking: { type: "adaptive" },
       messages: [{ role: "user", content }],
       output_config: { format: { type: "json_schema", schema: AGENT_SCHEMA } },
     }),
@@ -419,6 +420,29 @@ async function getAssetFull(url, env) {
   }
 }
 
+function arrayBufferToBase64(buf) {
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// Download an image URL and return it as a base64 block for Claude.
+async function fetchImageBase64(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const ct = (r.headers.get("content-type") || "image/jpeg").split(";")[0];
+    const buf = await r.arrayBuffer();
+    return { media_type: ct, base64: arrayBufferToBase64(buf) };
+  } catch {
+    return null;
+  }
+}
+
 // Run the Ringwood agent against an asset's existing photos and save the result.
 async function analyzeAsset(request, env) {
   if (!env.ANTHROPIC_API_KEY) {
@@ -445,11 +469,17 @@ async function analyzeAsset(request, env) {
   }
 
   const fullUrl = (arr) => (Array.isArray(arr) && arr[0] ? arr[0].url : "");
-  const images = [f["Nameplate Photo"], f["Serial Photo"], f["Overall Photo"]]
-    .map(fullUrl)
-    .filter(Boolean)
-    .map((u) => ({ url: u }));
-  if (!images.length) return json({ ok: false, error: "This asset has no photos to analyze." }, 400);
+  const urls = [f["Nameplate Photo"], f["Serial Photo"], f["Overall Photo"]].map(fullUrl).filter(Boolean);
+  if (!urls.length) return json({ ok: false, error: "This asset has no photos to analyze." }, 400);
+
+  // Download the photos in the Worker and pass them as bytes. Anthropic cannot
+  // fetch Airtable's signed attachment URLs directly, so image-by-URL fails here.
+  const images = [];
+  for (const u of urls) {
+    const img = await fetchImageBase64(u);
+    if (img) images.push(img);
+  }
+  if (!images.length) return json({ ok: false, error: "Could not fetch this asset's photos." }, 502);
 
   let read;
   try {

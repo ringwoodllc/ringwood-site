@@ -194,6 +194,7 @@
     view.innerHTML =
       "<div class='titlerow'><h1 class='assetname'>Edit asset</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>" +
       (note ? "<div class='agentnote'>"+esc(note)+"</div>" : "<div class='sub'>Run the Ringwood Agent to read the photos, or edit the details by hand. Saving marks it Verified.</div>") +
+      editPhotos(a) +
       "<div class='btnrow'><button class='btn' id='runBtn' type='button'>Run Ringwood Agent</button></div>" +
       "<div id='editmsg' class='err' style='margin-bottom:10px'></div>" +
       inputField("f_name","Name", a.name) +
@@ -210,6 +211,12 @@
     document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
     document.getElementById("saveBtn").addEventListener("click", saveEdit);
     document.getElementById("runBtn").addEventListener("click", runAgentNow);
+  }
+
+  function editPhotos(a){
+    function f(u,cap){ return u ? "<figure><img src='"+u+"' alt='"+esc(cap)+"'/><figcaption>"+esc(cap)+"</figcaption></figure>" : ""; }
+    var p = f(a.overallPhoto,"Overall") + f(a.nameplatePhoto,"Nameplate") + f(a.serialPhoto,"Serial");
+    return p ? "<div class='photos'>"+p+"</div>" : "<div class='sub' style='color:var(--clay)'>No photos on this asset.</div>";
   }
 
   function setEditMsg(t){ var e=document.getElementById("editmsg"); if (e) e.textContent = t || ""; }
