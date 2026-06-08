@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Ringwood · Log an asset</title>
-<meta name="description" content="Log a piece of equipment to the Ringwood asset record: photo, serial number, model, location, and client." />
+<meta name="description" content="Log a piece of equipment to the Ringwood asset record: photos, description, manufacturer, model, and serial number." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -24,13 +24,14 @@
   .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
   .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
 
-  .intro{margin:18px 0 26px}
+  .intro{margin:18px 0 22px}
   .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:12px}
   .intro h1{font-size:clamp(2rem,7vw,2.7rem)}
   .intro p{margin-top:12px;color:var(--muted);font-size:1.04rem}
 
-  form{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:24px 20px 26px;margin-bottom:40px}
-  .field{margin-bottom:20px}
+  form{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:22px 20px 26px;margin-bottom:40px}
+  .group-label{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);font-weight:600;margin:6px 0 12px}
+  .field{margin-bottom:18px}
   label{display:block;font-weight:600;font-size:.96rem;color:var(--green-deep);margin-bottom:7px}
   .hint{font-weight:400;color:var(--muted);font-size:.86rem}
   input,select,textarea{
@@ -40,13 +41,16 @@
   }
   select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
-  textarea{min-height:78px;resize:vertical}
+  textarea{min-height:70px;resize:vertical}
 
-  /* Photo picker */
-  .photo-btn{display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;text-align:center;padding:22px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);font-weight:600;background:var(--bg)}
-  .photo-btn:hover{border-color:var(--green)}
-  #photoInput{display:none}
-  #preview{display:none;margin-top:12px;width:100%;border-radius:6px;border:1px solid var(--line)}
+  /* Photo slots */
+  .photos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:22px}
+  @media(max-width:520px){.photos{grid-template-columns:1fr}}
+  .slot input[type=file]{display:none}
+  .slot .pick{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-align:center;min-height:120px;padding:14px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);font-weight:600;font-size:.9rem;background:var(--bg)}
+  .slot .pick:hover{border-color:var(--green)}
+  .slot .cap{display:block;font-size:.72rem;letter-spacing:.04em;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:6px}
+  .slot img.preview{display:none;width:100%;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
 
   .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:16px;border-radius:4px;transition:background .2s}
   .btn:hover{background:var(--green-deep)}
@@ -77,18 +81,61 @@
   <div class="intro">
     <div class="eyebrow">Asset record</div>
     <h1>Log a piece of equipment</h1>
-    <p>Snap a photo and add a few details. It's saved to your living record of the space.</p>
+    <p>Take a few photos and add what you know. Leave the rest blank — we read the nameplate in the background and fill it in for you to confirm.</p>
   </div>
 
   <form id="assetForm">
+    <div class="group-label">Photos</div>
+    <div class="photos">
+      <div class="slot">
+        <span class="cap">1 · Overall</span>
+        <input type="file" id="overallInput" accept="image/*" capture="environment" />
+        <label class="pick" for="overallInput" id="overallPick">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+          <span id="overallText">Whole unit</span>
+        </label>
+        <img class="preview" id="overallPreview" alt="" />
+      </div>
+      <div class="slot">
+        <span class="cap">2 · Nameplate</span>
+        <input type="file" id="nameplateInput" accept="image/*" capture="environment" />
+        <label class="pick" for="nameplateInput" id="nameplatePick">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+          <span id="nameplateText">Data plate</span>
+        </label>
+        <img class="preview" id="nameplatePreview" alt="" />
+      </div>
+      <div class="slot">
+        <span class="cap">3 · Serial</span>
+        <input type="file" id="serialInput" accept="image/*" capture="environment" />
+        <label class="pick" for="serialInput" id="serialPick">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+          <span id="serialText">Serial #</span>
+        </label>
+        <img class="preview" id="serialPreview" alt="" />
+      </div>
+    </div>
+
+    <div class="group-label">Details <span class="hint" style="text-transform:none;letter-spacing:0">— all optional, we'll fill blanks</span></div>
+
     <div class="field">
-      <label>Photo <span class="hint">— tap to take or choose</span></label>
-      <label class="photo-btn" for="photoInput" id="photoLabel">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
-        <span id="photoBtnText">Add a photo</span>
-      </label>
-      <input type="file" id="photoInput" accept="image/*" capture="environment" />
-      <img id="preview" alt="Preview of the selected photo" />
+      <label for="description">Description</label>
+      <input id="description" type="text" autocomplete="off" placeholder="e.g. Espresso machine, rooftop HVAC unit" />
+    </div>
+
+    <div class="field">
+      <label for="manufacturer">Manufacturer</label>
+      <input id="manufacturer" type="text" autocomplete="off" placeholder="e.g. Carrier, Schaerer" />
+    </div>
+
+    <div class="field">
+      <label for="model">Model #</label>
+      <input id="model" type="text" autocomplete="off" placeholder="e.g. 24ACC6" />
+    </div>
+
+    <div class="field">
+      <label for="serial">Serial number</label>
+      <input id="serial" type="text" autocomplete="off" placeholder="e.g. SN-48820193" />
     </div>
 
     <div class="field">
@@ -101,13 +148,14 @@
     </div>
 
     <div class="field">
-      <label for="serial">Serial number</label>
-      <input id="serial" type="text" autocomplete="off" placeholder="e.g. SN-48820193" />
-    </div>
-
-    <div class="field">
-      <label for="model">Model</label>
-      <input id="model" type="text" autocomplete="off" placeholder="e.g. Carrier 24ACC6" />
+      <label for="client">Client</label>
+      <select id="client">
+        <option value="">Select…</option>
+        <option>United</option><option>Ridge</option><option>Bloom</option>
+        <option>Summit</option><option>Moment</option><option>Robin</option>
+        <option value="__other">Other (type below)</option>
+      </select>
+      <input id="clientOther" type="text" autocomplete="off" placeholder="Client name" style="display:none;margin-top:8px" />
     </div>
 
     <div class="field">
@@ -117,11 +165,6 @@
         <option>Outside</option><option>Attic</option><option>Roof</option>
         <option>Basement</option><option>Mechanical Room</option><option>Garage</option><option>Other</option>
       </select>
-    </div>
-
-    <div class="field">
-      <label for="client">Client</label>
-      <input id="client" type="text" autocomplete="off" placeholder="Client or site name" />
     </div>
 
     <div class="field">
@@ -135,16 +178,7 @@
 </main>
 
 <script>
-  var photoInput = document.getElementById("photoInput");
-  var preview = document.getElementById("preview");
-  var photoBtnText = document.getElementById("photoBtnText");
-  var form = document.getElementById("assetForm");
-  var submitBtn = document.getElementById("submitBtn");
-  var msg = document.getElementById("msg");
-
-  var photoData = null; // { base64, contentType, filename }
-
-  // Shrink large phone photos client-side so uploads are fast and small.
+  // Shrink large phone photos client-side so uploads are fast on cell signal.
   function processPhoto(file){
     return new Promise(function(resolve, reject){
       var reader = new FileReader();
@@ -153,8 +187,7 @@
         var img = new Image();
         img.onerror = reject;
         img.onload = function(){
-          var max = 1600;
-          var w = img.width, h = img.height;
+          var max = 1600, w = img.width, h = img.height;
           if (w > max || h > max){
             if (w >= h){ h = Math.round(h * max / w); w = max; }
             else { w = Math.round(w * max / h); h = max; }
@@ -176,41 +209,59 @@
     });
   }
 
-  photoInput.addEventListener("change", function(){
-    var file = photoInput.files && photoInput.files[0];
-    if (!file) return;
-    photoBtnText.textContent = "Processing…";
-    processPhoto(file).then(function(res){
-      photoData = res;
-      preview.src = res.preview;
-      preview.style.display = "block";
-      photoBtnText.textContent = "Change photo";
-    }).catch(function(){
-      photoBtnText.textContent = "Add a photo";
-      showMsg("err", "Couldn't read that image. Try another photo.");
+  var photos = { overall: null, nameplate: null, serial: null };
+
+  function wireSlot(key, label){
+    var input = document.getElementById(key + "Input");
+    var preview = document.getElementById(key + "Preview");
+    var pick = document.getElementById(key + "Pick");
+    var text = document.getElementById(key + "Text");
+    input.addEventListener("change", function(){
+      var file = input.files && input.files[0];
+      if (!file) return;
+      text.textContent = "…";
+      processPhoto(file).then(function(res){
+        photos[key] = res;
+        preview.src = res.preview;
+        preview.style.display = "block";
+        pick.style.display = "none";
+      }).catch(function(){ text.textContent = label; });
     });
+    // tapping the preview lets you retake
+    preview.addEventListener("click", function(){ input.click(); });
+  }
+  wireSlot("overall", "Whole unit");
+  wireSlot("nameplate", "Data plate");
+  wireSlot("serial", "Serial #");
+
+  var clientSel = document.getElementById("client");
+  var clientOther = document.getElementById("clientOther");
+  clientSel.addEventListener("change", function(){
+    clientOther.style.display = clientSel.value === "__other" ? "block" : "none";
   });
 
-  function showMsg(kind, text){
-    msg.className = "msg " + kind;
-    msg.textContent = text;
-  }
+  var form = document.getElementById("assetForm");
+  var submitBtn = document.getElementById("submitBtn");
+  var msg = document.getElementById("msg");
+
+  function showMsg(kind, text){ msg.className = "msg " + kind; msg.textContent = text; }
 
   form.addEventListener("submit", function(e){
     e.preventDefault();
+    var client = clientSel.value === "__other" ? clientOther.value : clientSel.value;
     var payload = {
-      equipmentType: document.getElementById("equipmentType").value,
-      serial: document.getElementById("serial").value,
+      description: document.getElementById("description").value,
+      manufacturer: document.getElementById("manufacturer").value,
       model: document.getElementById("model").value,
+      serial: document.getElementById("serial").value,
+      equipmentType: document.getElementById("equipmentType").value,
+      client: client,
       location: document.getElementById("location").value,
-      client: document.getElementById("client").value,
-      notes: document.getElementById("notes").value
+      notes: document.getElementById("notes").value,
+      overallPhoto: photos.overall,
+      nameplatePhoto: photos.nameplate,
+      serialPhoto: photos.serial
     };
-    if (photoData){
-      payload.photoBase64 = photoData.base64;
-      payload.photoContentType = photoData.contentType;
-      payload.photoFilename = photoData.filename;
-    }
 
     submitBtn.disabled = true;
     submitBtn.textContent = "Saving…";
@@ -223,10 +274,13 @@
     }).then(function(r){ return r.json(); }).then(function(data){
       if (data && data.ok){
         form.reset();
-        photoData = null;
-        preview.style.display = "none";
-        photoBtnText.textContent = "Add a photo";
-        showMsg("ok", "Saved. Log another, or you're all set.");
+        photos = { overall: null, nameplate: null, serial: null };
+        ["overall","nameplate","serial"].forEach(function(k){
+          document.getElementById(k + "Preview").style.display = "none";
+          document.getElementById(k + "Pick").style.display = "flex";
+        });
+        clientOther.style.display = "none";
+        showMsg("ok", "Saved. We're reading the nameplate in the background — check the asset in a moment to confirm the details.");
       } else {
         showMsg("err", (data && data.error) || "Something went wrong. Please try again.");
       }

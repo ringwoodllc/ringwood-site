@@ -7,14 +7,17 @@
  *   - tickets.ringwood.ai   -> ticket capture form               public/tickets/index.html
  *
  * Static pages are served from ./public. This Worker handles the APIs and
- * routes each subdomain's root to the right form. All three talk to Airtable
+ * routes each subdomain's root to the right form. All talk to Airtable
  * server-side using the AIRTABLE_TOKEN secret (never exposed to the browser).
+ * Nameplate reading uses Claude (Sonnet 4.6) via the ANTHROPIC_API_KEY secret.
  */
 
 /* ---- Asset tracker (Ringwood — Asset Tracker base) ---- */
 const ASSET_BASE_ID = "appLd8AQ0OgQoF0Yy";
 const ASSET_TABLE_ID = "tblflKhylyuJi6esW";
-const ASSET_PHOTO_FIELD_ID = "fldMMvw4Ddqxi0KKh";
+const F_OVERALL_PHOTO = "fldMMvw4Ddqxi0KKh";
+const F_NAMEPLATE_PHOTO = "fldezoR8bUXkZ6G8F";
+const F_SERIAL_PHOTO = "fld9Xlteo8i2xvBqr";
 
 /* ---- Ticket app: category master list (System / Method base) ---- */
 const SYS_BASE = "app29fADba9FiQ25h";
@@ -41,13 +44,13 @@ const json = (data, status = 200) =>
   });
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const sub = url.hostname.split(".")[0];
 
     // APIs (work on any hostname; the forms call them same-origin)
     if (url.pathname === "/api/assets" && request.method === "POST") {
-      return handleCreateAsset(request, env);
+      return handleCreateAsset(request, env, ctx);
     }
     if (url.pathname === "/api/categories" && request.method === "GET") {
       return getCategories(env);
@@ -76,7 +79,7 @@ function rewrite(url, pathname, request) {
 
 /* ===================== Asset tracker ===================== */
 
-async function handleCreateAsset(request, env) {
+async function handleCreateAsset(request, env, ctx) {
   if (!env.AIRTABLE_TOKEN) {
     return json(
       { ok: false, error: "The asset tracker isn't connected yet. Please add the AIRTABLE_TOKEN in Cloudflare." },
@@ -91,33 +94,35 @@ async function handleCreateAsset(request, env) {
     return json({ ok: false, error: "Could not read the submission." }, 400);
   }
 
-  const equipmentType = (body.equipmentType || "").trim();
-  const serial = (body.serial || "").trim();
-  const model = (body.model || "").trim();
-  const location = (body.location || "").trim();
-  const client = (body.client || "").trim();
-  const notes = (body.notes || "").trim();
+  const clean = (v) => (v || "").toString().trim();
+  const description = clean(body.description);
+  const manufacturer = clean(body.manufacturer);
+  const model = clean(body.model);
+  const serial = clean(body.serial);
+  const equipmentType = clean(body.equipmentType);
+  const location = clean(body.location);
+  const client = clean(body.client);
+  const notes = clean(body.notes);
 
-  const label = [equipmentType || "Asset", client].filter(Boolean).join(" — ") || "Asset";
+  const label =
+    [description || equipmentType || "Asset", client].filter(Boolean).join(" — ") || "Asset";
 
   const fields = { Asset: label, "Logged At": new Date().toISOString() };
-  if (equipmentType) fields["Equipment Type"] = equipmentType;
-  if (serial) fields["Serial Number"] = serial;
+  if (description) fields["Description"] = description;
+  if (manufacturer) fields["Manufacturer"] = manufacturer;
   if (model) fields["Model"] = model;
+  if (serial) fields["Serial Number"] = serial;
+  if (equipmentType) fields["Equipment Type"] = equipmentType;
   if (location) fields["Location"] = location;
   if (client) fields["Client"] = client;
   if (notes) fields["Notes"] = notes;
 
-  const headers = {
-    Authorization: `Bearer ${env.AIRTABLE_TOKEN}`,
-    "content-type": "application/json",
-  };
-
+  // 1) Create the record immediately so the user gets a fast confirmation.
   let recordId;
   try {
     const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}`, {
       method: "POST",
-      headers,
+      headers: airtableHeaders(env),
       body: JSON.stringify({ fields, typecast: true }),
     });
     const data = await res.json();
@@ -129,26 +134,140 @@ async function handleCreateAsset(request, env) {
     return json({ ok: false, error: "Could not reach the database." }, 502);
   }
 
-  if (body.photoBase64) {
-    try {
-      await fetch(
-        `https://content.airtable.com/v0/${ASSET_BASE_ID}/${recordId}/${ASSET_PHOTO_FIELD_ID}/uploadAttachment`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            contentType: body.photoContentType || "image/jpeg",
-            filename: body.photoFilename || "photo.jpg",
-            file: body.photoBase64,
-          }),
-        }
-      );
-    } catch {
-      /* a failed photo upload shouldn't lose the record */
-    }
+  // 2) Upload photos + run nameplate AI in the background (doesn't block the user).
+  const manual = { description, manufacturer, model, serial };
+  if (ctx && ctx.waitUntil) {
+    ctx.waitUntil(processAssetMedia(recordId, body, manual, env));
   }
 
   return json({ ok: true, id: recordId });
+}
+
+// Background work: attach the three photos, then have Claude read the nameplate
+// and fill in any blanks the user left.
+async function processAssetMedia(recordId, body, manual, env) {
+  // Attach photos to their respective fields.
+  await uploadPhoto(recordId, F_OVERALL_PHOTO, body.overallPhoto, env);
+  await uploadPhoto(recordId, F_NAMEPLATE_PHOTO, body.nameplatePhoto, env);
+  await uploadPhoto(recordId, F_SERIAL_PHOTO, body.serialPhoto, env);
+
+  // Read the nameplate/serial close-ups with Claude.
+  const images = [body.nameplatePhoto, body.serialPhoto].filter((p) => p && p.base64);
+  if (!images.length || !env.ANTHROPIC_API_KEY) return;
+
+  let read;
+  try {
+    read = await scanNameplate(images, env);
+  } catch {
+    return;
+  }
+  if (!read) return;
+
+  // Fill only the fields the user left blank; never overwrite their entry.
+  const patch = {};
+  if (!manual.description && read.description) patch["Description"] = read.description;
+  if (!manual.manufacturer && read.manufacturer) patch["Manufacturer"] = read.manufacturer;
+  if (!manual.model && read.model) patch["Model"] = read.model;
+  if (!manual.serial && read.serial) patch["Serial Number"] = read.serial;
+
+  patch["Nameplate Reading (AI)"] =
+    `Manufacturer: ${read.manufacturer || "—"}\n` +
+    `Model: ${read.model || "—"}\n` +
+    `Serial: ${read.serial || "—"}\n` +
+    `Description: ${read.description || "—"}\n` +
+    `(read by Claude Sonnet 4.6 — please verify)`;
+
+  try {
+    await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${recordId}`, {
+      method: "PATCH",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields: patch, typecast: true }),
+    });
+  } catch {
+    /* ignore — the record and photos are already saved */
+  }
+}
+
+function airtableHeaders(env) {
+  return {
+    Authorization: `Bearer ${env.AIRTABLE_TOKEN}`,
+    "content-type": "application/json",
+  };
+}
+
+async function uploadPhoto(recordId, fieldId, photo, env) {
+  if (!photo || !photo.base64) return;
+  try {
+    await fetch(
+      `https://content.airtable.com/v0/${ASSET_BASE_ID}/${recordId}/${fieldId}/uploadAttachment`,
+      {
+        method: "POST",
+        headers: airtableHeaders(env),
+        body: JSON.stringify({
+          contentType: photo.contentType || "image/jpeg",
+          filename: photo.filename || "photo.jpg",
+          file: photo.base64,
+        }),
+      }
+    );
+  } catch {
+    /* a failed photo upload shouldn't lose the record */
+  }
+}
+
+// Claude vision: read manufacturer / model / serial / description off the plate.
+async function scanNameplate(images, env) {
+  const content = images.map((p) => ({
+    type: "image",
+    source: { type: "base64", media_type: p.contentType || "image/jpeg", data: p.base64 },
+  }));
+  content.push({
+    type: "text",
+    text:
+      "These are close-up photos of an equipment data plate / nameplate. " +
+      "Read the MANUFACTURER (brand), MODEL number, SERIAL number, and a short DESCRIPTION " +
+      "of what the equipment is. If a value isn't clearly legible, return an empty string for it — do not guess.",
+  });
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 512,
+      messages: [{ role: "user", content }],
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: {
+              manufacturer: { type: "string" },
+              model: { type: "string" },
+              serial: { type: "string" },
+              description: { type: "string" },
+            },
+            required: ["manufacturer", "model", "serial", "description"],
+            additionalProperties: false,
+          },
+        },
+      },
+    }),
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  const block = (data.content || []).find((b) => b.type === "text");
+  if (!block) return null;
+  try {
+    return JSON.parse(block.text);
+  } catch {
+    return null;
+  }
 }
 
 /* ===================== Ticket app ===================== */
