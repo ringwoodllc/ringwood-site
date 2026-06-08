@@ -9,10 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
-  :root{
-    --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
-    --green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);
-  }
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased}
   .wrap{max-width:640px;margin:0 auto;padding:0 22px 48px}
@@ -22,7 +19,6 @@
   .bar{display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
   .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
-
   .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin:8px 0 10px}
   .lookup{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:18px;margin-bottom:24px}
   .lookup h1{font-size:1.5rem;margin-bottom:12px}
@@ -36,7 +32,6 @@
   .qrrow input{flex:1}
   .gobtn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1rem;padding:0 18px;border-radius:4px}
   .gobtn:hover{background:var(--green-deep)}
-
   .titlerow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:4px}
   h1.assetname{font-size:clamp(1.7rem,6vw,2.2rem)}
   .pill{font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:4px 11px;border-radius:999px;white-space:nowrap;margin-top:6px}
@@ -44,24 +39,23 @@
   .pill.ai{background:#dfe9f4;color:#274a73}
   .pill.verified{background:#e3efe7;color:#21443a}
   .sub{color:var(--muted);font-size:.98rem;margin-bottom:16px}
-
   .photos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px}
   @media(max-width:520px){.photos{grid-template-columns:1fr 1fr}}
   .photos figure{margin:0}
   .photos img{width:100%;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;background:var(--bg-2)}
   .photos figcaption{font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:5px}
-
   .card{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:18px;margin-bottom:20px}
   dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:.98rem;margin:0}
   dt{color:var(--muted);font-weight:600}
   dd{color:var(--ink);margin:0}
   .ainote{font-size:.86rem;color:var(--muted);white-space:pre-line;margin-top:4px}
-
   h2{font-size:1.2rem;margin:0 0 10px}
   table{width:100%;border-collapse:collapse;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:.9rem}
   th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
   th{background:#e7decd;font-weight:600;color:var(--green-deep);font-size:.74rem;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
   td:first-child{white-space:nowrap}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:#eee3cf}
   tr:last-child td{border-bottom:none}
   .empty{color:var(--muted);font-size:.95rem;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:14px}
   .btn{display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:1rem;padding:13px 22px;border-radius:4px;border:none;cursor:pointer}
@@ -71,6 +65,7 @@
   .btn:disabled{opacity:.6;cursor:default}
   .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 6px}
   .field{margin-bottom:14px}
+  .hint{font-size:.84rem;color:var(--muted);margin:-8px 0 14px}
   .state{color:var(--muted);padding:8px 0 30px}
   .err{color:#8a3d1c}
   .agentnote{background:#dfe9f4;color:#274a73;border-radius:4px;padding:10px 12px;font-size:.9rem;margin-bottom:14px}
@@ -81,11 +76,7 @@
 <header>
   <div class="wrap bar">
     <div class="brand">
-      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
-        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
-          <circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/>
-        </g>
-      </svg>
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
       Ringwood
     </div>
     <a class="back" href="https://ringwood.ai">Home</a>
@@ -96,170 +87,156 @@
   <div class="eyebrow">Asset lookup</div>
   <div class="lookup">
     <h1>Find an asset</h1>
-    <label for="assetSel">Pick from the list</label>
+    <div class="field"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
+    <label for="assetSel">Asset</label>
     <select id="assetSel"><option value="">Loading assets…</option></select>
     <div class="or">— or —</div>
     <label for="qrInput">Paste an asset ID, QR code, or link</label>
-    <div class="qrrow">
-      <input id="qrInput" type="text" autocomplete="off" placeholder="rec… or a scanned link" />
-      <button class="gobtn" id="goBtn" type="button">View</button>
-    </div>
+    <div class="qrrow"><input id="qrInput" type="text" autocomplete="off" placeholder="rec… or a scanned link" /><button class="gobtn" id="goBtn" type="button">View</button></div>
   </div>
-
   <div id="view"></div>
 </main>
 
-<datalist id="typelist">
-  <option>HVAC</option><option>Water Heater</option><option>Boiler</option>
-  <option>Electrical Panel</option><option>Generator</option><option>Coffee Equipment</option>
-  <option>Office Equipment</option><option>Refrigeration</option><option>Other</option>
-</datalist>
-
 <script>
-  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-  function row(label, val){ return val ? "<dt>" + esc(label) + "</dt><dd>" + esc(val) + "</dd>" : ""; }
-  function money(v){ return (v === "" || v == null) ? "" : ("$" + Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
-  function parseId(raw){
-    var s = (raw||"").trim(); if (!s) return "";
-    var m = s.match(/[?&]id=([A-Za-z0-9]+)/); if (m) return m[1];
-    m = s.match(/\/a\/([A-Za-z0-9]+)/); if (m) return m[1];
-    m = s.match(/rec[A-Za-z0-9]{14}/); if (m) return m[0];
-    return s;
-  }
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function row(label, val){ return val ? "<dt>"+esc(label)+"</dt><dd>"+esc(val)+"</dd>" : ""; }
+  function money(v){ return (v===""||v==null)?"":("$"+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
+  function parseId(raw){ var s=(raw||"").trim(); if(!s)return""; var m=s.match(/[?&]id=([A-Za-z0-9]+)/); if(m)return m[1]; m=s.match(/\/a\/([A-Za-z0-9]+)/); if(m)return m[1]; m=s.match(/rec[A-Za-z0-9]{14}/); if(m)return m[0]; return s; }
+  var SERVICE_TYPES = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
+  var OPTIONS = { types:[], locations:[], clients:[] };
 
-  var assetSel = document.getElementById("assetSel");
-  var qrInput = document.getElementById("qrInput");
-  var view = document.getElementById("view");
-  var curAsset = null, curId = "";
+  var assetSel=document.getElementById("assetSel"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter");
+  var allAssets=[], curAsset=null, curId="";
 
-  fetch("/api/assets/list").then(function(r){ return r.json(); }).then(function(list){
-    var arr = Array.isArray(list) ? list : [];
-    assetSel.innerHTML = "<option value=''>" + (arr.length ? "Choose an asset" : "No assets yet") + "</option>";
-    arr.forEach(function(a){ var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; assetSel.appendChild(o); });
+  fetch("/api/options").then(function(r){return r.json();}).then(function(o){ if(o) OPTIONS=o; }).catch(function(){});
+
+  fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
+    allAssets = Array.isArray(list)?list:[];
+    var clients=[]; allAssets.forEach(function(a){ if(a.client && clients.indexOf(a.client)===-1) clients.push(a.client); });
+    clients.sort().forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; clientFilter.appendChild(o); });
+    renderAssetOptions("");
     var initial = parseId(new URLSearchParams(location.search).get("id") || location.pathname.replace(/^\/a\//,""));
-    if (initial && /^rec/.test(initial)){ assetSel.value = initial; load(initial); }
-  }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load list</option>"; });
+    if (initial && /^rec/.test(initial)){ assetSel.value=initial; load(initial); }
+  }).catch(function(){ assetSel.innerHTML="<option value=''>Could not load list</option>"; });
 
-  assetSel.addEventListener("change", function(){ if (assetSel.value) load(assetSel.value); });
-  document.getElementById("goBtn").addEventListener("click", function(){ var id=parseId(qrInput.value); if (id) load(id); });
-  qrInput.addEventListener("keydown", function(e){ if (e.key==="Enter"){ var id=parseId(qrInput.value); if (id) load(id); } });
+  function renderAssetOptions(client){
+    var arr = client ? allAssets.filter(function(a){ return a.client===client; }) : allAssets;
+    assetSel.innerHTML = "<option value=''>"+(arr.length?"Choose an asset":"No assets")+"</option>";
+    arr.forEach(function(a){ var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; assetSel.appendChild(o); });
+  }
+  clientFilter.addEventListener("change", function(){ renderAssetOptions(clientFilter.value); });
+  assetSel.addEventListener("change", function(){ if(assetSel.value) load(assetSel.value); });
+  document.getElementById("goBtn").addEventListener("click", function(){ var id=parseId(qrInput.value); if(id) load(id); });
+  qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=parseId(qrInput.value); if(id) load(id); } });
 
   function load(id){
-    curId = id;
-    view.innerHTML = "<div class='state'>Loading asset…</div>";
-    history.replaceState(null, "", "/a/?id=" + encodeURIComponent(id));
-    fetch("/api/asset?id=" + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(a){
-      if (!a || !a.ok){ view.innerHTML = "<div class='state err'>Asset not found. Check the ID and try again.</div>"; return; }
-      curAsset = a; renderRead(a);
-    }).catch(function(){ view.innerHTML = "<div class='state err'>Couldn't load. Check your connection and try again.</div>"; });
+    curId=id; view.innerHTML="<div class='state'>Loading asset…</div>";
+    history.replaceState(null,"","/a/?id="+encodeURIComponent(id));
+    fetch("/api/asset?id="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(a){
+      if(!a||!a.ok){ view.innerHTML="<div class='state err'>Asset not found.</div>"; return; }
+      curAsset=a; renderRead(a);
+    }).catch(function(){ view.innerHTML="<div class='state err'>Couldn't load. Try again.</div>"; });
   }
-
-  function statusClass(s){ return s === "AI suggested" ? "ai" : (s === "Verified" ? "verified" : "pending"); }
+  function statusClass(s){ return s==="AI suggested"?"ai":(s==="Verified"?"verified":"pending"); }
 
   function renderRead(a){
-    function fig(u, cap){ return u ? "<figure><img src='" + u + "' alt='" + esc(cap) + "'/><figcaption>" + esc(cap) + "</figcaption></figure>" : ""; }
-    var p = fig(a.overallPhoto,"Overall") + fig(a.nameplatePhoto,"Nameplate") + fig(a.serialPhoto,"Serial");
-    var photos = p ? "<div class='photos'>" + p + "</div>" : "";
-    var identity = "<div class='card'><dl>" +
-      row("Description", a.description) + row("Manufacturer", a.manufacturer) +
-      row("Model", a.model) + row("Serial", a.serial) + row("Type", a.equipmentType) +
-      row("Client", a.client) + row("Location", a.location) + "</dl></div>";
-    var ai = a.aiReading ? "<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>" + esc(a.aiReading) + "</div></div>" : "";
+    function fig(u,cap){ return u?"<figure><img src='"+u+"' alt='"+esc(cap)+"'/><figcaption>"+esc(cap)+"</figcaption></figure>":""; }
+    var photos = (fig(a.overallPhoto,"Overall")+fig(a.nameplatePhoto,"Nameplate")+fig(a.serialPhoto,"Serial"));
+    photos = photos?"<div class='photos'>"+photos+"</div>":"";
+    var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+"</dl></div>";
+    var ai = a.aiReading?"<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>"+esc(a.aiReading)+"</div></div>":"";
     var hist;
-    if (a.services && a.services.length){
+    if(a.services && a.services.length){
       var rows = a.services.map(function(s){
-        return "<tr><td>"+esc(s.date||"—")+"</td><td>"+esc(s.type||"—")+"</td><td>"+esc(s.technician||"")+"</td><td>"+esc(s.notes||"")+"</td><td>"+esc(money(s.cost))+"</td></tr>";
+        return "<tr onclick=\"editService('"+s.id+"')\"><td>"+esc(s.date||"—")+"</td><td>"+esc(s.type||"—")+"</td><td>"+esc(s.technician||"")+"</td><td>"+esc(s.notes||"")+"</td><td>"+esc(money(s.cost))+"</td></tr>";
       }).join("");
-      hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>"+rows+"</tbody></table>";
-    } else { hist = "<div class='empty'>No service history yet.</div>"; }
-
+      hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>"+rows+"</tbody></table><div class='hint'>Tap a row to edit it.</div>";
+    } else { hist="<div class='empty'>No service history yet.</div>"; }
     view.innerHTML =
-      "<div class='titlerow'><h1 class='assetname'>"+esc(a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>" +
-      "<div class='sub'>Ringwood asset record</div>" +
-      "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>" +
-      "<a class='btn ghost' href='https://service.ringwood.ai/?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>" +
-      photos + identity + ai +
-      "<h2>Service history</h2>" + hist;
-    document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset, ""); });
+      "<div class='titlerow'><h1 class='assetname'>"+esc(a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
+      "<div class='sub'>Ringwood asset record</div>"+
+      "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button><a class='btn ghost' href='https://service.ringwood.ai/?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>"+
+      photos+identity+ai+"<h2>Service history</h2>"+hist;
+    document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
   }
 
-  function inputField(id, label, val, ta){
-    var control = ta
-      ? "<textarea id='"+id+"'>"+esc(val||"")+"</textarea>"
-      : "<input id='"+id+"' type='text' value='"+esc(val||"")+"' " + (id==="f_type" ? "list='typelist' " : "") + "/>";
-    return "<div class='field'><label>"+esc(label)+"</label>"+control+"</div>";
+  // dropdown of known values + "add new" text
+  function combo(id, value, options){
+    var opts = (options||[]).slice();
+    if (value && opts.map(function(o){return o.toLowerCase();}).indexOf(value.toLowerCase())===-1) opts.unshift(value);
+    var s = "<select id='"+id+"' onchange=\"comboChange('"+id+"')\"><option value=''>Select…</option>";
+    opts.forEach(function(o){ s += "<option"+(value && o.toLowerCase()===value.toLowerCase()?" selected":"")+">"+esc(o)+"</option>"; });
+    s += "<option value='__new'>+ Add new…</option></select><input id='"+id+"_new' type='text' placeholder='Type a new value' style='display:none;margin-top:8px' />";
+    return s;
   }
+  window.comboChange = function(id){ var s=document.getElementById(id), t=document.getElementById(id+"_new"); if(s.value==='__new'){ t.style.display='block'; t.focus(); } else { t.style.display='none'; } };
+  function comboValue(id){ var s=document.getElementById(id), t=document.getElementById(id+"_new"); return s.value==='__new' ? t.value.trim() : s.value; }
+  function field(id,label,val,ta){ var c = ta?"<textarea id='"+id+"'>"+esc(val||"")+"</textarea>":"<input id='"+id+"' type='text' value='"+esc(val||"")+"'/>"; return "<div class='field'><label>"+esc(label)+"</label>"+c+"</div>"; }
+  function comboField(id,label,val,options){ return "<div class='field'><label>"+esc(label)+"</label>"+combo(id,val,options)+"</div>"; }
+
+  function editPhotos(a){ function f(u,cap){ return u?"<figure><img src='"+u+"' alt='"+esc(cap)+"'/><figcaption>"+esc(cap)+"</figcaption></figure>":""; } var p=f(a.overallPhoto,"Overall")+f(a.nameplatePhoto,"Nameplate")+f(a.serialPhoto,"Serial"); return p?"<div class='photos'>"+p+"</div>":"<div class='sub' style='color:var(--clay)'>No photos on this asset.</div>"; }
+  function setMsg(t){ var e=document.getElementById("editmsg"); if(e) e.textContent=t||""; }
 
   function showEdit(a, note){
     view.innerHTML =
-      "<div class='titlerow'><h1 class='assetname'>Edit asset</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>" +
-      (note ? "<div class='agentnote'>"+esc(note)+"</div>" : "<div class='sub'>Run the Ringwood Agent to read the photos, or edit the details by hand. Saving marks it Verified.</div>") +
-      editPhotos(a) +
-      "<div class='btnrow'><button class='btn' id='runBtn' type='button'>Run Ringwood Agent</button></div>" +
-      "<div id='editmsg' class='err' style='margin-bottom:10px'></div>" +
-      inputField("f_name","Name", a.name) +
-      inputField("f_desc","Description", a.description, true) +
-      inputField("f_make","Manufacturer", a.manufacturer) +
-      inputField("f_model","Model", a.model) +
-      inputField("f_serial","Serial", a.serial) +
-      inputField("f_type","Type", a.equipmentType) +
-      inputField("f_client","Client", a.client) +
-      inputField("f_location","Location", a.location) +
-      "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button>" +
-      "<button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>";
-
+      "<div class='titlerow'><h1 class='assetname'>Edit asset</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
+      (note?"<div class='agentnote'>"+esc(note)+"</div>":"<div class='sub'>Run the Ringwood Agent to read the photos, or edit by hand. Pick from the lists to avoid duplicates. Saving marks it Verified.</div>")+
+      editPhotos(a)+
+      "<div class='btnrow'><button class='btn' id='runBtn' type='button'>Run Ringwood Agent</button></div>"+
+      "<div id='editmsg' class='err' style='margin-bottom:10px'></div>"+
+      field("f_name","Name",a.name)+field("f_desc","Description",a.description,true)+
+      field("f_make","Manufacturer",a.manufacturer)+field("f_model","Model",a.model)+field("f_serial","Serial",a.serial)+
+      comboField("f_type","Type",a.equipmentType,OPTIONS.types)+
+      comboField("f_client","Client",a.client,OPTIONS.clients)+
+      comboField("f_location","Location",a.location,OPTIONS.locations)+
+      "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>";
     document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
     document.getElementById("saveBtn").addEventListener("click", saveEdit);
     document.getElementById("runBtn").addEventListener("click", runAgentNow);
   }
 
-  function editPhotos(a){
-    function f(u,cap){ return u ? "<figure><img src='"+u+"' alt='"+esc(cap)+"'/><figcaption>"+esc(cap)+"</figcaption></figure>" : ""; }
-    var p = f(a.overallPhoto,"Overall") + f(a.nameplatePhoto,"Nameplate") + f(a.serialPhoto,"Serial");
-    return p ? "<div class='photos'>"+p+"</div>" : "<div class='sub' style='color:var(--clay)'>No photos on this asset.</div>";
-  }
-
-  function setEditMsg(t){ var e=document.getElementById("editmsg"); if (e) e.textContent = t || ""; }
-
   function runAgentNow(){
-    var runBtn = document.getElementById("runBtn");
-    runBtn.disabled = true; runBtn.textContent = "Running Ringwood Agent…"; setEditMsg("");
-    fetch("/api/asset/analyze", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ id: curId }) })
-      .then(function(r){ return r.json(); }).then(function(d){
-        if (d && d.ok){
-          // Reload the asset and repopulate the edit form with the agent's results.
-          return fetch("/api/asset?id="+encodeURIComponent(curId)).then(function(r){ return r.json(); }).then(function(a){
-            if (a && a.ok){ curAsset = a; showEdit(a, "The Ringwood Agent updated the fields below. Review and Save."); }
-          });
-        } else {
-          runBtn.disabled = false; runBtn.textContent = "Run Ringwood Agent";
-          setEditMsg((d && d.error) || "The agent could not run. Try again.");
-        }
-      }).catch(function(){
-        runBtn.disabled = false; runBtn.textContent = "Run Ringwood Agent";
-        setEditMsg("Couldn't reach the agent. Check your connection.");
-      });
+    var b=document.getElementById("runBtn"); b.disabled=true; b.textContent="Running Ringwood Agent…"; setMsg("");
+    fetch("/api/asset/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:curId})}).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.ok){ return fetch("/api/asset?id="+encodeURIComponent(curId)).then(function(r){return r.json();}).then(function(a){ if(a&&a.ok){ curAsset=a; showEdit(a,"The Ringwood Agent updated the fields below. Review and Save."); } }); }
+      else { b.disabled=false; b.textContent="Run Ringwood Agent"; setMsg((d&&d.error)||"The agent could not run."); }
+    }).catch(function(){ b.disabled=false; b.textContent="Run Ringwood Agent"; setMsg("Couldn't reach the agent."); });
   }
 
   function saveEdit(){
-    var saveBtn = document.getElementById("saveBtn");
-    saveBtn.disabled = true; saveBtn.textContent = "Saving…"; setEditMsg("");
-    var payload = {
-      id: curId,
-      name: document.getElementById("f_name").value,
-      description: document.getElementById("f_desc").value,
-      manufacturer: document.getElementById("f_make").value,
-      model: document.getElementById("f_model").value,
-      serial: document.getElementById("f_serial").value,
-      equipmentType: document.getElementById("f_type").value,
-      client: document.getElementById("f_client").value,
-      location: document.getElementById("f_location").value
-    };
-    fetch("/api/asset/update", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(payload) })
-      .then(function(r){ return r.json(); }).then(function(d){
-        if (d && d.ok){ load(curId); }
-        else { saveBtn.disabled=false; saveBtn.textContent="Save"; setEditMsg((d && d.error) || "Save failed."); }
-      }).catch(function(){ saveBtn.disabled=false; saveBtn.textContent="Save"; setEditMsg("Couldn't reach the server."); });
+    var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
+    var payload={ id:curId, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location") };
+    fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }
+    }).catch(function(){ b.disabled=false; b.textContent="Save"; setMsg("Couldn't reach the server."); });
+  }
+
+  // ---- service record edit ----
+  window.editService = function(sid){
+    view.innerHTML="<div class='state'>Loading…</div>";
+    fetch("/api/service/get?id="+encodeURIComponent(sid)).then(function(r){return r.json();}).then(function(s){
+      if(!s||!s.ok){ renderRead(curAsset); return; }
+      var typeOpts = SERVICE_TYPES.map(function(t){ return "<option"+(s.type===t?" selected":"")+">"+t+"</option>"; }).join("");
+      view.innerHTML =
+        "<div class='titlerow'><h1 class='assetname'>Edit service</h1></div>"+
+        "<div class='sub'>"+esc(curAsset?curAsset.name:"")+"</div>"+
+        "<div id='svcmsg' class='err' style='margin-bottom:10px'></div>"+
+        "<div class='field'><label>Date</label><input id='s_date' type='date' value='"+esc(s.date)+"'/></div>"+
+        "<div class='field'><label>Type</label><select id='s_type'><option value=''>Select…</option>"+typeOpts+"</select></div>"+
+        "<div class='field'><label>Technician</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
+        "<div class='field'><label>Notes</label><textarea id='s_notes'>"+esc(s.notes)+"</textarea></div>"+
+        "<div class='field'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
+        "<div class='btnrow'><button class='btn' id='svcSave' type='button'>Save</button><button class='btn ghost' id='svcBack' type='button'>Back</button></div>";
+      document.getElementById("svcBack").addEventListener("click", function(){ renderRead(curAsset); });
+      document.getElementById("svcSave").addEventListener("click", function(){ saveService(sid); });
+    }).catch(function(){ renderRead(curAsset); });
+  };
+  function saveService(sid){
+    var b=document.getElementById("svcSave"); b.disabled=true; b.textContent="Saving…";
+    var payload={ id:sid, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value };
+    fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent=(d&&d.error)||"Save failed."; }
+    }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent="Couldn't reach the server."; });
   }
 </script>
 </body>

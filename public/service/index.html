@@ -89,6 +89,8 @@
 
   <form id="serviceForm">
     <div class="field">
+      <label for="clientFilter">Client</label>
+      <select id="clientFilter" style="margin-bottom:10px"><option value="">All clients</option></select>
       <label for="assetFilter">Asset</label>
       <input id="assetFilter" type="text" autocomplete="off" placeholder="Type to filter…" style="margin-bottom:8px" />
       <select id="asset"><option value="">Loading assets…</option></select>
@@ -145,32 +147,36 @@
   // ---- assets dropdown ----
   var assetSel = document.getElementById("asset");
   var assetFilter = document.getElementById("assetFilter");
+  var clientFilter = document.getElementById("clientFilter");
   var allAssets = [];
+  var SERVICE_TYPES = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
 
-  function renderAssets(filter){
-    var f = (filter || "").toLowerCase();
-    var matches = allAssets.filter(function(a){ return a.name.toLowerCase().indexOf(f) !== -1; });
+  function renderAssets(){
+    var f = (assetFilter.value || "").toLowerCase();
+    var cl = clientFilter.value;
+    var matches = allAssets.filter(function(a){ return (!cl || a.client === cl) && a.name.toLowerCase().indexOf(f) !== -1; });
     assetSel.innerHTML = "<option value=''>" + (matches.length ? "Choose an asset" : "No match") + "</option>";
-    matches.slice(0, 200).forEach(function(a){
-      var o = document.createElement("option");
-      o.value = a.id; o.textContent = a.name;
-      assetSel.appendChild(o);
-    });
+    matches.slice(0, 300).forEach(function(a){ var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; assetSel.appendChild(o); });
   }
 
   fetch("/api/assets/list").then(function(r){ return r.json(); }).then(function(list){
     allAssets = Array.isArray(list) ? list : [];
     if (!allAssets.length){ assetSel.innerHTML = "<option value=''>No assets yet</option>"; return; }
-    renderAssets("");
+    var clients = [];
+    allAssets.forEach(function(a){ if (a.client && clients.indexOf(a.client) === -1) clients.push(a.client); });
+    clients.sort().forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; clientFilter.appendChild(o); });
+    renderAssets();
     var pre = new URLSearchParams(location.search).get("asset");
     if (pre){ assetSel.value = pre; if (assetSel.value === pre) loadHistory(); }
   }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load assets</option>"; });
 
-  assetFilter.addEventListener("input", function(){ renderAssets(assetFilter.value); historyEl.innerHTML = ""; });
+  assetFilter.addEventListener("input", function(){ renderAssets(); historyEl.innerHTML = ""; });
+  clientFilter.addEventListener("change", function(){ renderAssets(); historyEl.innerHTML = ""; });
 
   // ---- live service history for the selected asset ----
   var historyEl = document.getElementById("history");
-  function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(v){ return (v===""||v==null)?"":("$"+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
 
   function loadHistory(){
     var assetId = assetSel.value;
@@ -183,16 +189,43 @@
         return;
       }
       var html = "<h3>Service history — " + escapeHtml(name) + "</h3>" +
-        "<table><thead><tr><th>Date</th><th>Type</th><th>Notes</th></tr></thead><tbody>";
+        "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>";
       rows.forEach(function(s){
-        html += "<tr><td>" + escapeHtml(s.date || "—") + "</td><td>" + escapeHtml(s.type || "—") +
-                "</td><td>" + escapeHtml(s.notes || "") + "</td></tr>";
+        html += "<tr style='cursor:pointer' onclick=\"editService('"+s.id+"')\"><td>" + escapeHtml(s.date || "—") + "</td><td>" + escapeHtml(s.type || "—") +
+                "</td><td>" + escapeHtml(s.technician || "") + "</td><td>" + escapeHtml(s.notes || "") + "</td><td>" + escapeHtml(money(s.cost)) + "</td></tr>";
       });
-      html += "</tbody></table>";
+      html += "</tbody></table><div style='font-size:.84rem;color:var(--muted);margin-top:6px'>Tap a row to edit it.</div>";
       historyEl.innerHTML = html;
     }).catch(function(){ historyEl.innerHTML = "<h3>Service history</h3><div class='empty'>Couldn't load history.</div>"; });
   }
   assetSel.addEventListener("change", loadHistory);
+
+  // ---- edit a service record ----
+  window.editService = function(sid){
+    historyEl.innerHTML = "<div class='empty'>Loading…</div>";
+    fetch("/api/service/get?id="+encodeURIComponent(sid)).then(function(r){return r.json();}).then(function(s){
+      if(!s||!s.ok){ loadHistory(); return; }
+      var typeOpts = SERVICE_TYPES.map(function(t){ return "<option"+(s.type===t?" selected":"")+">"+t+"</option>"; }).join("");
+      historyEl.innerHTML =
+        "<h3>Edit service</h3><div id='svcmsg' style='color:#8a3d1c;margin-bottom:8px'></div>"+
+        "<div class='row'><div class='field'><label>Date</label><input id='s_date' type='date' value='"+escapeHtml(s.date)+"'/></div>"+
+        "<div class='field'><label>Type</label><select id='s_type'><option value=''>Select…</option>"+typeOpts+"</select></div></div>"+
+        "<div class='field'><label>Technician</label><input id='s_tech' type='text' value='"+escapeHtml(s.technician)+"'/></div>"+
+        "<div class='field'><label>Notes</label><textarea id='s_notes'>"+escapeHtml(s.notes)+"</textarea></div>"+
+        "<div class='field'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+escapeHtml(s.cost)+"'/></div>"+
+        "<div style='display:flex;gap:10px;margin-bottom:20px'><button class='btn' id='svcSave' type='button' style='width:auto;padding:13px 22px'>Save</button>"+
+        "<button class='btn' id='svcBack' type='button' style='width:auto;padding:13px 22px;background:transparent;color:var(--green-deep);border:1px solid var(--line)'>Back</button></div>";
+      document.getElementById("svcBack").addEventListener("click", loadHistory);
+      document.getElementById("svcSave").addEventListener("click", function(){ saveService(sid); });
+    }).catch(function(){ loadHistory(); });
+  };
+  function saveService(sid){
+    var b=document.getElementById("svcSave"); b.disabled=true; b.textContent="Saving…";
+    var payload={ id:sid, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value };
+    fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.ok){ loadHistory(); } else { b.disabled=false; b.textContent="Save"; var m=document.getElementById("svcmsg"); if(m) m.textContent=(d&&d.error)||"Save failed."; }
+    }).catch(function(){ b.disabled=false; b.textContent="Save"; var m=document.getElementById("svcmsg"); if(m) m.textContent="Couldn't reach the server."; });
+  }
 
   // default date = today
   document.getElementById("serviceDate").value = new Date().toISOString().slice(0,10);
@@ -276,7 +309,7 @@
         document.getElementById("cost").value = "";
         document.getElementById("serviceDate").value = new Date().toISOString().slice(0,10);
         photos = []; thumbs.innerHTML = "";
-        renderAssets(assetFilter.value);
+        renderAssets();
         assetSel.value = keepId;
         loadHistory();
         showMsg("ok", "Saved. Added to this asset's history below.");

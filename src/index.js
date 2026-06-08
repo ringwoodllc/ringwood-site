@@ -63,6 +63,15 @@ export default {
     if (url.pathname === "/api/assets/list" && request.method === "GET") {
       return listAssets(env);
     }
+    if (url.pathname === "/api/options" && request.method === "GET") {
+      return optionsHandler(env);
+    }
+    if (url.pathname === "/api/service/get" && request.method === "GET") {
+      return getService(url, env);
+    }
+    if (url.pathname === "/api/service/update" && request.method === "POST") {
+      return updateService(request, env);
+    }
     if (url.pathname === "/api/assets/get" && request.method === "GET") {
       return getAsset(url, env);
     }
@@ -386,6 +395,7 @@ async function getAssetFull(url, env) {
       services = (sd.records || [])
         .filter((x) => Array.isArray(x.fields.Asset) && x.fields.Asset.indexOf(id) !== -1)
         .map((x) => ({
+          id: x.id,
           date: x.fields["Service Date"] || "",
           type: x.fields["Service Type"] || "",
           technician: x.fields["Technician"] || "",
@@ -527,15 +537,16 @@ async function updateAsset(request, env) {
   if (!id) return json({ ok: false, error: "No asset id." }, 400);
 
   const c = (v) => (v == null ? "" : v.toString().trim());
+  const opts = await getDistinctValues(env);
   const fields = {};
   if ("name" in body) fields["Asset"] = c(body.name);
   if ("description" in body) fields["Description"] = c(body.description);
   if ("manufacturer" in body) fields["Manufacturer"] = c(body.manufacturer);
   if ("model" in body) fields["Model"] = c(body.model);
   if ("serial" in body) fields["Serial Number"] = c(body.serial);
-  if ("equipmentType" in body) fields["Equipment Type"] = c(body.equipmentType);
-  if ("client" in body) fields["Client"] = c(body.client);
-  if ("location" in body) fields["Location"] = c(body.location);
+  if ("equipmentType" in body) fields["Equipment Type"] = canon(c(body.equipmentType), opts.types);
+  if ("client" in body) fields["Client"] = canon(c(body.client), opts.clients);
+  if ("location" in body) fields["Location"] = canon(c(body.location), opts.locations);
   fields["Status"] = "Verified";
 
   try {
@@ -554,6 +565,53 @@ async function updateAsset(request, env) {
   }
 }
 
+// Distinct, de-duplicated option lists (seeds + whatever is already used in the
+// data), so dropdowns stay consistent and people reuse values instead of
+// creating "Office" / "office" / "offic" duplicates.
+async function getDistinctValues(env) {
+  const out = { types: {}, locations: {}, clients: {} };
+  const add = (map, v) => {
+    v = (v || "").toString().trim();
+    if (v) {
+      const k = v.toLowerCase();
+      if (!map[k]) map[k] = v;
+    }
+  };
+  ["HVAC", "Water Heater", "Boiler", "Electrical Panel", "Generator", "Coffee Equipment", "Office Equipment", "Refrigeration", "Other"].forEach((v) => add(out.types, v));
+  ["Outside", "Attic", "Roof", "Basement", "Mechanical Room", "Garage", "Office", "Other"].forEach((v) => add(out.locations, v));
+  ["United", "Ridge", "Bloom", "Summit", "Moment", "Robin"].forEach((v) => add(out.clients, v));
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}?pageSize=100`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    const data = await r.json();
+    (data.records || []).forEach((x) => {
+      const f = x.fields || {};
+      add(out.types, f["Equipment Type"]);
+      add(out.locations, f["Location"]);
+      add(out.clients, f["Client"]);
+    });
+  } catch {
+    /* seeds are still returned */
+  }
+  const vals = (m) => Object.keys(m).sort().map((k) => m[k]);
+  return { types: vals(out.types), locations: vals(out.locations), clients: vals(out.clients) };
+}
+
+async function optionsHandler(env) {
+  if (!env.AIRTABLE_TOKEN) return Response.json({ types: [], locations: [], clients: [] });
+  return Response.json(await getDistinctValues(env));
+}
+
+// Map a typed value to an existing one when it matches case-insensitively, so
+// "office" becomes the existing "Office" instead of a new duplicate.
+function canon(value, list) {
+  const v = (value || "").trim();
+  if (!v || !Array.isArray(list)) return v;
+  const hit = list.find((x) => x.toLowerCase() === v.toLowerCase());
+  return hit || v;
+}
+
 /* ===================== Service records ===================== */
 
 // List assets so the service form can pick one (most recent first).
@@ -570,6 +628,7 @@ async function listAssets(env) {
       .map((x) => ({
         id: x.id,
         name: x.fields.Asset || x.fields.Description || x.fields.Model || "Asset",
+        client: x.fields.Client || "",
       }));
     return Response.json(list);
   } catch {
@@ -590,9 +649,12 @@ async function listServices(url, env) {
     const rows = (data.records || [])
       .filter((x) => Array.isArray(x.fields.Asset) && x.fields.Asset.indexOf(assetId) !== -1)
       .map((x) => ({
+        id: x.id,
         date: x.fields["Service Date"] || "",
         type: x.fields["Service Type"] || "",
+        technician: x.fields["Technician"] || "",
         notes: x.fields["Notes"] || "",
+        cost: x.fields["Cost"] != null ? x.fields["Cost"] : "",
       }))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
     return Response.json(rows);
@@ -662,6 +724,66 @@ async function createService(request, env, ctx) {
   }
 
   return json({ ok: true, id: recordId });
+}
+
+// One service record, for the edit panel.
+async function getService(url, env) {
+  const id = url.searchParams.get("id") || "";
+  if (!id || !env.AIRTABLE_TOKEN) return json({ ok: false }, 400);
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${SERVICE_TABLE}/${id}`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    if (!r.ok) return json({ ok: false }, 404);
+    const f = (await r.json()).fields || {};
+    return json({
+      ok: true,
+      id,
+      date: f["Service Date"] || "",
+      type: f["Service Type"] || "",
+      technician: f["Technician"] || "",
+      notes: f["Notes"] || "",
+      cost: f["Cost"] != null ? f["Cost"] : "",
+    });
+  } catch {
+    return json({ ok: false }, 502);
+  }
+}
+
+async function updateService(request, env) {
+  if (!env.AIRTABLE_TOKEN) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const fields = {};
+  if ("date" in body) fields["Service Date"] = c(body.date);
+  if ("type" in body) fields["Service Type"] = c(body.type);
+  if ("technician" in body) fields["Technician"] = c(body.technician);
+  if ("notes" in body) fields["Notes"] = c(body.notes);
+  if ("cost" in body) {
+    const n = body.cost === "" || body.cost == null ? null : Number(body.cost);
+    fields["Cost"] = n != null && !isNaN(n) ? n : null;
+  }
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${SERVICE_TABLE}/${id}`, {
+      method: "PATCH",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields, typecast: true }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      return json({ ok: false, error: d?.error?.message || "Save failed." }, 502);
+    }
+    return json({ ok: true });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
+  }
 }
 
 /* ===================== Contact requests ===================== */
