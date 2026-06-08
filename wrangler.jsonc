@@ -1,5 +1,5 @@
 {
-  "name": "ringwood-site",
+  "name": "ringwood-ticket-app",
   "compatibility_date": "2025-06-01",
   "main": "src/index.js",
   "assets": {
