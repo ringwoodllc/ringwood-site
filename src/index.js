@@ -59,6 +59,9 @@ export default {
     if (url.pathname === "/api/assets/list" && request.method === "GET") {
       return listAssets(env);
     }
+    if (url.pathname === "/api/assets/get" && request.method === "GET") {
+      return getAsset(url, env);
+    }
     if (url.pathname === "/api/service" && request.method === "POST") {
       return createService(request, env, ctx);
     }
@@ -121,7 +124,7 @@ async function handleCreateAsset(request, env, ctx) {
   const label =
     [description || equipmentType || "Asset", client].filter(Boolean).join(" — ") || "Asset";
 
-  const fields = { Asset: label, "Logged At": new Date().toISOString() };
+  const fields = { Asset: label, Status: "Pending", "Logged At": new Date().toISOString() };
   if (description) fields["Description"] = description;
   if (manufacturer) fields["Manufacturer"] = manufacturer;
   if (model) fields["Model"] = model;
@@ -178,7 +181,7 @@ async function processAssetMedia(recordId, body, manual, env) {
   if (!read) return;
 
   // Fill only the fields the user left blank; never overwrite their entry.
-  const patch = {};
+  const patch = { Status: "AI suggested" };
   if (!manual.description && read.description) patch["Description"] = read.description;
   if (!manual.manufacturer && read.manufacturer) patch["Manufacturer"] = read.manufacturer;
   if (!manual.model && read.model) patch["Model"] = read.model;
@@ -281,6 +284,32 @@ async function scanNameplate(images, env) {
     return JSON.parse(block.text);
   } catch {
     return null;
+  }
+}
+
+// One asset's current values — used by the capture page to refresh after the
+// background AI fills things in.
+async function getAsset(url, env) {
+  const id = url.searchParams.get("id") || "";
+  if (!id || !env.AIRTABLE_TOKEN) return json({ ok: false }, 400);
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    if (!r.ok) return json({ ok: false }, 502);
+    const data = await r.json();
+    const f = data.fields || {};
+    return json({
+      ok: true,
+      status: f["Status"] || "Pending",
+      description: f["Description"] || "",
+      manufacturer: f["Manufacturer"] || "",
+      model: f["Model"] || "",
+      serial: f["Serial Number"] || "",
+      aiReading: f["Nameplate Reading (AI)"] || "",
+    });
+  } catch {
+    return json({ ok: false }, 502);
   }
 }
 

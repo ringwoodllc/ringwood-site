@@ -59,6 +59,18 @@
   .msg{margin-top:16px;padding:14px 16px;border-radius:4px;font-size:.98rem;display:none}
   .msg.ok{display:block;background:#e3efe7;color:var(--green-deep);border:1px solid rgba(47,93,80,.3)}
   .msg.err{display:block;background:#f4e2d8;color:#8a3d1c;border:1px solid rgba(169,99,58,.35)}
+
+  .recent{margin:18px 0 40px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:16px;display:none}
+  .recent.show{display:block}
+  .recent .rhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px}
+  .recent h3{font-family:"Spectral",serif;font-weight:500;font-size:1.02rem;color:var(--green-deep)}
+  .pill{font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .pill.pending{background:#f6eccf;color:#7a5a12}
+  .pill.ai{background:#dfe9f4;color:#274a73}
+  .recent dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:.95rem;margin:0}
+  .recent dt{color:var(--muted);font-weight:600}
+  .recent dd{color:var(--ink);margin:0}
+  .recent .foot{margin-top:11px;font-size:.85rem;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -175,6 +187,8 @@
     <button class="btn" type="submit" id="submitBtn">Save asset</button>
     <div class="msg" id="msg"></div>
   </form>
+
+  <div class="recent" id="recent"></div>
 </main>
 
 <script>
@@ -246,6 +260,48 @@
 
   function showMsg(kind, text){ msg.className = "msg " + kind; msg.textContent = text; }
 
+  // ---- "last capture" card that refreshes when the background AI fills in ----
+  var recent = document.getElementById("recent");
+  var pollTimer = null, pollToken = 0;
+  function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function renderRecent(info, settled){
+    var ai = info.status === "AI suggested";
+    var html = "<div class='rhead'><h3>Last capture</h3><span class='pill " + (ai?"ai":"pending") + "'>" +
+      escapeHtml(info.status || "Pending") + "</span></div><dl>" +
+      "<dt>Description</dt><dd>" + (escapeHtml(info.description) || "—") + "</dd>" +
+      "<dt>Manufacturer</dt><dd>" + (escapeHtml(info.manufacturer) || "—") + "</dd>" +
+      "<dt>Model</dt><dd>" + (escapeHtml(info.model) || "—") + "</dd>" +
+      "<dt>Serial</dt><dd>" + (escapeHtml(info.serial) || "—") + "</dd></dl>";
+    if (ai) html += "<div class='foot'>AI filled the blanks — verify in Airtable when you get a chance.</div>";
+    else if (settled) html += "<div class='foot'>Saved. (No nameplate read — add details later if needed.)</div>";
+    else html += "<div class='foot'>Reading the nameplate… you can start the next asset; this fills in here.</div>";
+    recent.innerHTML = html;
+    recent.classList.add("show");
+  }
+
+  function trackCapture(id){
+    pollToken++;
+    var token = pollToken, tries = 0;
+    if (pollTimer) clearTimeout(pollTimer);
+    renderRecent({ status: "Pending", description: "", manufacturer: "", model: "", serial: "" }, false);
+    function poll(){
+      if (token !== pollToken) return;             // a newer capture took over
+      fetch("/api/assets/get?id=" + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(info){
+        if (token !== pollToken) return;
+        tries++;
+        if (info && info.ok){
+          var done = info.status === "AI suggested";
+          renderRecent(info, tries >= 12);
+          if (!done && tries < 13) pollTimer = setTimeout(poll, 3000);
+        } else if (tries < 15){
+          pollTimer = setTimeout(poll, 3000);
+        }
+      }).catch(function(){ tries++; if (tries < 15) pollTimer = setTimeout(poll, 3000); });
+    }
+    pollTimer = setTimeout(poll, 2500);
+  }
+
   form.addEventListener("submit", function(e){
     e.preventDefault();
     var client = clientSel.value === "__other" ? clientOther.value : clientSel.value;
@@ -280,7 +336,8 @@
           document.getElementById(k + "Pick").style.display = "flex";
         });
         clientOther.style.display = "none";
-        showMsg("ok", "Saved. We're reading the nameplate in the background — check the asset in a moment to confirm the details.");
+        showMsg("ok", "Saved — go ahead with the next one.");
+        if (data.id) trackCapture(data.id);
       } else {
         showMsg("err", (data && data.error) || "Something went wrong. Please try again.");
       }
