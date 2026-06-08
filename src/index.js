@@ -84,6 +84,9 @@ export default {
     if (url.pathname === "/api/asset/update" && request.method === "POST") {
       return updateAsset(request, env);
     }
+    if (url.pathname === "/api/asset/verify" && request.method === "POST") {
+      return setVerified(request, env);
+    }
     if (url.pathname === "/api/service" && request.method === "POST") {
       return createService(request, env, ctx);
     }
@@ -558,6 +561,33 @@ async function updateAsset(request, env) {
     if (!res.ok) {
       const d = await res.json();
       return json({ ok: false, error: d?.error?.message || "Save failed." }, 502);
+    }
+    return json({ ok: true });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
+  }
+}
+
+// One-tap: mark an asset Verified.
+async function setVerified(request, env) {
+  if (!env.AIRTABLE_TOKEN) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No asset id." }, 400);
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
+      method: "PATCH",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields: { Status: "Verified" }, typecast: true }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      return json({ ok: false, error: d?.error?.message || "Failed." }, 502);
     }
     return json({ ok: true });
   } catch {

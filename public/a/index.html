@@ -155,9 +155,19 @@
     view.innerHTML =
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>Ringwood asset record</div>"+
-      "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button><a class='btn ghost' href='https://service.ringwood.ai/?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>"+
+      "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>"+
+      (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
+      "<a class='btn ghost' href='https://service.ringwood.ai/?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>"+
       photos+identity+ai+"<h2>Service history</h2>"+hist;
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
+    var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
+  }
+
+  function verifyNow(){
+    var b=document.getElementById("verifyBtn"); if(b){ b.disabled=true; b.textContent="Saving…"; }
+    fetch("/api/asset/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:curId})}).then(function(r){return r.json();}).then(function(d){
+      if(d&&d.ok){ load(curId); } else if(b){ b.disabled=false; b.textContent="Mark verified"; }
+    }).catch(function(){ if(b){ b.disabled=false; b.textContent="Mark verified"; } });
   }
 
   // dropdown of known values + "add new" text
