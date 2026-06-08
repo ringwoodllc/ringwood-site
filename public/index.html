@@ -40,7 +40,7 @@
   .bar{display:flex;align-items:center;justify-content:space-between;padding:26px 0}
   .brand{display:flex;align-items:center;gap:12px;font-family:"Spectral",serif;font-size:1.35rem;font-weight:600;color:var(--green-deep);letter-spacing:.01em}
   .brand svg{display:block}
-  .nav{display:flex;align-items:center;gap:26px}
+  .nav{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:14px 22px}
   .nav-link{font-size:.97rem;font-weight:500;text-decoration:none;color:var(--green-deep);transition:opacity .2s}
   .nav-link:hover{opacity:.65}
   .nav-cta{font-size:.97rem;font-weight:500;text-decoration:none;color:var(--green-deep);border-bottom:2px solid var(--clay);padding-bottom:2px;transition:opacity .2s}
@@ -138,6 +138,7 @@
       Ringwood
     </div>
     <nav class="nav">
+      <a class="nav-link" href="https://assets.ringwood.ai">Add an asset</a>
       <a class="nav-link" href="https://tickets.ringwood.ai">Submit a ticket</a>
       <a class="nav-cta" href="mailto:hello@ringwood.ai">Talk to us</a>
     </nav>

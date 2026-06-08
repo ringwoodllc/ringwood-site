@@ -24,9 +24,17 @@ const json = (data, status = 200) =>
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const onAssetsSubdomain = url.hostname.split(".")[0] === "assets";
 
     if (url.pathname === "/api/assets" && request.method === "POST") {
       return handleCreateAsset(request, env);
+    }
+
+    // On assets.ringwood.ai, the asset form is the home page.
+    if (onAssetsSubdomain && (url.pathname === "/" || url.pathname === "")) {
+      const formUrl = new URL(url);
+      formUrl.pathname = "/assets/";
+      if (env.ASSETS) return env.ASSETS.fetch(new Request(formUrl, request));
     }
 
     // Anything else falls through to the static site.
