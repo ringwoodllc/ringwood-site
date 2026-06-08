@@ -85,9 +85,11 @@ export default {
       return createTicket(request, env);
     }
 
-    // Asset view page (QR target): /a/<recordId> on any host.
+    // Asset view / lookup page (QR target). Serve the /a/ page for any /a/* path
+    // (rewriting to the directory, not index.html, to avoid an asset redirect
+    // that would strip the id).
     if (url.pathname.startsWith("/a/") && env.ASSETS) {
-      return env.ASSETS.fetch(rewrite(url, "/a/index.html", request));
+      return env.ASSETS.fetch(rewrite(url, "/a/", request));
     }
 
     // Each app's subdomain serves its form at the root.
