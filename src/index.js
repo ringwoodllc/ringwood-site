@@ -44,6 +44,7 @@ const F_DESCRIPTION = "fldJeZTGffRe03kkD";
 const F_ANSWERS = "fldgi7AeOfXqlJbIe";
 const F_STATUS = "fldKeJybW6vIwPBEU";
 const F_PHOTO = "fldi8ElO0ZKVFKhDT";
+const F_TICKET_CLIENT = "fldPjf0JBbs7rd2yW";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -895,6 +896,7 @@ async function createTicket(request, env) {
     fields[F_DESCRIPTION] = body.note || "";
     fields[F_ANSWERS] = "Location: " + (body.location || "");
     fields[F_STATUS] = "New";
+    if (body.client) fields[F_TICKET_CLIENT] = body.client;
 
     const createRes = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}`, {
       method: "POST",

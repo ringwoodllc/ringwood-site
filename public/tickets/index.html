@@ -1,138 +1,191 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Ringwood</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Ringwood · Submit a ticket</title>
+<meta name="description" content="Report something that needs attention. Take a photo, tell us where it is, and we take it from there." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600&display=swap');
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body { margin: 0; background: #f4f1ea; color: #1c1c19; font-family: 'Hanken Grotesk', sans-serif; }
-.wrap { max-width: 460px; margin: 0 auto; padding: 0 22px 48px; }
-header { display: flex; align-items: center; gap: 12px; padding: 30px 0 20px; border-bottom: 1px solid rgba(28,28,25,0.1); }
-.brand { font-family: 'Fraunces', serif; font-size: 27px; font-weight: 600; color: #1f3d2b; line-height: 1; letter-spacing: -0.01em; }
-.sub { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.55; margin-top: 5px; }
-h1 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 32px; letter-spacing: -0.01em; margin: 0 0 10px; }
-.lead { opacity: 0.6; font-size: 15.5px; line-height: 1.55; margin: 0 0 24px; }
-label { display: block; font-size: 14.5px; font-weight: 600; margin: 0 0 9px; }
-input, select, textarea { width: 100%; background: #fff; border: 1px solid rgba(28,28,25,0.13); border-radius: 11px; padding: 14px 15px; font-size: 16px; color: #1c1c19; font-family: inherit; }
-input:focus, select:focus, textarea:focus { outline: none; border-color: #1f3d2b; }
-.field { margin-bottom: 18px; }
-.site { display: flex; align-items: center; gap: 8px; padding: 14px 0; font-size: 13.5px; }
-.site span { opacity: 0.55; }
-.photoBtn { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 20px; background: #fff; border: 1.5px dashed rgba(31,61,43,0.4); border-radius: 14px; color: #1f3d2b; font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 8px; }
-.photoNote { font-size: 13px; opacity: 0.55; margin: 0 0 20px; min-height: 17px; }
-.preview { position: relative; margin-bottom: 20px; }
-.preview img { width: 100%; border-radius: 14px; display: block; max-height: 280px; object-fit: cover; }
-.retake { position: absolute; bottom: 12px; right: 12px; background: rgba(28,28,25,0.78); color: #f4f1ea; border: none; border-radius: 9px; padding: 8px 13px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.submit { width: 100%; background: #1f3d2b; color: #f4f1ea; border: none; border-radius: 12px; padding: 17px; font-size: 16.5px; font-weight: 600; cursor: pointer; }
-.submit[disabled] { background: #c9c5bc; cursor: default; }
-.hidden { display: none; }
-.done { text-align: center; padding-top: 56px; }
-.check { width: 66px; height: 66px; border-radius: 50%; background: #1f3d2b; color: #f4f1ea; display: flex; align-items: center; justify-content: center; margin: 0 auto 22px; font-size: 32px; }
-.recap { text-align: left; background: #fff; border: 1px solid rgba(28,28,25,0.08); border-radius: 14px; padding: 18px; font-size: 14px; line-height: 1.7; margin-top: 8px; }
-.recap .cap { opacity: 0.5; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px; }
-.again { margin-top: 26px; background: none; border: none; color: #1f3d2b; font-size: 15px; font-weight: 600; cursor: pointer; }
-.err { color: #8a2a1f; font-size: 14px; margin-top: 14px; }
+  :root{
+    --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
+    --green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:600px;margin:0 auto;padding:0 22px}
+  h1{font-family:"Spectral",Georgia,serif;font-weight:500;line-height:1.08;letter-spacing:-.01em;color:var(--green-deep)}
+  a{color:inherit}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:18px 0 24px}
+  .eyebrow{font-size:.82rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:14px}
+  .intro h1{font-size:clamp(2.2rem,7vw,3rem)}
+  .intro p{margin-top:14px;color:var(--muted);font-size:1.08rem;max-width:46ch}
+
+  form{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:24px 20px 26px;margin-bottom:40px}
+  .field{margin-bottom:18px}
+  label{display:block;font-weight:600;font-size:.96rem;color:var(--green-deep);margin-bottom:7px}
+  .req{color:var(--clay)}
+  .hint{font-weight:400;color:var(--muted);font-size:.86rem}
+  input,select,textarea{
+    width:100%;font:inherit;font-size:1.02rem;color:var(--ink);
+    background:var(--bg);border:1px solid var(--line);border-radius:4px;
+    padding:13px 14px;-webkit-appearance:none;appearance:none;
+  }
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
+  textarea{min-height:90px;resize:vertical}
+
+  .photoBtn{display:flex;flex-direction:column;align-items:center;gap:11px;padding:34px 20px;width:100%;background:var(--bg);border:1.5px dashed rgba(47,93,80,.4);border-radius:6px;color:var(--green-deep);font:inherit;font-size:1rem;font-weight:600;cursor:pointer}
+  .photoNote{font-size:.86rem;color:var(--muted);margin:8px 0 0;min-height:18px}
+  .preview{position:relative;margin-top:4px}
+  .preview img{width:100%;border-radius:6px;display:block;max-height:280px;object-fit:cover}
+  .retake{position:absolute;bottom:12px;right:12px;background:rgba(33,68,58,.82);color:#f4efe4;border:none;border-radius:5px;padding:8px 13px;font-size:.85rem;font-weight:600;cursor:pointer}
+
+  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:16px;border-radius:4px;transition:background .2s}
+  .btn:hover{background:var(--green-deep)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:16px;padding:14px 16px;border-radius:4px;font-size:.98rem;display:none}
+  .msg.err{display:block;background:#f4e2d8;color:#8a3d1c;border:1px solid rgba(169,99,58,.35)}
+
+  .done{display:none;text-align:center;padding:30px 10px 50px}
+  .done .check{width:62px;height:62px;border-radius:50%;background:var(--green-deep);color:#f4efe4;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:30px}
+  .done h2{font-family:"Spectral",serif;font-weight:500;font-size:1.8rem;color:var(--green-deep);margin-bottom:8px}
+  .done p{color:var(--muted)}
+  .recap{text-align:left;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:18px;font-size:.96rem;line-height:1.7;margin:20px 0 4px;max-width:420px;margin-left:auto;margin-right:auto}
+  .recap .cap{color:var(--clay);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px}
+  .again{margin-top:24px;background:none;border:none;color:var(--green-deep);font-size:1rem;font-weight:600;cursor:pointer;text-decoration:underline;text-decoration-color:var(--clay)}
+  .hidden{display:none}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <svg width="42" height="42" viewBox="0 0 48 48" fill="none">
-      <circle cx="24" cy="24" r="21" stroke="#1f3d2b" stroke-width="1.5" opacity="0.35" />
-      <circle cx="24" cy="24" r="14.5" stroke="#1f3d2b" stroke-width="1.5" opacity="0.6" />
-      <circle cx="24" cy="24" r="8" stroke="#1f3d2b" stroke-width="1.5" opacity="0.85" />
-      <circle cx="24" cy="24" r="2.5" fill="#1f3d2b" />
-    </svg>
-    <div>
-      <div class="brand">Ringwood</div>
-      <div class="sub">Workplace operations</div>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
+        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
+          <circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/>
+        </g>
+      </svg>
+      Ringwood
     </div>
-  </header>
+    <a class="back" href="https://ringwood.ai">Home</a>
+  </div>
+</header>
 
-  <div class="site"><span>Site</span><strong>Pilot Sandbox</strong></div>
-
-  <div id="form">
-    <h1>Submit a ticket</h1>
-    <p class="lead">Take a photo of the issue. Tell us where it is. We take it from there.</p>
-
-    <input id="file" type="file" accept="image/*" capture="environment" class="hidden" />
-    <button id="photoBtn" class="photoBtn" type="button">
-      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#1f3d2b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <span>Take a photo</span>
-    </button>
-    <div id="preview" class="preview hidden">
-      <img id="previewImg" alt="issue" />
-      <button id="retake" class="retake" type="button">Retake</button>
-    </div>
-    <p id="photoNote" class="photoNote"></p>
-
-    <div class="field">
-      <label>Where is it?</label>
-      <input id="location" type="text" placeholder="e.g. Conference Room 1, kitchen" />
-    </div>
-
-    <div class="field">
-      <label>What kind of issue?</label>
-      <select id="category"><option value="">Loading...</option></select>
-    </div>
-
-    <div class="field">
-      <label>Anything we should know? <span style="opacity:0.45;font-weight:400">(optional)</span></label>
-      <textarea id="note" rows="3" placeholder="A line or two of detail helps us route it faster."></textarea>
-    </div>
-
-    <button id="submit" class="submit" type="button" disabled>Submit ticket</button>
-    <div id="err" class="err hidden"></div>
+<main class="wrap">
+  <div class="intro" id="intro">
+    <div class="eyebrow">Submit a ticket</div>
+    <h1>Something need attention?</h1>
+    <p>Take a photo of the issue, tell us where it is, and we take it from there. You will get a reference number to track it.</p>
   </div>
 
-  <div id="done" class="done hidden">
+  <form id="ticketForm">
+    <div class="field">
+      <label for="client">Client <span class="req">*</span></label>
+      <select id="client">
+        <option value="">Select…</option>
+        <option>United</option><option>Ridge</option><option>Bloom</option>
+        <option>Summit</option><option>Moment</option><option>Robin</option>
+        <option value="__other">Other…</option>
+      </select>
+    </div>
+    <div class="field hidden" id="clientOtherWrap">
+      <label for="clientOther">Client name <span class="req">*</span></label>
+      <input id="clientOther" type="text" placeholder="Type the client name" />
+    </div>
+
+    <div class="field">
+      <label>Photo <span class="hint" id="photoReqLabel">— optional</span></label>
+      <input id="file" type="file" accept="image/*" capture="environment" class="hidden" />
+      <button id="photoBtn" class="photoBtn" type="button">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2f5d50" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span>Take a photo</span>
+      </button>
+      <div id="preview" class="preview hidden">
+        <img id="previewImg" alt="issue" />
+        <button id="retake" class="retake" type="button">Retake</button>
+      </div>
+      <p id="photoNote" class="photoNote"></p>
+    </div>
+
+    <div class="field">
+      <label for="category">What kind of work? <span class="req">*</span></label>
+      <select id="category"><option value="">Loading…</option></select>
+    </div>
+
+    <div class="field">
+      <label for="location">Where is it? <span class="req">*</span></label>
+      <input id="location" type="text" placeholder="e.g. Conference Room 1, kitchen, suite 200" />
+    </div>
+
+    <div class="field">
+      <label for="note">Anything we should know? <span class="hint">— optional</span></label>
+      <textarea id="note" placeholder="A line or two of detail helps us route it faster."></textarea>
+    </div>
+
+    <button class="btn" type="submit" id="submitBtn" disabled>Submit ticket</button>
+    <div class="msg" id="msg"></div>
+  </form>
+
+  <div class="done" id="done">
     <div class="check">&#10003;</div>
-    <h1>Got it. We are on it.</h1>
-    <p class="lead">Your ticket reference is <strong id="ref" style="color:#1f3d2b"></strong>. We will follow up here.</p>
+    <h2>Got it. We are on it.</h2>
+    <p>Your ticket reference is <strong id="ref" style="color:var(--green-deep)"></strong>. We will follow up here.</p>
     <div class="recap">
       <div class="cap">What we captured</div>
       <div id="recapBody"></div>
     </div>
-    <button id="again" class="again" type="button">Submit another</button>
+    <button class="again" id="again" type="button">Submit another</button>
   </div>
-</div>
+</main>
 
 <script>
 var photoBase64 = null;
 var photoType = "image/jpeg";
 var photoReq = {};
 
+var clientEl = document.getElementById("client");
+var clientOtherWrap = document.getElementById("clientOtherWrap");
+var clientOtherEl = document.getElementById("clientOther");
 var fileInput = document.getElementById("file");
 var photoBtn = document.getElementById("photoBtn");
 var photoNote = document.getElementById("photoNote");
+var photoReqLabel = document.getElementById("photoReqLabel");
 var preview = document.getElementById("preview");
 var previewImg = document.getElementById("previewImg");
 var retake = document.getElementById("retake");
 var locationEl = document.getElementById("location");
 var categoryEl = document.getElementById("category");
 var noteEl = document.getElementById("note");
-var submitBtn = document.getElementById("submit");
-var errEl = document.getElementById("err");
-var formEl = document.getElementById("form");
-var doneEl = document.getElementById("done");
+var submitBtn = document.getElementById("submitBtn");
+var msg = document.getElementById("msg");
+var form = document.getElementById("ticketForm");
 
-function needsPhoto() {
-  return !!photoReq[categoryEl.value];
+function clientValue() {
+  return clientEl.value === "__other" ? clientOtherEl.value.trim() : clientEl.value;
 }
+function needsPhoto() { return !!photoReq[categoryEl.value]; }
 
 function updatePhotoNote() {
-  if (!categoryEl.value) { photoNote.textContent = ""; return; }
+  if (!categoryEl.value) { photoNote.textContent = ""; photoReqLabel.textContent = "— optional"; return; }
   if (needsPhoto()) {
-    photoNote.textContent = photoBase64 ? "" : "A photo is needed for this kind of issue.";
+    photoReqLabel.innerHTML = "<span class='req'>*</span> required";
+    photoNote.textContent = photoBase64 ? "" : "A photo is needed for this kind of work.";
   } else {
-    photoNote.textContent = "Photo optional for this kind of issue.";
+    photoReqLabel.textContent = "— optional";
+    photoNote.textContent = "";
   }
 }
 
 function refresh() {
-  var ok = locationEl.value.trim() && categoryEl.value && (needsPhoto() ? photoBase64 : true);
+  var ok = clientValue() && categoryEl.value && locationEl.value.trim() && (needsPhoto() ? photoBase64 : true);
   submitBtn.disabled = !ok;
   updatePhotoNote();
 }
@@ -149,6 +202,13 @@ fetch("/api/categories").then(function (r) { return r.json(); }).then(function (
 }).catch(function () {
   categoryEl.innerHTML = "<option value=''>Could not load</option>";
 });
+
+clientEl.addEventListener("change", function () {
+  if (clientEl.value === "__other") { clientOtherWrap.classList.remove("hidden"); clientOtherEl.focus(); }
+  else { clientOtherWrap.classList.add("hidden"); }
+  refresh();
+});
+clientOtherEl.addEventListener("input", refresh);
 
 photoBtn.addEventListener("click", function () { fileInput.click(); });
 retake.addEventListener("click", function () { fileInput.click(); });
@@ -185,14 +245,16 @@ fileInput.addEventListener("change", function (e) {
 locationEl.addEventListener("input", refresh);
 categoryEl.addEventListener("change", refresh);
 
-submitBtn.addEventListener("click", function () {
+form.addEventListener("submit", function (e) {
+  e.preventDefault();
   submitBtn.disabled = true;
-  submitBtn.textContent = "Submitting...";
-  errEl.classList.add("hidden");
+  submitBtn.textContent = "Submitting…";
+  msg.className = "msg";
   fetch("/api/tickets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      client: clientValue(),
       category: categoryEl.value,
       location: locationEl.value,
       note: noteEl.value,
@@ -203,43 +265,41 @@ submitBtn.addEventListener("click", function () {
   }).then(function (r) { return r.json(); }).then(function (res) {
     if (res.ok) {
       document.getElementById("ref").textContent = res.ref;
-      var rb = "<div><strong>Site.</strong> Pilot Sandbox</div>" +
-        "<div><strong>Location.</strong> " + escapeHtml(locationEl.value) + "</div>" +
-        "<div><strong>Issue.</strong> " + escapeHtml(categoryEl.value) + "</div>";
+      var rb = "<div><strong>Client.</strong> " + escapeHtml(clientValue()) + "</div>" +
+        "<div><strong>Work.</strong> " + escapeHtml(categoryEl.value) + "</div>" +
+        "<div><strong>Location.</strong> " + escapeHtml(locationEl.value) + "</div>";
       if (noteEl.value.trim()) rb += "<div><strong>Note.</strong> " + escapeHtml(noteEl.value) + "</div>";
       document.getElementById("recapBody").innerHTML = rb;
-      formEl.classList.add("hidden");
-      doneEl.classList.remove("hidden");
+      document.getElementById("intro").style.display = "none";
+      form.style.display = "none";
+      document.getElementById("done").style.display = "block";
+      window.scrollTo(0, 0);
     } else {
-      errEl.textContent = "Something went wrong. Please try again.";
-      errEl.classList.remove("hidden");
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Submit ticket";
+      msg.className = "msg err"; msg.textContent = "Something went wrong. Please try again.";
+      submitBtn.disabled = false; submitBtn.textContent = "Submit ticket";
     }
   }).catch(function () {
-    errEl.textContent = "Network error. Please try again.";
-    errEl.classList.remove("hidden");
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Submit ticket";
+    msg.className = "msg err"; msg.textContent = "Network error. Please try again.";
+    submitBtn.disabled = false; submitBtn.textContent = "Submit ticket";
   });
 });
 
 document.getElementById("again").addEventListener("click", function () {
   photoBase64 = null;
   fileInput.value = "";
-  locationEl.value = "";
-  categoryEl.value = "";
-  noteEl.value = "";
+  clientEl.value = ""; clientOtherEl.value = ""; clientOtherWrap.classList.add("hidden");
+  locationEl.value = ""; categoryEl.value = ""; noteEl.value = "";
   preview.classList.add("hidden");
   photoBtn.classList.remove("hidden");
   submitBtn.textContent = "Submit ticket";
-  doneEl.classList.add("hidden");
-  formEl.classList.remove("hidden");
+  document.getElementById("done").style.display = "none";
+  document.getElementById("intro").style.display = "block";
+  form.style.display = "block";
   refresh();
 });
 
 function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 </script>
 </body>
