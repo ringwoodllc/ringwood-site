@@ -23,6 +23,10 @@ const F_SERIAL_PHOTO = "fld9Xlteo8i2xvBqr";
 const SERVICE_TABLE = "tbl37nOr8N6tARRZe";
 const F_SVC_PHOTOS = "fldqHr91t3pgpW2DP";
 
+/* ---- Contact requests (Ringwood — Contact Requests base) ---- */
+const CONTACT_BASE = "appKR9vFoNtDfqMEU";
+const CONTACT_TABLE = "tblbp0KSiSy54dBbQ";
+
 /* ---- Ticket app: category master list (System / Method base) ---- */
 const SYS_BASE = "app29fADba9FiQ25h";
 const CAT_TABLE = "tblKLl5Rw8dn7rx1l";
@@ -68,6 +72,9 @@ export default {
     if (url.pathname === "/api/service/list" && request.method === "GET") {
       return listServices(url, env);
     }
+    if (url.pathname === "/api/contact" && request.method === "POST") {
+      return createContact(request, env);
+    }
     if (url.pathname === "/api/categories" && request.method === "GET") {
       return getCategories(env);
     }
@@ -80,6 +87,7 @@ export default {
       if (sub === "assets") return env.ASSETS.fetch(rewrite(url, "/assets/", request));
       if (sub === "tickets") return env.ASSETS.fetch(rewrite(url, "/tickets/", request));
       if (sub === "service") return env.ASSETS.fetch(rewrite(url, "/service/", request));
+      if (sub === "talk" || sub === "contact") return env.ASSETS.fetch(rewrite(url, "/talk/", request));
     }
 
     // Everything else: serve the static site.
@@ -421,6 +429,56 @@ async function createService(request, env, ctx) {
   }
 
   return json({ ok: true, id: recordId });
+}
+
+/* ===================== Contact requests ===================== */
+
+async function createContact(request, env) {
+  if (!env.AIRTABLE_TOKEN) {
+    return json({ ok: false, error: "Not connected yet. Please add the AIRTABLE_TOKEN in Cloudflare." }, 503);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Could not read the form." }, 400);
+  }
+
+  const clean = (v) => (v || "").toString().trim();
+  const name = clean(body.name);
+  const email = clean(body.email);
+  const phone = clean(body.phone);
+  const company = clean(body.company);
+  const stage = clean(body.stage);
+  const timeline = clean(body.timeline);
+  const message = clean(body.message);
+
+  if (!name) return json({ ok: false, error: "Please add your name." }, 400);
+  if (!email && !phone) return json({ ok: false, error: "Please add an email or a phone number." }, 400);
+
+  const fields = { Name: name, Status: "New", "Submitted At": new Date().toISOString() };
+  if (email) fields["Email"] = email;
+  if (phone) fields["Phone"] = phone;
+  if (company) fields["Company"] = company;
+  if (stage) fields["Stage"] = stage;
+  if (timeline) fields["Timeline"] = timeline;
+  if (message) fields["How can we help?"] = message;
+
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${CONTACT_BASE}/${CONTACT_TABLE}`, {
+      method: "POST",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields, typecast: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return json({ ok: false, error: data?.error?.message || "Could not send your message." }, 502);
+    }
+    return json({ ok: true, id: data.id });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
+  }
 }
 
 /* ===================== Ticket app ===================== */

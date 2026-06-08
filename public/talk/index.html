@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ringwood · Talk to us</title>
+<meta name="description" content="Tell us about your space and what you need. Ringwood is the single accountable partner for companies that lease and run their own space." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
+    --green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:600px;margin:0 auto;padding:0 22px}
+  h1{font-family:"Spectral",Georgia,serif;font-weight:500;line-height:1.08;letter-spacing:-.01em;color:var(--green-deep)}
+  a{color:inherit}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:18px 0 24px}
+  .eyebrow{font-size:.82rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:14px}
+  .intro h1{font-size:clamp(2.2rem,7vw,3rem)}
+  .intro p{margin-top:14px;color:var(--muted);font-size:1.08rem;max-width:46ch}
+
+  form{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:24px 20px 26px;margin-bottom:40px}
+  .field{margin-bottom:18px}
+  .row{display:flex;gap:12px}
+  .row .field{flex:1}
+  label{display:block;font-weight:600;font-size:.96rem;color:var(--green-deep);margin-bottom:7px}
+  .req{color:var(--clay)}
+  .hint{font-weight:400;color:var(--muted);font-size:.86rem}
+  input,select,textarea{
+    width:100%;font:inherit;font-size:1.02rem;color:var(--ink);
+    background:var(--bg);border:1px solid var(--line);border-radius:4px;
+    padding:13px 14px;-webkit-appearance:none;appearance:none;
+  }
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
+  textarea{min-height:96px;resize:vertical}
+  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:16px;border-radius:4px;transition:background .2s}
+  .btn:hover{background:var(--green-deep)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:16px;padding:14px 16px;border-radius:4px;font-size:.98rem;display:none}
+  .msg.ok{display:block;background:#e3efe7;color:var(--green-deep);border:1px solid rgba(47,93,80,.3)}
+  .msg.err{display:block;background:#f4e2d8;color:#8a3d1c;border:1px solid rgba(169,99,58,.35)}
+  .done{display:none;text-align:center;padding:30px 10px 50px}
+  .done .check{width:62px;height:62px;border-radius:50%;background:var(--green-deep);color:#f4efe4;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:30px}
+  .done h2{font-family:"Spectral",serif;font-weight:500;font-size:1.8rem;color:var(--green-deep);margin-bottom:8px}
+  .done p{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
+        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
+          <circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/>
+        </g>
+      </svg>
+      Ringwood
+    </div>
+    <a class="back" href="https://ringwood.ai">Home</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="intro" id="intro">
+    <div class="eyebrow">Talk to us</div>
+    <h1>Tell us about your space.</h1>
+    <p>Moving in, building out, or already settled, we'll scope it with you. Leave your details and a few notes, and we'll be in touch. No obligation.</p>
+  </div>
+
+  <form id="contactForm">
+    <div class="field">
+      <label for="name">Name <span class="req">*</span></label>
+      <input id="name" type="text" autocomplete="name" placeholder="Your name" />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" placeholder="you@company.com" />
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input id="phone" type="tel" autocomplete="tel" placeholder="(555) 555-5555" />
+      </div>
+    </div>
+    <p class="hint" style="margin:-8px 0 16px">Add at least one way to reach you.</p>
+
+    <div class="field">
+      <label for="company">Company <span class="hint">— optional</span></label>
+      <input id="company" type="text" autocomplete="organization" placeholder="Company name" />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="stage">Where are you?</label>
+        <select id="stage">
+          <option value="">Select…</option>
+          <option>Moving in</option><option>Building out</option>
+          <option>Already settled</option><option>Not sure</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="timeline">Timeline</label>
+        <select id="timeline">
+          <option value="">Select…</option>
+          <option>ASAP</option><option>1-3 months</option>
+          <option>3-6 months</option><option>Just exploring</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="message">How can we help?</label>
+      <textarea id="message" placeholder="A line or two about your space and what you need."></textarea>
+    </div>
+
+    <button class="btn" type="submit" id="submitBtn">Send</button>
+    <div class="msg" id="msg"></div>
+  </form>
+
+  <div class="done" id="done">
+    <div class="check">&#10003;</div>
+    <h2>Thanks, we've got it.</h2>
+    <p>We'll be in touch shortly. If it's urgent, email <a href="mailto:hello@ringwood.ai" style="color:var(--green-deep)">hello@ringwood.ai</a>.</p>
+  </div>
+</main>
+
+<script>
+  var form = document.getElementById("contactForm");
+  var submitBtn = document.getElementById("submitBtn");
+  var msg = document.getElementById("msg");
+  function showMsg(kind, text){ msg.className = "msg " + kind; msg.textContent = text; }
+
+  form.addEventListener("submit", function(e){
+    e.preventDefault();
+    var payload = {
+      name: document.getElementById("name").value,
+      email: document.getElementById("email").value,
+      phone: document.getElementById("phone").value,
+      company: document.getElementById("company").value,
+      stage: document.getElementById("stage").value,
+      timeline: document.getElementById("timeline").value,
+      message: document.getElementById("message").value
+    };
+    if (!payload.name.trim()){ showMsg("err", "Please add your name."); return; }
+    if (!payload.email.trim() && !payload.phone.trim()){ showMsg("err", "Please add an email or a phone number."); return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Sending…";
+    msg.className = "msg";
+
+    fetch("/api/contact", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data && data.ok){
+        document.getElementById("intro").style.display = "none";
+        form.style.display = "none";
+        document.getElementById("done").style.display = "block";
+        window.scrollTo(0, 0);
+      } else {
+        showMsg("err", (data && data.error) || "Something went wrong. Please try again.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Send";
+      }
+    }).catch(function(){
+      showMsg("err", "Couldn't reach the server. Check your connection and try again.");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Send";
+    });
+  });
+</script>
+</body>
+</html>
