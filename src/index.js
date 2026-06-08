@@ -19,6 +19,10 @@ const F_OVERALL_PHOTO = "fldMMvw4Ddqxi0KKh";
 const F_NAMEPLATE_PHOTO = "fldezoR8bUXkZ6G8F";
 const F_SERIAL_PHOTO = "fld9Xlteo8i2xvBqr";
 
+/* ---- Service records (same Asset Tracker base) ---- */
+const SERVICE_TABLE = "tbl37nOr8N6tARRZe";
+const F_SVC_PHOTOS = "fldqHr91t3pgpW2DP";
+
 /* ---- Ticket app: category master list (System / Method base) ---- */
 const SYS_BASE = "app29fADba9FiQ25h";
 const CAT_TABLE = "tblKLl5Rw8dn7rx1l";
@@ -52,6 +56,12 @@ export default {
     if (url.pathname === "/api/assets" && request.method === "POST") {
       return handleCreateAsset(request, env, ctx);
     }
+    if (url.pathname === "/api/assets/list" && request.method === "GET") {
+      return listAssets(env);
+    }
+    if (url.pathname === "/api/service" && request.method === "POST") {
+      return createService(request, env, ctx);
+    }
     if (url.pathname === "/api/categories" && request.method === "GET") {
       return getCategories(env);
     }
@@ -63,6 +73,7 @@ export default {
     if (env.ASSETS && (url.pathname === "/" || url.pathname === "")) {
       if (sub === "assets") return env.ASSETS.fetch(rewrite(url, "/assets/", request));
       if (sub === "tickets") return env.ASSETS.fetch(rewrite(url, "/tickets/", request));
+      if (sub === "service") return env.ASSETS.fetch(rewrite(url, "/service/", request));
     }
 
     // Everything else: serve the static site.
@@ -268,6 +279,92 @@ async function scanNameplate(images, env) {
   } catch {
     return null;
   }
+}
+
+/* ===================== Service records ===================== */
+
+// List assets so the service form can pick one (most recent first).
+async function listAssets(env) {
+  if (!env.AIRTABLE_TOKEN) return Response.json([], { status: 200 });
+  try {
+    const r = await fetch(
+      `https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}?pageSize=100`,
+      { headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` } }
+    );
+    const data = await r.json();
+    const list = (data.records || [])
+      .sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1))
+      .map((x) => ({
+        id: x.id,
+        name: x.fields.Asset || x.fields.Description || x.fields.Model || "Asset",
+      }));
+    return Response.json(list);
+  } catch {
+    return Response.json([], { status: 200 });
+  }
+}
+
+async function createService(request, env, ctx) {
+  if (!env.AIRTABLE_TOKEN) {
+    return json({ ok: false, error: "Not connected yet. Please add the AIRTABLE_TOKEN in Cloudflare." }, 503);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Could not read the submission." }, 400);
+  }
+
+  const clean = (v) => (v || "").toString().trim();
+  const assetId = clean(body.assetId);
+  if (!assetId) return json({ ok: false, error: "Please choose the asset this service is for." }, 400);
+
+  const serviceDate = clean(body.serviceDate);
+  const serviceType = clean(body.serviceType);
+  const technician = clean(body.technician);
+  const notes = clean(body.notes);
+  const assetName = clean(body.assetName);
+  const cost = body.cost === "" || body.cost == null ? null : Number(body.cost);
+
+  const label = [serviceType || "Service", assetName, serviceDate].filter(Boolean).join(" — ") || "Service";
+
+  const fields = { Service: label, Asset: [assetId], "Logged At": new Date().toISOString() };
+  if (serviceDate) fields["Service Date"] = serviceDate;
+  if (serviceType) fields["Service Type"] = serviceType;
+  if (technician) fields["Technician"] = technician;
+  if (notes) fields["Notes"] = notes;
+  if (cost != null && !isNaN(cost)) fields["Cost"] = cost;
+
+  let recordId;
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${SERVICE_TABLE}`, {
+      method: "POST",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields, typecast: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return json({ ok: false, error: data?.error?.message || "Airtable rejected the record." }, 502);
+    }
+    recordId = data.id;
+  } catch {
+    return json({ ok: false, error: "Could not reach the database." }, 502);
+  }
+
+  // Upload any service photos in the background.
+  const pics = Array.isArray(body.photos) ? body.photos : [];
+  if (pics.length && ctx && ctx.waitUntil) {
+    ctx.waitUntil(
+      (async () => {
+        for (const p of pics) {
+          await uploadPhoto(recordId, F_SVC_PHOTOS, p, env);
+        }
+      })()
+    );
+  }
+
+  return json({ ok: true, id: recordId });
 }
 
 /* ===================== Ticket app ===================== */
