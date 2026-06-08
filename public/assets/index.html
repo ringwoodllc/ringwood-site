@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ringwood · Log an asset</title>
+<meta name="description" content="Log a piece of equipment to the Ringwood asset record: photo, serial number, model, location, and client." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
+    --green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:640px;margin:0 auto;padding:0 22px}
+  h1,h2{font-family:"Spectral",Georgia,serif;font-weight:500;line-height:1.1;letter-spacing:-.01em;color:var(--green-deep)}
+  a{color:inherit}
+
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+
+  .intro{margin:18px 0 26px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:12px}
+  .intro h1{font-size:clamp(2rem,7vw,2.7rem)}
+  .intro p{margin-top:12px;color:var(--muted);font-size:1.04rem}
+
+  form{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:24px 20px 26px;margin-bottom:40px}
+  .field{margin-bottom:20px}
+  label{display:block;font-weight:600;font-size:.96rem;color:var(--green-deep);margin-bottom:7px}
+  .hint{font-weight:400;color:var(--muted);font-size:.86rem}
+  input,select,textarea{
+    width:100%;font:inherit;font-size:1.02rem;color:var(--ink);
+    background:var(--bg);border:1px solid var(--line);border-radius:4px;
+    padding:13px 14px;-webkit-appearance:none;appearance:none;
+  }
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
+  textarea{min-height:78px;resize:vertical}
+
+  /* Photo picker */
+  .photo-btn{display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;text-align:center;padding:22px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);font-weight:600;background:var(--bg)}
+  .photo-btn:hover{border-color:var(--green)}
+  #photoInput{display:none}
+  #preview{display:none;margin-top:12px;width:100%;border-radius:6px;border:1px solid var(--line)}
+
+  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:16px;border-radius:4px;transition:background .2s}
+  .btn:hover{background:var(--green-deep)}
+  .btn:disabled{opacity:.6;cursor:default}
+
+  .msg{margin-top:16px;padding:14px 16px;border-radius:4px;font-size:.98rem;display:none}
+  .msg.ok{display:block;background:#e3efe7;color:var(--green-deep);border:1px solid rgba(47,93,80,.3)}
+  .msg.err{display:block;background:#f4e2d8;color:#8a3d1c;border:1px solid rgba(169,99,58,.35)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
+        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
+          <circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/>
+        </g>
+      </svg>
+      Ringwood
+    </div>
+    <a class="back" href="/">Home</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Asset record</div>
+    <h1>Log a piece of equipment</h1>
+    <p>Snap a photo and add a few details. It's saved to your living record of the space.</p>
+  </div>
+
+  <form id="assetForm">
+    <div class="field">
+      <label>Photo <span class="hint">— tap to take or choose</span></label>
+      <label class="photo-btn" for="photoInput" id="photoLabel">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+        <span id="photoBtnText">Add a photo</span>
+      </label>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" />
+      <img id="preview" alt="Preview of the selected photo" />
+    </div>
+
+    <div class="field">
+      <label for="equipmentType">Equipment type</label>
+      <select id="equipmentType">
+        <option value="">Select…</option>
+        <option>HVAC</option><option>Water Heater</option><option>Boiler</option>
+        <option>Electrical Panel</option><option>Generator</option><option>Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="serial">Serial number</label>
+      <input id="serial" type="text" autocomplete="off" placeholder="e.g. SN-48820193" />
+    </div>
+
+    <div class="field">
+      <label for="model">Model</label>
+      <input id="model" type="text" autocomplete="off" placeholder="e.g. Carrier 24ACC6" />
+    </div>
+
+    <div class="field">
+      <label for="location">Location</label>
+      <select id="location">
+        <option value="">Select…</option>
+        <option>Outside</option><option>Attic</option><option>Roof</option>
+        <option>Basement</option><option>Mechanical Room</option><option>Garage</option><option>Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="client">Client</label>
+      <input id="client" type="text" autocomplete="off" placeholder="Client or site name" />
+    </div>
+
+    <div class="field">
+      <label for="notes">Notes <span class="hint">— optional</span></label>
+      <textarea id="notes" placeholder="Anything worth remembering"></textarea>
+    </div>
+
+    <button class="btn" type="submit" id="submitBtn">Save asset</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</main>
+
+<script>
+  var photoInput = document.getElementById("photoInput");
+  var preview = document.getElementById("preview");
+  var photoBtnText = document.getElementById("photoBtnText");
+  var form = document.getElementById("assetForm");
+  var submitBtn = document.getElementById("submitBtn");
+  var msg = document.getElementById("msg");
+
+  var photoData = null; // { base64, contentType, filename }
+
+  // Shrink large phone photos client-side so uploads are fast and small.
+  function processPhoto(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = function(){
+        var img = new Image();
+        img.onerror = reject;
+        img.onload = function(){
+          var max = 1600;
+          var w = img.width, h = img.height;
+          if (w > max || h > max){
+            if (w >= h){ h = Math.round(h * max / w); w = max; }
+            else { w = Math.round(w * max / h); h = max; }
+          }
+          var canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          var dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          resolve({
+            preview: dataUrl,
+            base64: dataUrl.split(",")[1],
+            contentType: "image/jpeg",
+            filename: (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg"
+          });
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  photoInput.addEventListener("change", function(){
+    var file = photoInput.files && photoInput.files[0];
+    if (!file) return;
+    photoBtnText.textContent = "Processing…";
+    processPhoto(file).then(function(res){
+      photoData = res;
+      preview.src = res.preview;
+      preview.style.display = "block";
+      photoBtnText.textContent = "Change photo";
+    }).catch(function(){
+      photoBtnText.textContent = "Add a photo";
+      showMsg("err", "Couldn't read that image. Try another photo.");
+    });
+  });
+
+  function showMsg(kind, text){
+    msg.className = "msg " + kind;
+    msg.textContent = text;
+  }
+
+  form.addEventListener("submit", function(e){
+    e.preventDefault();
+    var payload = {
+      equipmentType: document.getElementById("equipmentType").value,
+      serial: document.getElementById("serial").value,
+      model: document.getElementById("model").value,
+      location: document.getElementById("location").value,
+      client: document.getElementById("client").value,
+      notes: document.getElementById("notes").value
+    };
+    if (photoData){
+      payload.photoBase64 = photoData.base64;
+      payload.photoContentType = photoData.contentType;
+      payload.photoFilename = photoData.filename;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+    msg.className = "msg";
+
+    fetch("/api/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data && data.ok){
+        form.reset();
+        photoData = null;
+        preview.style.display = "none";
+        photoBtnText.textContent = "Add a photo";
+        showMsg("ok", "Saved. Log another, or you're all set.");
+      } else {
+        showMsg("err", (data && data.error) || "Something went wrong. Please try again.");
+      }
+    }).catch(function(){
+      showMsg("err", "Couldn't reach the server. Check your connection and try again.");
+    }).finally(function(){
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save asset";
+    });
+  });
+</script>
+</body>
+</html>

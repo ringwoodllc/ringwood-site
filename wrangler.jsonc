@@ -1,7 +1,9 @@
 {
   "name": "ringwood-site",
   "compatibility_date": "2025-06-01",
+  "main": "src/index.js",
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS"
   }
 }
