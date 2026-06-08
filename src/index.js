@@ -69,6 +69,12 @@ export default {
     if (url.pathname === "/api/asset" && request.method === "GET") {
       return getAssetFull(url, env);
     }
+    if (url.pathname === "/api/asset/analyze" && request.method === "POST") {
+      return analyzeAsset(request, env);
+    }
+    if (url.pathname === "/api/asset/update" && request.method === "POST") {
+      return updateAsset(request, env);
+    }
     if (url.pathname === "/api/service" && request.method === "POST") {
       return createService(request, env, ctx);
     }
@@ -170,7 +176,7 @@ async function handleCreateAsset(request, env, ctx) {
   }
 
   // 2) Upload photos + run nameplate AI in the background (doesn't block the user).
-  const manual = { description, manufacturer, model, serial };
+  const manual = { description, manufacturer, model, serial, equipmentType };
   if (ctx && ctx.waitUntil) {
     ctx.waitUntil(processAssetMedia(recordId, body, manual, env));
   }
@@ -186,31 +192,30 @@ async function processAssetMedia(recordId, body, manual, env) {
   await uploadPhoto(recordId, F_NAMEPLATE_PHOTO, body.nameplatePhoto, env);
   await uploadPhoto(recordId, F_SERIAL_PHOTO, body.serialPhoto, env);
 
-  // Read the nameplate/serial close-ups with Claude.
-  const images = [body.nameplatePhoto, body.serialPhoto].filter((p) => p && p.base64);
+  // Run the Ringwood agent on the nameplate, serial, and overall photos.
+  const images = [body.nameplatePhoto, body.serialPhoto, body.overallPhoto]
+    .filter((p) => p && p.base64)
+    .map((p) => ({ media_type: p.contentType, base64: p.base64 }));
   if (!images.length || !env.ANTHROPIC_API_KEY) return;
 
   let read;
   try {
-    read = await scanNameplate(images, env);
+    read = await runAgent(images, env);
   } catch {
     return;
   }
   if (!read) return;
 
-  // Fill only the fields the user left blank; never overwrite their entry.
+  // Fill the fields the user left blank; never overwrite an entry they made.
   const patch = { Status: "AI suggested" };
   if (!manual.description && read.description) patch["Description"] = read.description;
   if (!manual.manufacturer && read.manufacturer) patch["Manufacturer"] = read.manufacturer;
   if (!manual.model && read.model) patch["Model"] = read.model;
   if (!manual.serial && read.serial) patch["Serial Number"] = read.serial;
-
-  patch["Nameplate Reading (AI)"] =
-    `Manufacturer: ${read.manufacturer || "—"}\n` +
-    `Model: ${read.model || "—"}\n` +
-    `Serial: ${read.serial || "—"}\n` +
-    `Description: ${read.description || "—"}\n` +
-    `(read by Claude Sonnet 4.6 — please verify)`;
+  if (!manual.equipmentType && read.equipmentType) patch["Equipment Type"] = read.equipmentType;
+  // If the user did not type a description, the saved name is weak, so use the agent's name.
+  if (!manual.description && read.assetName) patch["Asset"] = read.assetName;
+  patch["Nameplate Reading (AI)"] = buildReadingNote(read);
 
   try {
     await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${recordId}`, {
@@ -250,19 +255,57 @@ async function uploadPhoto(recordId, fieldId, photo, env) {
   }
 }
 
-// Claude vision: read manufacturer / model / serial / description off the plate.
-async function scanNameplate(images, env) {
+// The Ringwood AI Agent. It identifies the equipment from its photos and
+// returns a clean name, description, and details. Accepts base64 images (fresh
+// captures) or image URLs (re-running on photos already saved in Airtable).
+const AGENT_PROMPT =
+  "You are Ringwood's asset agent. These photos show a piece of equipment and, where available, its data plate " +
+  "and serial label. Identify the equipment and return clean, useful fields.\n\n" +
+  "- assetName: a clear, specific name a facilities manager would use. Include the brand, the product line or model, " +
+  "and what the thing is. Example: 'HP Color LaserJet Pro M255dw Printer'. Never return vague names like 'Other' or 'Unit'.\n" +
+  "- description: one short sentence in English. Leave out marketing language, certification or regulatory text, and anything not in English.\n" +
+  "- manufacturer: the brand.\n" +
+  "- model: the model name or number.\n" +
+  "- serial: the serial number only if it is clearly legible, otherwise an empty string. Never invent one.\n" +
+  "- equipmentType: a short category for this kind of equipment, such as 'HVAC', 'Refrigeration', 'Coffee Equipment', " +
+  "'Office Equipment', or 'Electrical Panel'. Pick the most fitting common category.\n\n" +
+  "Use what you know about the product to fill these in accurately, even if the plate only shows a part or SKU number. " +
+  "If a field cannot be determined, use an empty string.";
+
+const AGENT_SCHEMA = {
+  type: "object",
+  properties: {
+    assetName: { type: "string" },
+    description: { type: "string" },
+    manufacturer: { type: "string" },
+    model: { type: "string" },
+    serial: { type: "string" },
+    equipmentType: { type: "string" },
+  },
+  required: ["assetName", "description", "manufacturer", "model", "serial", "equipmentType"],
+  additionalProperties: false,
+};
+
+function buildReadingNote(r) {
+  return (
+    `Name: ${r.assetName || "—"}\n` +
+    `Manufacturer: ${r.manufacturer || "—"}\n` +
+    `Model: ${r.model || "—"}\n` +
+    `Serial: ${r.serial || "—"}\n` +
+    `Type: ${r.equipmentType || "—"}\n` +
+    `Description: ${r.description || "—"}\n\n` +
+    `Read by Ringwood AI Agent 1.0 - Please verify`
+  );
+}
+
+async function runAgent(images, env) {
   const content = images.map((p) => ({
     type: "image",
-    source: { type: "base64", media_type: p.contentType || "image/jpeg", data: p.base64 },
+    source: p.base64
+      ? { type: "base64", media_type: p.media_type || "image/jpeg", data: p.base64 }
+      : { type: "url", url: p.url },
   }));
-  content.push({
-    type: "text",
-    text:
-      "These are close-up photos of an equipment data plate / nameplate. " +
-      "Read the MANUFACTURER (brand), MODEL number, SERIAL number, and a short DESCRIPTION " +
-      "of what the equipment is. If a value isn't clearly legible, return an empty string for it — do not guess.",
-  });
+  content.push({ type: "text", text: AGENT_PROMPT });
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -273,24 +316,9 @@ async function scanNameplate(images, env) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 512,
+      max_tokens: 700,
       messages: [{ role: "user", content }],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              manufacturer: { type: "string" },
-              model: { type: "string" },
-              serial: { type: "string" },
-              description: { type: "string" },
-            },
-            required: ["manufacturer", "model", "serial", "description"],
-            additionalProperties: false,
-          },
-        },
-      },
+      output_config: { format: { type: "json_schema", schema: AGENT_SCHEMA } },
     }),
   });
 
@@ -388,6 +416,111 @@ async function getAssetFull(url, env) {
     });
   } catch {
     return json({ ok: false }, 502);
+  }
+}
+
+// Run the Ringwood agent against an asset's existing photos and save the result.
+async function analyzeAsset(request, env) {
+  if (!env.ANTHROPIC_API_KEY) {
+    return json({ ok: false, error: "The AI is not connected. Add the ANTHROPIC_API_KEY in Cloudflare." }, 503);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No asset id." }, 400);
+
+  let f;
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    if (!r.ok) return json({ ok: false, error: "Asset not found." }, 404);
+    f = (await r.json()).fields || {};
+  } catch {
+    return json({ ok: false, error: "Could not reach the database." }, 502);
+  }
+
+  const fullUrl = (arr) => (Array.isArray(arr) && arr[0] ? arr[0].url : "");
+  const images = [f["Nameplate Photo"], f["Serial Photo"], f["Overall Photo"]]
+    .map(fullUrl)
+    .filter(Boolean)
+    .map((u) => ({ url: u }));
+  if (!images.length) return json({ ok: false, error: "This asset has no photos to analyze." }, 400);
+
+  let read;
+  try {
+    read = await runAgent(images, env);
+  } catch {
+    read = null;
+  }
+  if (!read) return json({ ok: false, error: "The agent could not read these photos." }, 502);
+
+  const patch = { Status: "AI suggested" };
+  if (read.assetName) patch["Asset"] = read.assetName;
+  if (read.description) patch["Description"] = read.description;
+  if (read.manufacturer) patch["Manufacturer"] = read.manufacturer;
+  if (read.model) patch["Model"] = read.model;
+  if (read.serial) patch["Serial Number"] = read.serial;
+  if (read.equipmentType) patch["Equipment Type"] = read.equipmentType;
+  patch["Nameplate Reading (AI)"] = buildReadingNote(read);
+
+  try {
+    const up = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
+      method: "PATCH",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields: patch, typecast: true }),
+    });
+    if (!up.ok) {
+      const d = await up.json();
+      return json({ ok: false, error: d?.error?.message || "Could not save the result." }, 502);
+    }
+  } catch {
+    return json({ ok: false, error: "Could not save the result." }, 502);
+  }
+  return json({ ok: true });
+}
+
+// Save manual edits to an asset. A human edit marks it Verified.
+async function updateAsset(request, env) {
+  if (!env.AIRTABLE_TOKEN) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No asset id." }, 400);
+
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const fields = {};
+  if ("name" in body) fields["Asset"] = c(body.name);
+  if ("description" in body) fields["Description"] = c(body.description);
+  if ("manufacturer" in body) fields["Manufacturer"] = c(body.manufacturer);
+  if ("model" in body) fields["Model"] = c(body.model);
+  if ("serial" in body) fields["Serial Number"] = c(body.serial);
+  if ("equipmentType" in body) fields["Equipment Type"] = c(body.equipmentType);
+  if ("client" in body) fields["Client"] = c(body.client);
+  if ("location" in body) fields["Location"] = c(body.location);
+  fields["Status"] = "Verified";
+
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
+      method: "PATCH",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields, typecast: true }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      return json({ ok: false, error: d?.error?.message || "Save failed." }, 502);
+    }
+    return json({ ok: true });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
   }
 }
 

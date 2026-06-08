@@ -27,9 +27,10 @@
   .lookup{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:18px;margin-bottom:24px}
   .lookup h1{font-size:1.5rem;margin-bottom:12px}
   label{display:block;font-weight:600;font-size:.9rem;color:var(--green-deep);margin:0 0 6px}
-  select,input{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px 14px;-webkit-appearance:none;appearance:none}
+  select,input,textarea{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px 14px;-webkit-appearance:none;appearance:none}
+  textarea{min-height:62px;resize:vertical}
   select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
-  select:focus,input:focus{outline:none;border-color:var(--green)}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--green)}
   .or{text-align:center;color:var(--muted);font-size:.85rem;margin:12px 0}
   .qrrow{display:flex;gap:8px}
   .qrrow input{flex:1}
@@ -63,10 +64,16 @@
   td:first-child{white-space:nowrap}
   tr:last-child td{border-bottom:none}
   .empty{color:var(--muted);font-size:.95rem;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:14px}
-  .btn{display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:1rem;padding:14px 22px;border-radius:4px;margin:18px 0 6px}
+  .btn{display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:1rem;padding:13px 22px;border-radius:4px;border:none;cursor:pointer}
   .btn:hover{background:var(--green-deep)}
+  .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--bg-2)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 6px}
+  .field{margin-bottom:14px}
   .state{color:var(--muted);padding:8px 0 30px}
   .err{color:#8a3d1c}
+  .agentnote{background:#dfe9f4;color:#274a73;border-radius:4px;padding:10px 12px;font-size:.9rem;margin-bottom:14px}
 </style>
 </head>
 <body>
@@ -102,85 +109,150 @@
   <div id="view"></div>
 </main>
 
+<datalist id="typelist">
+  <option>HVAC</option><option>Water Heater</option><option>Boiler</option>
+  <option>Electrical Panel</option><option>Generator</option><option>Coffee Equipment</option>
+  <option>Office Equipment</option><option>Refrigeration</option><option>Other</option>
+</datalist>
+
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
   function row(label, val){ return val ? "<dt>" + esc(label) + "</dt><dd>" + esc(val) + "</dd>" : ""; }
   function money(v){ return (v === "" || v == null) ? "" : ("$" + Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
-
-  // Pull a record id out of whatever the user pasted: a bare id, a /a/<id> path, or an ?id= URL.
   function parseId(raw){
-    var s = (raw || "").trim();
-    if (!s) return "";
-    var m = s.match(/[?&]id=([A-Za-z0-9]+)/);
-    if (m) return m[1];
-    m = s.match(/\/a\/([A-Za-z0-9]+)/);
-    if (m) return m[1];
-    m = s.match(/rec[A-Za-z0-9]{14}/);
-    if (m) return m[0];
+    var s = (raw||"").trim(); if (!s) return "";
+    var m = s.match(/[?&]id=([A-Za-z0-9]+)/); if (m) return m[1];
+    m = s.match(/\/a\/([A-Za-z0-9]+)/); if (m) return m[1];
+    m = s.match(/rec[A-Za-z0-9]{14}/); if (m) return m[0];
     return s;
   }
 
   var assetSel = document.getElementById("assetSel");
   var qrInput = document.getElementById("qrInput");
   var view = document.getElementById("view");
+  var curAsset = null, curId = "";
 
-  // Load the asset list for the dropdown.
   fetch("/api/assets/list").then(function(r){ return r.json(); }).then(function(list){
     var arr = Array.isArray(list) ? list : [];
     assetSel.innerHTML = "<option value=''>" + (arr.length ? "Choose an asset" : "No assets yet") + "</option>";
-    arr.forEach(function(a){
-      var o = document.createElement("option");
-      o.value = a.id; o.textContent = a.name;
-      assetSel.appendChild(o);
-    });
-    // Preload from ?id= or /a/<id> if present.
+    arr.forEach(function(a){ var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; assetSel.appendChild(o); });
     var initial = parseId(new URLSearchParams(location.search).get("id") || location.pathname.replace(/^\/a\//,""));
     if (initial && /^rec/.test(initial)){ assetSel.value = initial; load(initial); }
   }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load list</option>"; });
 
   assetSel.addEventListener("change", function(){ if (assetSel.value) load(assetSel.value); });
-  document.getElementById("goBtn").addEventListener("click", function(){ var id = parseId(qrInput.value); if (id) load(id); });
-  qrInput.addEventListener("keydown", function(e){ if (e.key === "Enter"){ var id = parseId(qrInput.value); if (id) load(id); } });
+  document.getElementById("goBtn").addEventListener("click", function(){ var id=parseId(qrInput.value); if (id) load(id); });
+  qrInput.addEventListener("keydown", function(e){ if (e.key==="Enter"){ var id=parseId(qrInput.value); if (id) load(id); } });
 
   function load(id){
+    curId = id;
     view.innerHTML = "<div class='state'>Loading asset…</div>";
     history.replaceState(null, "", "/a/?id=" + encodeURIComponent(id));
     fetch("/api/asset?id=" + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(a){
       if (!a || !a.ok){ view.innerHTML = "<div class='state err'>Asset not found. Check the ID and try again.</div>"; return; }
-      render(a, id);
+      curAsset = a; renderRead(a);
     }).catch(function(){ view.innerHTML = "<div class='state err'>Couldn't load. Check your connection and try again.</div>"; });
   }
 
-  function render(a, id){
-    var statusClass = a.status === "AI suggested" ? "ai" : (a.status === "Verified" ? "verified" : "pending");
+  function statusClass(s){ return s === "AI suggested" ? "ai" : (s === "Verified" ? "verified" : "pending"); }
+
+  function renderRead(a){
     function fig(u, cap){ return u ? "<figure><img src='" + u + "' alt='" + esc(cap) + "'/><figcaption>" + esc(cap) + "</figcaption></figure>" : ""; }
     var p = fig(a.overallPhoto,"Overall") + fig(a.nameplatePhoto,"Nameplate") + fig(a.serialPhoto,"Serial");
     var photos = p ? "<div class='photos'>" + p + "</div>" : "";
-
     var identity = "<div class='card'><dl>" +
       row("Description", a.description) + row("Manufacturer", a.manufacturer) +
       row("Model", a.model) + row("Serial", a.serial) + row("Type", a.equipmentType) +
       row("Client", a.client) + row("Location", a.location) + "</dl></div>";
-
-    var ai = a.aiReading ? "<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Nameplate reading (AI)</dt><div class='ainote'>" + esc(a.aiReading) + "</div></div>" : "";
-
+    var ai = a.aiReading ? "<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>" + esc(a.aiReading) + "</div></div>" : "";
     var hist;
     if (a.services && a.services.length){
       var rows = a.services.map(function(s){
-        return "<tr><td>" + esc(s.date||"—") + "</td><td>" + esc(s.type||"—") + "</td><td>" + esc(s.technician||"") +
-               "</td><td>" + esc(s.notes||"") + "</td><td>" + esc(money(s.cost)) + "</td></tr>";
+        return "<tr><td>"+esc(s.date||"—")+"</td><td>"+esc(s.type||"—")+"</td><td>"+esc(s.technician||"")+"</td><td>"+esc(s.notes||"")+"</td><td>"+esc(money(s.cost))+"</td></tr>";
       }).join("");
-      hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>" + rows + "</tbody></table>";
-    } else {
-      hist = "<div class='empty'>No service history yet.</div>";
-    }
+      hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>"+rows+"</tbody></table>";
+    } else { hist = "<div class='empty'>No service history yet.</div>"; }
 
     view.innerHTML =
-      "<div class='titlerow'><h1 class='assetname'>" + esc(a.name) + "</h1><span class='pill " + statusClass + "'>" + esc(a.status) + "</span></div>" +
+      "<div class='titlerow'><h1 class='assetname'>"+esc(a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>" +
       "<div class='sub'>Ringwood asset record</div>" +
+      "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>" +
+      "<a class='btn ghost' href='https://service.ringwood.ai/?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>" +
       photos + identity + ai +
-      "<h2>Service history</h2>" + hist +
-      "<a class='btn' href='https://service.ringwood.ai/?asset=" + encodeURIComponent(id) + "'>Log a service for this asset</a>";
+      "<h2>Service history</h2>" + hist;
+    document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset, ""); });
+  }
+
+  function inputField(id, label, val, ta){
+    var control = ta
+      ? "<textarea id='"+id+"'>"+esc(val||"")+"</textarea>"
+      : "<input id='"+id+"' type='text' value='"+esc(val||"")+"' " + (id==="f_type" ? "list='typelist' " : "") + "/>";
+    return "<div class='field'><label>"+esc(label)+"</label>"+control+"</div>";
+  }
+
+  function showEdit(a, note){
+    view.innerHTML =
+      "<div class='titlerow'><h1 class='assetname'>Edit asset</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>" +
+      (note ? "<div class='agentnote'>"+esc(note)+"</div>" : "<div class='sub'>Run the Ringwood Agent to read the photos, or edit the details by hand. Saving marks it Verified.</div>") +
+      "<div class='btnrow'><button class='btn' id='runBtn' type='button'>Run Ringwood Agent</button></div>" +
+      "<div id='editmsg' class='err' style='margin-bottom:10px'></div>" +
+      inputField("f_name","Name", a.name) +
+      inputField("f_desc","Description", a.description, true) +
+      inputField("f_make","Manufacturer", a.manufacturer) +
+      inputField("f_model","Model", a.model) +
+      inputField("f_serial","Serial", a.serial) +
+      inputField("f_type","Type", a.equipmentType) +
+      inputField("f_client","Client", a.client) +
+      inputField("f_location","Location", a.location) +
+      "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button>" +
+      "<button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>";
+
+    document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
+    document.getElementById("saveBtn").addEventListener("click", saveEdit);
+    document.getElementById("runBtn").addEventListener("click", runAgentNow);
+  }
+
+  function setEditMsg(t){ var e=document.getElementById("editmsg"); if (e) e.textContent = t || ""; }
+
+  function runAgentNow(){
+    var runBtn = document.getElementById("runBtn");
+    runBtn.disabled = true; runBtn.textContent = "Running Ringwood Agent…"; setEditMsg("");
+    fetch("/api/asset/analyze", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ id: curId }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.ok){
+          // Reload the asset and repopulate the edit form with the agent's results.
+          return fetch("/api/asset?id="+encodeURIComponent(curId)).then(function(r){ return r.json(); }).then(function(a){
+            if (a && a.ok){ curAsset = a; showEdit(a, "The Ringwood Agent updated the fields below. Review and Save."); }
+          });
+        } else {
+          runBtn.disabled = false; runBtn.textContent = "Run Ringwood Agent";
+          setEditMsg((d && d.error) || "The agent could not run. Try again.");
+        }
+      }).catch(function(){
+        runBtn.disabled = false; runBtn.textContent = "Run Ringwood Agent";
+        setEditMsg("Couldn't reach the agent. Check your connection.");
+      });
+  }
+
+  function saveEdit(){
+    var saveBtn = document.getElementById("saveBtn");
+    saveBtn.disabled = true; saveBtn.textContent = "Saving…"; setEditMsg("");
+    var payload = {
+      id: curId,
+      name: document.getElementById("f_name").value,
+      description: document.getElementById("f_desc").value,
+      manufacturer: document.getElementById("f_make").value,
+      model: document.getElementById("f_model").value,
+      serial: document.getElementById("f_serial").value,
+      equipmentType: document.getElementById("f_type").value,
+      client: document.getElementById("f_client").value,
+      location: document.getElementById("f_location").value
+    };
+    fetch("/api/asset/update", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(payload) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.ok){ load(curId); }
+        else { saveBtn.disabled=false; saveBtn.textContent="Save"; setEditMsg((d && d.error) || "Save failed."); }
+      }).catch(function(){ saveBtn.disabled=false; saveBtn.textContent="Save"; setEditMsg("Couldn't reach the server."); });
   }
 </script>
 </body>
