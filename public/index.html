@@ -42,6 +42,9 @@
   .brand svg{display:block}
   .nav-cta{font-size:.97rem;font-weight:500;text-decoration:none;color:var(--green-deep);border-bottom:2px solid var(--clay);padding-bottom:2px;transition:opacity .2s}
   .nav-cta:hover{opacity:.65}
+  .nav-actions{display:flex;align-items:center;gap:22px}
+  .nav-ticket{display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:.92rem;padding:9px 18px;border-radius:2px;transition:background .2s}
+  .nav-ticket:hover{background:var(--green-deep)}
 
   /* Hero */
   .hero{position:relative;padding:64px 0 92px}
@@ -134,7 +137,10 @@
       </svg>
       Ringwood
     </div>
-    <a class="nav-cta" href="mailto:hello@ringwood.ai">Talk to us</a>
+    <div class="nav-actions">
+      <a class="nav-cta" href="mailto:hello@ringwood.ai">Talk to us</a>
+      <a class="nav-ticket" href="https://tickets.ringwood.ai">Enter ticket</a>
+    </div>
   </div>
 </header>
 
