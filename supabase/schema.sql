@@ -105,6 +105,19 @@ create table if not exists service_records (
 );
 create index if not exists service_asset_idx on service_records (asset_id);
 
+create table if not exists contacts (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text,
+  phone text,
+  company text,
+  stage text,
+  timeline text,
+  message text,
+  status text not null default 'New',
+  created_at timestamptz not null default now()
+);
+
 -- ============================================================
 -- Seed the master lists (your current values)
 -- ============================================================
@@ -149,3 +162,4 @@ alter table ticket_categories enable row level security;
 alter table assets           enable row level security;
 alter table tickets          enable row level security;
 alter table service_records  enable row level security;
+alter table contacts         enable row level security;
