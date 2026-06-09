@@ -86,10 +86,13 @@ create table if not exists tickets (
   location text,
   status text not null default 'Open',            -- Open | Closed | Archived
   photo_url text,
+  photo_urls text[],
   created_at timestamptz not null default now()
 );
 create index if not exists tickets_client_idx on tickets (client_id);
 create index if not exists tickets_status_idx on tickets (status);
+-- For databases created before multi-photo tickets:
+alter table tickets add column if not exists photo_urls text[];
 
 create table if not exists service_records (
   id uuid primary key default gen_random_uuid(),

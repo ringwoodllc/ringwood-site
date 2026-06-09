@@ -223,7 +223,7 @@
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + (t.location?(" · " + esc(t.location)):"") + "</div>" +
-        (t.photo ? "<img class='photo' src='" + esc(t.photo) + "' alt='' />" : "") +
+        ((t.photos && t.photos.length) ? t.photos.map(function(u){ return "<img class='photo' src='" + esc(u) + "' alt='' style='margin-bottom:8px' />"; }).join("") : (t.photo ? "<img class='photo' src='" + esc(t.photo) + "' alt='' />" : "")) +
         "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
         "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
         "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +

@@ -110,16 +110,13 @@
     </div>
 
     <div class="field">
-      <label>Photo <span class="hint" id="photoReqLabel">— optional</span></label>
-      <input id="file" type="file" accept="image/*" capture="environment" class="hidden" />
+      <label>Photos <span class="hint" id="photoReqLabel">— optional, add as many as help</span></label>
+      <input id="file" type="file" accept="image/*" capture="environment" multiple class="hidden" />
       <button id="photoBtn" class="photoBtn" type="button">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2f5d50" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        <span>Take a photo</span>
+        <span>Add photos</span>
       </button>
-      <div id="preview" class="preview hidden">
-        <img id="previewImg" alt="issue" />
-        <button id="retake" class="retake" type="button">Retake</button>
-      </div>
+      <div id="thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
       <p id="photoNote" class="photoNote"></p>
     </div>
 
@@ -165,8 +162,7 @@
 </main>
 
 <script>
-var photoBase64 = null;
-var photoType = "image/jpeg";
+var photos = [];
 var photoReq = {};
 
 var clientEl = document.getElementById("client");
@@ -174,9 +170,7 @@ var fileInput = document.getElementById("file");
 var photoBtn = document.getElementById("photoBtn");
 var photoNote = document.getElementById("photoNote");
 var photoReqLabel = document.getElementById("photoReqLabel");
-var preview = document.getElementById("preview");
-var previewImg = document.getElementById("previewImg");
-var retake = document.getElementById("retake");
+var thumbsEl = document.getElementById("thumbs");
 var locationEl = document.getElementById("location");
 var categoryEl = document.getElementById("category");
 var noteEl = document.getElementById("note");
@@ -196,7 +190,7 @@ function updatePhotoNote() {
   if (!categoryEl.value) { photoNote.textContent = ""; photoReqLabel.textContent = "— optional"; return; }
   if (needsPhoto()) {
     photoReqLabel.innerHTML = "<span class='req'>*</span> required";
-    photoNote.textContent = photoBase64 ? "" : "A photo is needed for this kind of work.";
+    photoNote.textContent = photos.length ? "" : "A photo is needed for this kind of work.";
   } else {
     photoReqLabel.textContent = "— optional";
     photoNote.textContent = "";
@@ -204,7 +198,7 @@ function updatePhotoNote() {
 }
 
 function refresh() {
-  var ok = clientValue() && categoryEl.value && noteEl.value.trim() && (needsPhoto() ? photoBase64 : true);
+  var ok = clientValue() && categoryEl.value && noteEl.value.trim() && (needsPhoto() ? photos.length : true);
   submitBtn.disabled = !ok;
   updatePhotoNote();
 }
@@ -329,35 +323,43 @@ addLocBtn.addEventListener("click", function () {
 });
 
 photoBtn.addEventListener("click", function () { fileInput.click(); });
-retake.addEventListener("click", function () { fileInput.click(); });
 
-fileInput.addEventListener("change", function (e) {
-  var file = e.target.files && e.target.files[0];
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function (ev) {
-    var img = new Image();
-    img.onload = function () {
-      var max = 1600;
-      var w = img.width, h = img.height;
-      if (w > max || h > max) {
-        if (w > h) { h = Math.round(h * max / w); w = max; }
-        else { w = Math.round(w * max / h); h = max; }
-      }
-      var canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      var dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-      photoType = "image/jpeg";
-      photoBase64 = dataUrl.split(",")[1];
-      previewImg.src = dataUrl;
-      preview.classList.remove("hidden");
-      photoBtn.classList.add("hidden");
-      refresh();
+function processPhoto(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onerror = reject;
+      img.onload = function () {
+        var max = 1600, w = img.width, h = img.height;
+        if (w > max || h > max) { if (w > h) { h = Math.round(h * max / w); w = max; } else { w = Math.round(w * max / h); h = max; } }
+        var canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        var dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        resolve({ base64: dataUrl.split(",")[1], contentType: "image/jpeg", preview: dataUrl });
+      };
+      img.src = ev.target.result;
     };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
+}
+function renderThumbs() {
+  thumbsEl.innerHTML = photos.map(function (p, i) {
+    return "<div style='position:relative'>" +
+      "<img src='" + p.preview + "' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
+      "<button type='button' onclick='removePhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:50%;background:#23282a;color:#fff;border:none;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
+      "</div>";
+  }).join("");
+}
+window.removePhoto = function (i) { photos.splice(i, 1); renderThumbs(); refresh(); };
+fileInput.addEventListener("change", function (e) {
+  var files = Array.prototype.slice.call(e.target.files || []);
+  files.forEach(function (file) {
+    processPhoto(file).then(function (res) { photos.push(res); renderThumbs(); refresh(); }).catch(function () {});
+  });
+  e.target.value = "";
 });
 
 noteEl.addEventListener("input", refresh);
@@ -367,9 +369,9 @@ categoryEl.addEventListener("change", refresh);
 var suggestBtn = document.getElementById("suggestBtn");
 var suggestMsg = document.getElementById("suggestMsg");
 suggestBtn.addEventListener("click", function () {
-  if (!photoBase64 && !noteEl.value.trim()) { suggestMsg.textContent = "Add a photo or a few words first."; return; }
+  if (!photos.length && !noteEl.value.trim()) { suggestMsg.textContent = "Add a photo or a few words first."; return; }
   suggestBtn.disabled = true; suggestBtn.textContent = "Thinking…"; suggestMsg.textContent = "";
-  fetch("/api/tickets/suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: noteEl.value, photoBase64: photoBase64, photoContentType: photoType }) })
+  fetch("/api/tickets/suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: noteEl.value, photos: photos.map(function (p) { return { base64: p.base64, contentType: p.contentType }; }) }) })
     .then(function (r) { return r.json(); }).then(function (d) {
       suggestBtn.disabled = false; suggestBtn.textContent = "✨ Suggest with AI";
       if (d && d.ok) {
@@ -394,9 +396,7 @@ form.addEventListener("submit", function (e) {
       category: categoryEl.value,
       location: locationValue(),
       note: noteEl.value,
-      photoBase64: photoBase64,
-      photoContentType: photoType,
-      photoFilename: "ticket.jpg"
+      photos: photos.map(function (p) { return { base64: p.base64, contentType: p.contentType }; })
     })
   }).then(function (r) { return r.json(); }).then(function (res) {
     if (res.ok) {
@@ -422,13 +422,12 @@ form.addEventListener("submit", function (e) {
 });
 
 document.getElementById("again").addEventListener("click", function () {
-  photoBase64 = null;
+  photos = [];
+  thumbsEl.innerHTML = "";
   fileInput.value = "";
   clientEl.value = "";
   locationEl.value = ""; categoryEl.value = ""; noteEl.value = "";
   addLocRow.style.display = "none"; newLoc.value = "";
-  preview.classList.add("hidden");
-  photoBtn.classList.remove("hidden");
   submitBtn.textContent = "Submit ticket";
   document.getElementById("done").style.display = "none";
   document.getElementById("intro").style.display = "block";

@@ -959,11 +959,16 @@ async function createTicket(request, env, ctx) {
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the ticket." }, 502);
   const id = res.data.id;
 
-  if (body.photoBase64 && ctx && ctx.waitUntil) {
+  const pics = normalizePics(body);
+  if (pics.length && ctx && ctx.waitUntil) {
     ctx.waitUntil(
       (async () => {
-        const u = await uploadToStorage(env, `tickets/${id}.jpg`, body.photoBase64, body.photoContentType);
-        if (u) await sbUpdate(env, "tickets", id, { photo_url: u });
+        const urls = [];
+        for (let i = 0; i < pics.length; i++) {
+          const u = await uploadToStorage(env, `tickets/${id}/${i}.jpg`, pics[i].base64, pics[i].contentType);
+          if (u) urls.push(u);
+        }
+        if (urls.length) await sbUpdate(env, "tickets", id, { photo_urls: urls, photo_url: urls[0] });
       })()
     );
   }
@@ -1012,7 +1017,7 @@ async function listTickets(url, env) {
 
   const rows = await sbSelect(
     env,
-    `tickets?select=id,ref,title,description,location,status,photo_url,created_at,category:ticket_categories(name),client:clients(name)${filter}&order=created_at.desc`
+    `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,category:ticket_categories(name),client:clients(name)${filter}&order=created_at.desc`
   );
   return json(
     (rows || []).map((t) => ({
@@ -1025,6 +1030,7 @@ async function listTickets(url, env) {
       ref: t.ref || "",
       location: t.location || "",
       photo: t.photo_url || "",
+      photos: t.photo_urls || (t.photo_url ? [t.photo_url] : []),
       created: t.created_at || "",
     }))
   );
@@ -1051,8 +1057,18 @@ async function updateTicket(request, env) {
   return json({ ok: true });
 }
 
-// AI assist for tickets: from a photo and/or a short note, write a clear
-// description and pick the best work category.
+// Normalize photos from a request: prefer a `photos` array, fall back to a
+// single `photoBase64`.
+function normalizePics(body) {
+  if (Array.isArray(body.photos)) {
+    return body.photos.filter((p) => p && p.base64).map((p) => ({ base64: p.base64, contentType: p.contentType || "image/jpeg" }));
+  }
+  if (body.photoBase64) return [{ base64: body.photoBase64, contentType: body.photoContentType || "image/jpeg" }];
+  return [];
+}
+
+// AI assist for tickets: from photos and/or a short note, write a clear,
+// grounded description and pick the best work category.
 async function suggestTicket(request, env) {
   if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
   let body;
@@ -1062,8 +1078,8 @@ async function suggestTicket(request, env) {
     return json({ ok: false, error: "Bad request." }, 400);
   }
   const note = (body.note || "").toString().trim();
-  const hasPhoto = !!(body.photoBase64 && body.photoContentType);
-  if (!note && !hasPhoto) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
+  const pics = normalizePics(body);
+  if (!note && !pics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
 
   let cats = ["Repair", "Maintenance", "Install / Setup", "Buildout / Project", "Other"];
   try {
@@ -1075,15 +1091,17 @@ async function suggestTicket(request, env) {
   }
 
   const prompt =
-    "You are Ringwood's facilities ticket assistant. Someone is reporting something at a workplace that needs attention. " +
-    "From the photo (if any) and their note, write a clear ticket description and choose the best work category.\n\n" +
-    "- description: one or two plain sentences stating what is wrong and, if visible, where. Specific and grounded. No marketing words. If they wrote a note, build on it and keep their intent.\n" +
+    "You are Ringwood's facilities ticket assistant. Someone is reporting something at a workplace that needs done. " +
+    "They may attach several photos (for example a wide shot of a wall and a close-up of a sign) plus a short note. " +
+    "Work out what they want done and write the ticket.\n\n" +
+    "- description: one or two plain sentences describing the request or problem and, where shown, the location or surface (e.g. 'Mount the framed sign on the drywall wall by the entrance.'). Build on their note and keep their intent.\n" +
     "- category: choose exactly one from this list: " + cats.join(", ") + ".\n\n" +
+    "Important: describe only what the photos and note actually show or say. Do NOT invent brands, model numbers, measurements, dimensions, names, or any detail you cannot verify. If something is unclear, keep it general or leave it out.\n" +
     (note ? 'Their note: "' + note + '"\n' : "") +
     "If a field cannot be determined, use an empty string for it.";
 
   const content = [];
-  if (hasPhoto) content.push({ type: "image", source: { type: "base64", media_type: body.photoContentType || "image/jpeg", data: body.photoBase64 } });
+  pics.forEach((p) => content.push({ type: "image", source: { type: "base64", media_type: p.contentType || "image/jpeg", data: p.base64 } }));
   content.push({ type: "text", text: prompt });
 
   const schema = {
