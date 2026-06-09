@@ -74,6 +74,7 @@ export default {
       "/lookup": "/a/",
       "/app": "/app/",
       "/login": "/login/",
+      "/signin": "/signin/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -103,7 +104,7 @@ function rewrite(url, pathname, request) {
 // Paths that never require sign-in.
 function isPublic(url, sub) {
   const p = url.pathname;
-  if (p === "/login" || p === "/login/") return true;
+  if (p === "/login" || p === "/login/" || p === "/signin" || p === "/signin/") return true;
   if (p === "/api/login" || p === "/api/logout" || p === "/api/whoami") return true;
   if (p === "/api/contact" || p === "/api/diag") return true;
   if (p === "/manifest.json" || p.startsWith("/icons/")) return true;
