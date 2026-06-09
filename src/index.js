@@ -380,6 +380,12 @@ async function diag(env) {
       locations: lists.locations.length,
       serviceTypes: lists.serviceTypes.length,
     };
+    // Probe the tickets table two ways: a plain read, and the read with the
+    // foreign-key embeds the status page uses. If "plain" has rows but "embed"
+    // is null, the relationship embed is the thing failing.
+    const plain = await sbSelect(env, "tickets?select=id&order=created_at.desc");
+    const embed = await sbSelect(env, "tickets?select=id,client:clients(name),category:ticket_categories(name)&order=created_at.desc");
+    out.tickets = { plain: Array.isArray(plain) ? plain.length : null, embed: Array.isArray(embed) ? embed.length : null };
   }
   return noStore(out);
 }
@@ -1015,16 +1021,24 @@ async function listTickets(url, env) {
   }
   if (!showArchived) filter += "&status=neq.Archived";
 
-  const rows = await sbSelect(
+  let rows = await sbSelect(
     env,
     `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,category:ticket_categories(name),client:clients(name)${filter}&order=created_at.desc`
   );
+  // If the foreign-key embed fails (returns null), fall back to a plain read so
+  // tickets still show. Resolve client/category names from the cached refs.
+  let embedded = true;
+  if (rows === null) {
+    embedded = false;
+    rows = await sbSelect(env, `tickets?select=*${filter}&order=created_at.desc`);
+  }
+  const nameById = (arr, id) => { const m = (arr || []).find((x) => x.id === id); return m ? m.name : ""; };
   return json(
     (rows || []).map((t) => ({
       id: t.id,
       title: t.title || "Ticket",
-      category: (t.category && t.category.name) || "",
-      client: (t.client && t.client.name) || "",
+      category: embedded ? ((t.category && t.category.name) || "") : nameById(refs.cats, t.category_id),
+      client: embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id),
       status: t.status || "Open",
       description: t.description || "",
       ref: t.ref || "",
