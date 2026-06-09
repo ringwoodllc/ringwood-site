@@ -633,22 +633,32 @@ async function setVerified(request, env) {
 // in code. Clients come from the Clients table (anything not Churned); Location,
 // Equipment Type, and Service Type come from the Picklists table (Active rows,
 // ordered by Sort Order).
+// Best-effort per-isolate cache so /api/options hits Airtable at most once a
+// minute instead of on every page load + retry. This keeps us under Airtable's
+// 5 requests/sec per-base rate limit (the cause of the empty-list feedback loop).
+let _listsCache = null; // { t, data }
+function clearListsCache() { _listsCache = null; }
+
 async function getLists(env) {
+  if (_listsCache && Date.now() - _listsCache.t < 60000) return _listsCache.data;
   const out = { clients: [], types: [], locations: [], serviceTypes: [] };
   if (!env.AIRTABLE_TOKEN) return out;
   const headers = { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` };
-  const get = (table) =>
-    fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?pageSize=200`, { headers })
-      .then((r) => r.json())
-      .catch(() => null);
+  const get = async (table) => {
+    try {
+      const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?pageSize=200`, { headers });
+      if (!r.ok) return null; // includes 429 rate-limit responses
+      return await r.json();
+    } catch {
+      return null;
+    }
+  };
 
-  // All masters read in parallel so the response is as fast as the slowest one.
-  const [cd, ed, ld, sd] = await Promise.all([
-    get(CLIENTS_TABLE),
-    get(EQUIP_TABLE),
-    get(LOCATION_TABLE),
-    get(SERVICETYPE_TABLE),
-  ]);
+  // Read one table at a time to stay comfortably under the rate limit.
+  const cd = await get(CLIENTS_TABLE);
+  const ed = await get(EQUIP_TABLE);
+  const ld = await get(LOCATION_TABLE);
+  const sd = await get(SERVICETYPE_TABLE);
 
   if (cd && cd.records) {
     out.clients = cd.records
@@ -670,6 +680,10 @@ async function getLists(env) {
   out.types = names(ed);
   out.locations = names(ld);
   out.serviceTypes = names(sd);
+  // Cache only a good result, so a transient rate-limit isn't pinned for 60s.
+  if (out.clients.length || out.types.length || out.locations.length || out.serviceTypes.length) {
+    _listsCache = { t: Date.now(), data: out };
+  }
   return out;
 }
 
@@ -695,6 +709,13 @@ async function diag(env) {
   if (env.AIRTABLE_TOKEN) {
     await probe("clients", CLIENTS_TABLE);
     await probe("equipmentTypes", EQUIP_TABLE);
+    const lists = await getLists(env);
+    out.listsCounts = {
+      clients: lists.clients.length,
+      types: lists.types.length,
+      locations: lists.locations.length,
+      serviceTypes: lists.serviceTypes.length,
+    };
   }
   return new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
@@ -738,6 +759,7 @@ async function createClient(request, env) {
     if (!res.ok) {
       return json({ ok: false, error: data?.error?.message || "Could not add the client." }, 502);
     }
+    clearListsCache();
     return json({ ok: true, name });
   } catch {
     return json({ ok: false, error: "Could not reach the server." }, 502);
@@ -781,6 +803,7 @@ async function createPicklistValue(request, env) {
     if (!res.ok) {
       return json({ ok: false, error: data?.error?.message || "Could not add the option." }, 502);
     }
+    clearListsCache();
     return json({ ok: true, value });
   } catch {
     return json({ ok: false, error: "Could not reach the server." }, 502);
