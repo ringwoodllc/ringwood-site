@@ -260,28 +260,67 @@
   var locationSel = document.getElementById("location");
   var equipSel = document.getElementById("equipmentType");
   var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
+  var ADD_EQUIP = "<option value='__add'>＋ Add a type…</option>";
+  var ADD_LOC = "<option value='__add'>＋ Add a location…</option>";
 
   // All four lists are read live from Airtable. Equipment type and location
   // fall back to the hardcoded options if the request fails; clients come only
-  // from the Clients table (one source). The client menu also offers a "＋ Add
-  // a client" option so new clients are created from here, not in Airtable.
-  function fillSelect(sel, values, emptyLabel, addClient){
+  // from the Clients table (one source). Each menu offers a "＋ Add" option so
+  // new values are created from here, not in Airtable.
+  function fillSelect(sel, values, emptyLabel, addHtml){
+    addHtml = addHtml || "";
     if (!values || !values.length){
-      if (emptyLabel) sel.innerHTML = "<option value=''>" + emptyLabel + "</option>" + (addClient ? ADD_CLIENT : "");
+      if (emptyLabel) sel.innerHTML = "<option value=''>" + emptyLabel + "</option>" + addHtml;
       return;
     }
     var keep = sel.value;
     var html = "<option value=''>Select…</option>";
     values.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
-    if (addClient) html += ADD_CLIENT;
-    sel.innerHTML = html;
+    sel.innerHTML = html + addHtml;
     if (keep) sel.value = keep;
   }
   fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
-    fillSelect(clientSel, o.clients, "No clients yet", true);
-    fillSelect(equipSel, o.types);
-    fillSelect(locationSel, o.locations);
+    fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
+    fillSelect(equipSel, o.types, null, ADD_EQUIP);
+    fillSelect(locationSel, o.locations, null, ADD_LOC);
   }).catch(function(){ clientSel.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; });
+
+  // Reusable "＋ Add" for the Dropdown Lists (type, location). Builds an inline
+  // input under the select and writes the new value to the Dropdown Lists table.
+  function makeAdder(sel, listName, label){
+    var row = document.createElement("div");
+    row.style.cssText = "display:none;margin-top:10px";
+    row.innerHTML =
+      "<input type='text' autocomplete='off' placeholder='New " + label + "' />" +
+      "<div style='display:flex;gap:8px;margin-top:8px'>" +
+        "<button type='button' class='addOk' style='background:var(--green);color:#f6f2e8;border:none;border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer'>Add</button>" +
+        "<button type='button' class='addCancel' style='background:transparent;color:var(--green-deep);border:1px solid var(--line);border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer'>Cancel</button>" +
+      "</div><div class='addMsg' style='color:#8a3d1c;font-size:.86rem;margin-top:6px'></div>";
+    sel.parentNode.insertBefore(row, sel.nextSibling);
+    var input = row.querySelector("input"), okBtn = row.querySelector(".addOk"), cancelBtn = row.querySelector(".addCancel"), msg = row.querySelector(".addMsg");
+    sel.addEventListener("change", function(){
+      if (sel.value === "__add"){ row.style.display = "block"; msg.textContent = ""; input.focus(); }
+      else { row.style.display = "none"; }
+    });
+    cancelBtn.addEventListener("click", function(){ row.style.display = "none"; input.value = ""; msg.textContent = ""; sel.value = ""; });
+    okBtn.addEventListener("click", function(){
+      var name = input.value.trim(); msg.textContent = "";
+      if (!name){ msg.textContent = "Enter a value."; return; }
+      okBtn.disabled = true; okBtn.textContent = "Adding…";
+      fetch("/api/picklist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list: listName, value: name }) })
+        .then(function(r){ return r.json(); }).then(function(d){
+          okBtn.disabled = false; okBtn.textContent = "Add";
+          if (d && d.ok){
+            var nm = d.value || name, found = false;
+            for (var i = 0; i < sel.options.length; i++){ if (sel.options[i].value === nm){ found = true; break; } }
+            if (!found){ var op = document.createElement("option"); op.value = nm; op.textContent = nm; sel.insertBefore(op, sel.querySelector("option[value='__add']")); }
+            sel.value = nm; input.value = ""; row.style.display = "none";
+          } else { msg.textContent = (d && d.error) || "Could not add."; }
+        }).catch(function(){ okBtn.disabled = false; okBtn.textContent = "Add"; msg.textContent = "Couldn't reach the server."; });
+    });
+  }
+  makeAdder(equipSel, "Equipment Type", "type");
+  makeAdder(locationSel, "Location", "location");
 
   // ---- add a client without leaving the form ----
   var addClientRow = document.getElementById("addClientRow");
@@ -371,9 +410,9 @@
       manufacturer: document.getElementById("manufacturer").value,
       model: document.getElementById("model").value,
       serial: document.getElementById("serial").value,
-      equipmentType: equipSel.value,
+      equipmentType: equipSel.value === "__add" ? "" : equipSel.value,
       client: client,
-      location: locationSel.value,
+      location: locationSel.value === "__add" ? "" : locationSel.value,
       notes: document.getElementById("notes").value,
       overallPhoto: photos.overall,
       nameplatePhoto: photos.nameplate,

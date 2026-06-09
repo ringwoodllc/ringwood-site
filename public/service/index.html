@@ -155,19 +155,55 @@
   // Service Type list, read live from the Picklists master table (falls back to
   // the hardcoded options above if the request fails).
   var serviceTypeSel = document.getElementById("serviceType");
+  var ADD_SVC = "<option value='__add'>＋ Add a type…</option>";
   fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
     if (o && o.serviceTypes && o.serviceTypes.length){
       SERVICE_TYPES = o.serviceTypes;
       var keep = serviceTypeSel.value;
       var html = "<option value=''>Select…</option>";
       o.serviceTypes.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
-      serviceTypeSel.innerHTML = html;
+      serviceTypeSel.innerHTML = html + ADD_SVC;
       if (keep) serviceTypeSel.value = keep;
     }
     // Client filter comes only from the Clients table (one source).
     var cls = (o && o.clients) || [];
     cls.forEach(function(c){ var op=document.createElement("option"); op.value=c; op.textContent=c; clientFilter.appendChild(op); });
   }).catch(function(){ /* keep fallback */ });
+
+  // Reusable "＋ Add" that writes a new value to the Dropdown Lists table.
+  function makeAdder(sel, listName, label){
+    var row = document.createElement("div");
+    row.style.cssText = "display:none;margin-top:10px";
+    row.innerHTML =
+      "<input type='text' autocomplete='off' placeholder='New " + label + "' />" +
+      "<div style='display:flex;gap:8px;margin-top:8px'>" +
+        "<button type='button' class='addOk' style='background:var(--green);color:#f6f2e8;border:none;border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer'>Add</button>" +
+        "<button type='button' class='addCancel' style='background:transparent;color:var(--green-deep);border:1px solid var(--line);border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer'>Cancel</button>" +
+      "</div><div class='addMsg' style='color:#8a3d1c;font-size:.86rem;margin-top:6px'></div>";
+    sel.parentNode.insertBefore(row, sel.nextSibling);
+    var input = row.querySelector("input"), okBtn = row.querySelector(".addOk"), cancelBtn = row.querySelector(".addCancel"), msg2 = row.querySelector(".addMsg");
+    sel.addEventListener("change", function(){
+      if (sel.value === "__add"){ row.style.display = "block"; msg2.textContent = ""; input.focus(); }
+      else { row.style.display = "none"; }
+    });
+    cancelBtn.addEventListener("click", function(){ row.style.display = "none"; input.value = ""; msg2.textContent = ""; sel.value = ""; });
+    okBtn.addEventListener("click", function(){
+      var name = input.value.trim(); msg2.textContent = "";
+      if (!name){ msg2.textContent = "Enter a value."; return; }
+      okBtn.disabled = true; okBtn.textContent = "Adding…";
+      fetch("/api/picklist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list: listName, value: name }) })
+        .then(function(r){ return r.json(); }).then(function(d){
+          okBtn.disabled = false; okBtn.textContent = "Add";
+          if (d && d.ok){
+            var nm = d.value || name, found = false;
+            for (var i = 0; i < sel.options.length; i++){ if (sel.options[i].value === nm){ found = true; break; } }
+            if (!found){ var op = document.createElement("option"); op.value = nm; op.textContent = nm; sel.insertBefore(op, sel.querySelector("option[value='__add']")); }
+            sel.value = nm; input.value = ""; row.style.display = "none";
+          } else { msg2.textContent = (d && d.error) || "Could not add."; }
+        }).catch(function(){ okBtn.disabled = false; okBtn.textContent = "Add"; msg2.textContent = "Couldn't reach the server."; });
+    });
+  }
+  makeAdder(serviceTypeSel, "Service Type", "type");
 
   function renderAssets(){
     var f = (assetFilter.value || "").toLowerCase();
@@ -325,7 +361,7 @@
       assetId: assetId,
       assetName: assetName,
       serviceDate: document.getElementById("serviceDate").value,
-      serviceType: document.getElementById("serviceType").value,
+      serviceType: serviceTypeSel.value === "__add" ? "" : serviceTypeSel.value,
       technician: document.getElementById("technician").value,
       notes: document.getElementById("notes").value,
       cost: document.getElementById("cost").value,

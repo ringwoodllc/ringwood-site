@@ -80,6 +80,9 @@ export default {
     if (url.pathname === "/api/clients" && request.method === "POST") {
       return createClient(request, env);
     }
+    if (url.pathname === "/api/picklist" && request.method === "POST") {
+      return createPicklistValue(request, env);
+    }
     if (url.pathname === "/api/service/get" && request.method === "GET") {
       return getService(url, env);
     }
@@ -687,6 +690,49 @@ async function createClient(request, env) {
       return json({ ok: false, error: data?.error?.message || "Could not add the client." }, 502);
     }
     return json({ ok: true, name });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
+  }
+}
+
+// Add a value to a Dropdown List (Equipment Type / Location / Service Type)
+// from the forms. Reuses an existing value case-insensitively so the list
+// never grows duplicates. Easy to retire later by removing the form option.
+async function createPicklistValue(request, env) {
+  if (!env.AIRTABLE_TOKEN) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const list = (body.list || "").toString().trim();
+  const value = (body.value || "").toString().trim();
+  if (!["Equipment Type", "Location", "Service Type"].includes(list)) {
+    return json({ ok: false, error: "Unknown list." }, 400);
+  }
+  if (!value) return json({ ok: false, error: "Please enter a value." }, 400);
+
+  try {
+    const lists = await getLists(env);
+    const map = { "Equipment Type": lists.types, Location: lists.locations, "Service Type": lists.serviceTypes };
+    const existing = (map[list] || []).find((v) => v.toLowerCase() === value.toLowerCase());
+    if (existing) return json({ ok: true, value: existing, existed: true });
+  } catch {
+    /* fall through and try to create */
+  }
+
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${PICKLIST_TABLE}`, {
+      method: "POST",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields: { Value: value, List: list, Active: true, "Sort Order": 500 }, typecast: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return json({ ok: false, error: data?.error?.message || "Could not add the option." }, 502);
+    }
+    return json({ ok: true, value });
   } catch {
     return json({ ok: false, error: "Could not reach the server." }, 502);
   }
