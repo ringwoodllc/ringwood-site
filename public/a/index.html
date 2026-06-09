@@ -123,11 +123,11 @@
   if(cachedLists){ OPTIONS=cachedLists; if(cachedLists.serviceTypes&&cachedLists.serviceTypes.length) SERVICE_TYPES=cachedLists.serviceTypes; renderClientFilter(cachedLists.clients); }
   function loadLists(tries){
     tries=tries||0;
-    fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+    fetch("/api/options", { cache: "no-store" }).then(function(r){return r.json();}).then(function(o){
       o=o||{};
-      if((!o.clients||!o.clients.length) && tries<4){ setTimeout(function(){loadLists(tries+1);},1200); return; }
+      if((!o.clients||!o.clients.length) && tries<2){ setTimeout(function(){loadLists(tries+1);},700); return; }
       if(o.clients&&o.clients.length){ OPTIONS=o; if(o.serviceTypes&&o.serviceTypes.length) SERVICE_TYPES=o.serviceTypes; renderClientFilter(o.clients); writeCache(o); }
-    }).catch(function(){ if(tries<4) setTimeout(function(){loadLists(tries+1);},1200); });
+    }).catch(function(){ if(tries<2) setTimeout(function(){loadLists(tries+1);},700); });
   }
   loadLists();
   setInterval(function(){ loadLists(); }, 6*3600*1000);

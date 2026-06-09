@@ -187,14 +187,14 @@
 
   function loadServiceOptions(tries){
     tries = tries || 0;
-    fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
+    fetch("/api/options", { cache: "no-store" }).then(function(r){ return r.json(); }).then(function(o){
       o = o || {};
       var hasClients = o.clients && o.clients.length, hasTypes = o.serviceTypes && o.serviceTypes.length;
-      if (!hasClients && !hasTypes && tries < 4){ setTimeout(function(){ loadServiceOptions(tries + 1); }, 1200); return; }
+      if (!hasClients && !hasTypes && tries < 2){ setTimeout(function(){ loadServiceOptions(tries + 1); }, 700); return; }
       if (hasTypes) renderServiceTypes(o.serviceTypes);
       if (hasClients) renderClientFilter(o.clients);
       if (hasClients || hasTypes) writeCache({ serviceTypes: o.serviceTypes || cached.serviceTypes, clients: o.clients || cached.clients });
-    }).catch(function(){ if (tries < 4){ setTimeout(function(){ loadServiceOptions(tries + 1); }, 1200); } });
+    }).catch(function(){ if (tries < 2){ setTimeout(function(){ loadServiceOptions(tries + 1); }, 700); } });
   }
   loadServiceOptions();
   setInterval(function(){ loadServiceOptions(); }, 6 * 3600 * 1000);

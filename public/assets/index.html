@@ -303,11 +303,11 @@
 
   function loadOptions(tries){
     tries = tries || 0;
-    fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
+    fetch("/api/options", { cache: "no-store" }).then(function(r){ return r.json(); }).then(function(o){
       o = o || {};
-      if ((!o.clients || !o.clients.length) && tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); return; }
+      if ((!o.clients || !o.clients.length) && tries < 2){ setTimeout(function(){ loadOptions(tries + 1); }, 700); return; }
       if (o.clients && o.clients.length){ applyLists(o); writeCache(o); }
-    }).catch(function(){ if (tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); } });
+    }).catch(function(){ if (tries < 2){ setTimeout(function(){ loadOptions(tries + 1); }, 700); } });
   }
   loadOptions();
   setInterval(function(){ loadOptions(); }, 6 * 3600 * 1000);

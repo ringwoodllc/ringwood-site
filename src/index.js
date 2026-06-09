@@ -620,25 +620,27 @@ async function setVerified(request, env) {
 async function getLists(env) {
   const out = { clients: [], types: [], locations: [], serviceTypes: [] };
   if (!env.AIRTABLE_TOKEN) return out;
-  try {
-    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${CLIENTS_TABLE}?pageSize=200`, {
-      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
-    });
-    const d = await r.json();
-    out.clients = (d.records || [])
+  const headers = { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` };
+  const get = (table, qs) =>
+    fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?${qs}`, { headers })
+      .then((r) => r.json())
+      .catch(() => null);
+
+  // Both reads run in parallel so the response is as fast as the slower one.
+  const [cd, pd] = await Promise.all([
+    get(CLIENTS_TABLE, "pageSize=200"),
+    get(PICKLIST_TABLE, "pageSize=500"),
+  ]);
+
+  if (cd && cd.records) {
+    out.clients = cd.records
       .filter((x) => (x.fields["Status"] || "") !== "Churned")
       .map((x) => x.fields["Client Name"])
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
-  } catch {
-    /* leave clients empty */
   }
-  try {
-    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${PICKLIST_TABLE}?pageSize=500`, {
-      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
-    });
-    const d = await r.json();
-    const rows = (d.records || [])
+  if (pd && pd.records) {
+    const rows = pd.records
       .filter((x) => x.fields["Active"])
       .map((x) => ({ value: x.fields["Value"], list: x.fields["List"], sort: x.fields["Sort Order"] || 0 }))
       .filter((x) => x.value && x.list)
@@ -647,8 +649,6 @@ async function getLists(env) {
     out.types = pick("Equipment Type");
     out.locations = pick("Location");
     out.serviceTypes = pick("Service Type");
-  } catch {
-    /* leave picklists empty */
   }
   return out;
 }

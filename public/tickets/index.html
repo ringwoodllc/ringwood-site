@@ -189,7 +189,7 @@ function refresh() {
   updatePhotoNote();
 }
 
-fetch("/api/categories").then(function (r) { return r.json(); }).then(function (list) {
+fetch("/api/categories", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (list) {
   categoryEl.innerHTML = "<option value=''>Choose one</option>";
   for (var i = 0; i < list.length; i++) {
     var item = list[i];
@@ -225,11 +225,11 @@ function renderClients(clients) {
 renderClients(readClientsCache() || SEED_CLIENTS);
 function loadClients(tries) {
   tries = tries || 0;
-  fetch("/api/options").then(function (r) { return r.json(); }).then(function (o) {
+  fetch("/api/options", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (o) {
     var clients = (o && o.clients) || [];
-    if (!clients.length && tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); return; }
+    if (!clients.length && tries < 2) { setTimeout(function () { loadClients(tries + 1); }, 700); return; }
     if (clients.length) { renderClients(clients); writeClientsCache(clients); }
-  }).catch(function () { if (tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); } });
+  }).catch(function () { if (tries < 2) { setTimeout(function () { loadClients(tries + 1); }, 700); } });
 }
 loadClients();
 setInterval(function () { loadClients(); }, 6 * 3600 * 1000);
