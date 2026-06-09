@@ -1228,10 +1228,17 @@ async function listAssets(env, session) {
     const cid = findId(refs.clients, forced);
     filter = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
   }
-  const rows = await sbSelect(
+  let rows = await sbSelect(
     env,
-    `assets?select=id,name,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
+    `assets?select=id,name,description,make,model,serial,qr_tag,service_records(count),equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
   );
+  // If the count embed isn't supported, fall back to the plain list.
+  if (rows === null) {
+    rows = await sbSelect(
+      env,
+      `assets?select=id,name,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
+    );
+  }
   return json(
     (rows || []).map((x) => ({
       id: x.id,
@@ -1243,6 +1250,7 @@ async function listAssets(env, session) {
       make: x.make || "",
       serial: x.serial || "",
       qr: x.qr_tag || "",
+      services: (x.service_records && x.service_records[0] && x.service_records[0].count) || 0,
     }))
   );
 }
