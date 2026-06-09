@@ -56,6 +56,8 @@
   .pill.p-prog{background:#dfe9f4;color:#274a73}
   .pill.p-done{background:#e7e2d6;color:#6b675c}
   .pill.p-arch{background:#f0e0d4;color:#8a5a36}
+  .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .client-chip{font-size:.8rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:4px 11px;border-radius:999px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
   .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .qbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
   .qbtn:hover{border-color:var(--green)}
@@ -237,17 +239,18 @@
     if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets match.</div>"; countEl.textContent = ""; return; }
     countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s");
     listEl.innerHTML = rows.map(function(t){
-      var meta = [t.client, t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
+      var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
       var actions;
       if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
       else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
       else actions = (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
+      var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip'>" + esc(t.client) + "</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
         (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
         "<div class='actions'>" + actions + "</div>" +
-        "</div><span class='pill p-" + statusTok(t.status) + "'>" + esc(t.status) + "</span></div>";
+        "</div><div class='rcol'>" + clientChip + "<span class='pill p-" + statusTok(t.status) + "'>" + esc(t.status) + "</span></div></div>";
     }).join("");
   }
   loadAll();
