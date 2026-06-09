@@ -134,7 +134,7 @@
     </div>
 
     <div class="field">
-      <label for="location">Where is it? <span class="req">*</span></label>
+      <label for="location">Where is it? <span class="hint">— optional</span></label>
       <select id="location"><option value="">Loading…</option></select>
       <div id="addLocRow" style="display:none;margin-top:10px">
         <input id="newLoc" type="text" autocomplete="off" placeholder="New location" />
@@ -202,7 +202,7 @@ function updatePhotoNote() {
 }
 
 function refresh() {
-  var ok = clientValue() && categoryEl.value && noteEl.value.trim() && locationValue() && (needsPhoto() ? photoBase64 : true);
+  var ok = clientValue() && categoryEl.value && noteEl.value.trim() && (needsPhoto() ? photoBase64 : true);
   submitBtn.disabled = !ok;
   updatePhotoNote();
 }
