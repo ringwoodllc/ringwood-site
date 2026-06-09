@@ -325,6 +325,8 @@
   }
   var editKeep = [];   // existing photo URLs still kept
   var editNew = [];    // newly added {base64,contentType,preview}
+  var svcKeep = [];    // service editor: kept photo URLs
+  var svcNew = [];     // service editor: newly added photos
   function renderEditThumbs(){
     var el=document.getElementById("editthumbs"); if(!el) return;
     var html = editKeep.map(function(u,i){
@@ -397,6 +399,8 @@
     view.innerHTML="<div class='state'>Loading…</div>";
     fetch("/api/service/get?id="+encodeURIComponent(sid)).then(function(r){return r.json();}).then(function(s){
       if(!s||!s.ok){ renderRead(curAsset); return; }
+      svcKeep = (s.photos && s.photos.length) ? s.photos.slice() : [];
+      svcNew = [];
       var typeOpts = SERVICE_TYPES.map(function(t){ return "<option"+(s.type===t?" selected":"")+">"+t+"</option>"; }).join("");
       view.innerHTML =
         "<div class='titlerow'><h1 class='assetname'>Edit service</h1></div>"+
@@ -407,14 +411,36 @@
         "<div class='field'><label>Technician</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
         "<div class='field'><label>Notes</label><textarea id='s_notes'>"+esc(s.notes)+"</textarea></div>"+
         "<div class='field'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
+        "<div class='field'><label>Photos</label><div id='svcthumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px'></div>"+
+          "<input type='file' id='svcfile' accept='image/*' multiple capture='environment' /></div>"+
         "<div class='btnrow'><button class='btn' id='svcSave' type='button'>Save</button><button class='btn ghost' id='svcBack' type='button'>Back</button></div>";
       document.getElementById("svcBack").addEventListener("click", function(){ renderRead(curAsset); });
       document.getElementById("svcSave").addEventListener("click", function(){ saveService(sid); });
+      renderSvcThumbs();
+      document.getElementById("svcfile").addEventListener("change", function(e){
+        var files=Array.prototype.slice.call(e.target.files||[]); e.target.value="";
+        Promise.all(files.map(processPhoto)).then(function(arr){ arr.forEach(function(p){ svcNew.push(p); }); renderSvcThumbs(); })
+          .catch(function(){ document.getElementById("svcmsg").textContent="Couldn't read one of the photos."; });
+      });
     }).catch(function(){ renderRead(curAsset); });
   };
+  function renderSvcThumbs(){
+    var el=document.getElementById("svcthumbs"); if(!el) return;
+    var html = svcKeep.map(function(u,i){
+      return "<span style='position:relative;display:inline-block'><img src='"+esc(u)+"' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/>"+
+        "<button type='button' onclick='__svcRmKeep("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
+    }).join("");
+    html += svcNew.map(function(p,i){
+      return "<span style='position:relative;display:inline-block'><img src='"+p.preview+"' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/>"+
+        "<button type='button' onclick='__svcRmNew("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
+    }).join("");
+    el.innerHTML = html || "<span class='sub' style='color:var(--muted)'>No photos yet.</span>";
+  }
+  window.__svcRmKeep=function(i){ svcKeep.splice(i,1); renderSvcThumbs(); };
+  window.__svcRmNew=function(i){ svcNew.splice(i,1); renderSvcThumbs(); };
   function saveService(sid){
     var b=document.getElementById("svcSave"); b.disabled=true; b.textContent="Saving…";
-    var payload={ id:sid, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value };
+    var payload={ id:sid, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value, keepPhotos:svcKeep, addPhotos:svcNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent=(d&&d.error)||"Save failed."; }
     }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent="Couldn't reach the server."; });

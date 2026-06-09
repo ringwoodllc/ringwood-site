@@ -49,7 +49,7 @@ export default {
     if (url.pathname === "/api/clients" && request.method === "POST") return createClient(request, env);
     if (url.pathname === "/api/picklist" && request.method === "POST") return createPicklistValue(request, env);
     if (url.pathname === "/api/service/get" && request.method === "GET") return getService(url, env);
-    if (url.pathname === "/api/service/update" && request.method === "POST") return updateService(request, env);
+    if (url.pathname === "/api/service/update" && request.method === "POST") return updateService(request, env, session);
     if (url.pathname === "/api/assets/get" && request.method === "GET") return getAsset(url, env);
     if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env);
@@ -1102,7 +1102,7 @@ async function createService(request, env, ctx, session) {
 async function getService(url, env) {
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
-  const rows = await sbSelect(env, `service_records?id=eq.${id}&select=service_date,technician,notes,cost,service_type:service_types(name)`);
+  const rows = await sbSelect(env, `service_records?id=eq.${id}&select=service_date,technician,notes,cost,photo_urls,service_type:service_types(name)`);
   const f = rows && rows[0];
   if (!f) return json({ ok: false }, 404);
   return json({
@@ -1113,10 +1113,11 @@ async function getService(url, env) {
     technician: f.technician || "",
     notes: f.notes || "",
     cost: f.cost != null ? f.cost : "",
+    photos: f.photo_urls || [],
   });
 }
 
-async function updateService(request, env) {
+async function updateService(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   let body;
   try {
@@ -1126,6 +1127,7 @@ async function updateService(request, env) {
   }
   const id = (body.id || "").trim();
   if (!id) return json({ ok: false, error: "No id." }, 400);
+  if (!(await ownsRecord(env, session, "service_records", id))) return json({ ok: false, error: "Not found." }, 404);
   const c = (v) => (v == null ? "" : v.toString().trim());
   const refs = await getRefs(env);
   const patch = {};
@@ -1137,8 +1139,34 @@ async function updateService(request, env) {
     const n = body.cost === "" || body.cost == null ? null : Number(body.cost);
     patch.cost = n != null && !isNaN(n) ? n : null;
   }
-  const res = await sbUpdate(env, "service_records", id, patch);
-  if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
+  // Rebuild photos only when they actually changed (keep + new uploads).
+  const hasKeep = Array.isArray(body.keepPhotos);
+  const hasAdd = Array.isArray(body.addPhotos) && body.addPhotos.length;
+  let photoPatch = null;
+  if (hasKeep || hasAdd) {
+    const cur = await sbSelect(env, `service_records?id=eq.${id}&select=photo_urls`);
+    const current = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls : [];
+    let urls = hasKeep ? body.keepPhotos.filter(Boolean) : current.slice();
+    if (hasAdd) {
+      for (let i = 0; i < body.addPhotos.length; i++) {
+        const p = body.addPhotos[i];
+        if (!p || !p.base64) continue;
+        const u = await uploadToStorage(env, `service/${id}/add-${Date.now()}-${i}.jpg`, p.base64, p.contentType);
+        if (u) urls.push(u);
+      }
+    }
+    const changed = hasAdd || urls.length !== current.length || urls.some((u, i) => u !== current[i]);
+    if (changed) photoPatch = { photo_urls: urls };
+  }
+
+  if (Object.keys(patch).length) {
+    const res = await sbUpdate(env, "service_records", id, patch);
+    if (!res.ok) return json({ ok: false, error: ("Save failed. " + (res.error || "")).slice(0, 300) }, 502);
+  }
+  if (photoPatch) {
+    const res2 = await sbUpdate(env, "service_records", id, photoPatch);
+    if (!res2.ok) return json({ ok: false, error: ("Saved the details, but the photos did not update. " + (res2.error || "")).slice(0, 300) }, 502);
+  }
   return json({ ok: true });
 }
 
