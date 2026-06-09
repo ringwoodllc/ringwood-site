@@ -71,8 +71,9 @@
 
   <h2>Add a login</h2>
   <div class="panel">
-    <div class="field"><label>Email</label><input id="n_email" type="email" inputmode="email" autocomplete="off" placeholder="name@client.com" /></div>
-    <div class="field"><label>Username <span style="font-weight:400;color:var(--muted)">— optional, a simple sign-in name</span></label><input id="n_username" type="text" autocomplete="off" placeholder="e.g. moment" /></div>
+    <div class="lead" style="margin:-6px 0 12px">Enter an email or a username (or both). They sign in with whichever you set.</div>
+    <div class="field"><label>Email <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_email" type="email" inputmode="email" autocomplete="off" placeholder="name@client.com" /></div>
+    <div class="field"><label>Username <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_username" type="text" autocomplete="off" placeholder="e.g. moment" /></div>
     <div class="row3">
       <div class="field"><label>Role</label><select id="n_role"><option value="client">Client</option><option value="master">Master (all clients)</option></select></div>
       <div class="field" id="n_clientwrap"><label>Client</label><select id="n_client"><option value="">Select…</option></select></div>
@@ -144,9 +145,9 @@
     us.forEach(function(u){ wireUser(u); });
   }
 
-  function ukey(email){ return btoa(email).replace(/=/g,""); }
+  function ukey(s){ return btoa(s).replace(/[^A-Za-z0-9]/g,""); }
   function renderUser(u){
-    var k = ukey(u.email);
+    var k = ukey(u.id);
     var isMaster = u.role === "master";
     var roleTag = "<span class='urole "+(isMaster?"":"client")+(u.active?"":" off")+"'>"+(u.active?(isMaster?"Master":"Client"):"Disabled")+"</span>";
     var sum = [];
@@ -155,10 +156,12 @@
     if(!u.active) sum.push("disabled");
     var head =
       "<div class='usum' onclick=\"toggleUser('"+k+"')\">"+
-        "<div><div class='um'>"+esc(u.email)+"</div><div class='us'>"+esc(sum.join(" · "))+"</div></div>"+
+        "<div><div class='um'>"+esc(u.email || (u.username?("@"+u.username):"(login)"))+"</div><div class='us'>"+esc(sum.join(" · "))+"</div></div>"+
         "<div style='display:flex;align-items:center;gap:10px'>"+roleTag+"<span class='caret'>›</span></div>"+
       "</div>";
-    var ed = "<div class='field'><label>Username <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='un_"+k+"' type='text' autocomplete='off' value='"+esc(u.username||"")+"' placeholder='e.g. moment' /></div>";
+    var ed =
+      "<div class='field'><label>Email <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='em_"+k+"' type='email' inputmode='email' autocomplete='off' value='"+esc(u.email||"")+"' placeholder='name@client.com' /></div>"+
+      "<div class='field'><label>Username <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='un_"+k+"' type='text' autocomplete='off' value='"+esc(u.username||"")+"' placeholder='e.g. moment' /></div>";
     if(!isMaster){
       ed +=
         "<div class='field'><label>Client</label><select id='c_"+k+"'>"+clientOpts(u.client)+"</select></div>"+
@@ -189,10 +192,12 @@
   };
 
   function wireUser(u){
-    var k = ukey(u.email), email = u.email, isMaster = u.role === "master";
+    var k = ukey(u.id), key = u.key || u.email, isMaster = u.role === "master";
     document.getElementById("sv_"+k).addEventListener("click", function(){
       var sv = this, msg = document.getElementById("m_"+k); msg.className="msg";
-      var payload = { email: email, role: u.role, username: document.getElementById("un_"+k).value.trim() };
+      var em = document.getElementById("em_"+k).value.trim(), un = document.getElementById("un_"+k).value.trim();
+      if(!em && !un){ msg.className="msg err"; msg.textContent="Enter an email or a username."; return; }
+      var payload = { id: u.id, role: u.role, email: em, username: un };
       if(!isMaster){
         payload.client = document.getElementById("c_"+k).value;
         payload.active = document.getElementById("ac_"+k).checked;
@@ -207,10 +212,10 @@
         }).catch(function(){ sv.disabled=false; sv.textContent="Save"; msg.className="msg err"; msg.textContent="Couldn't reach the server."; });
     });
     document.getElementById("pw_"+k).addEventListener("click", function(){
-      var pw = prompt("New password for "+email+" (at least 8 characters):");
+      var pw = prompt("New password (at least 8 characters):");
       if (pw == null) return;
       var msg = document.getElementById("m_"+k); msg.className="msg";
-      fetch("/api/admin/user/password",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:email,password:pw})})
+      fetch("/api/admin/user/password",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:key,password:pw})})
         .then(function(r){return r.json();}).then(function(d){
           if(d&&d.ok){ msg.className="msg ok"; msg.textContent="Password updated."; }
           else { msg.className="msg err"; msg.textContent=(d&&d.error)||"Could not set password."; }
@@ -222,7 +227,7 @@
       var client = document.getElementById("c_"+k).value;
       if(!client){ msg.className="msg err"; msg.textContent="Set a client first."; return; }
       ml.disabled=true; ml.textContent="…";
-      fetch("/api/admin/token",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:email,client:client})})
+      fetch("/api/admin/token",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:key,client:client})})
         .then(function(r){return r.json();}).then(function(d){
           ml.disabled=false; ml.textContent="Magic link";
           if(d&&d.ok){ var lk=document.getElementById("lk_"+k); lk.style.display="block"; lk.innerHTML=esc(d.url)+" <button class='btn sm' style='margin-left:6px' type='button' onclick=\"copyText('"+esc(d.url)+"',this)\">Copy</button>"; }
@@ -245,7 +250,7 @@
       client:document.getElementById("n_client").value,
       password:document.getElementById("n_pw").value,
       perms:{ tickets:document.getElementById("n_p_tickets").value, assets:document.getElementById("n_p_assets").value, service:document.getElementById("n_p_service").value } };
-    if(!payload.email){ msg.className="msg err"; msg.textContent="Enter an email."; return; }
+    if(!payload.email && !payload.username){ msg.className="msg err"; msg.textContent="Enter an email or a username."; return; }
     if(role==="client" && !payload.client){ msg.className="msg err"; msg.textContent="Pick a client."; return; }
     b.disabled=true; b.textContent="Adding…";
     fetch("/api/admin/user",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})

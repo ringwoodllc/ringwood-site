@@ -339,13 +339,18 @@ function cleanPerms(p) {
   return out;
 }
 
+// Emails we synthesize for username-only logins (hidden from the UI).
+const SYNTH_DOMAIN = "@id.ringwood.ai";
+
 async function adminListUsers(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "app_users?select=email,username,role,active,perms,client:clients(name)&order=role.desc,email");
+  const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,perms,client:clients(name)&order=role.desc,email");
   return noStore({
     ok: true,
     users: (rows || []).map((u) => ({
-      email: u.email,
+      id: u.id,
+      key: u.email, // real email, for password reset / magic link
+      email: (u.email || "").endsWith(SYNTH_DOMAIN) ? "" : u.email, // hide synthesized emails
       username: u.username || "",
       role: u.role,
       client: (u.client && u.client.name) || "",
@@ -355,7 +360,9 @@ async function adminListUsers(request, env) {
   });
 }
 
-// Create or update a login: client, role, per-area perms, active. Optional password.
+// Create or update a login. Identify by id (so the email can change). Needs an
+// email OR a username (or both); a username-only login gets a hidden synthetic
+// email so the rest of the system has a stable key.
 async function adminSaveUser(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
   let body;
@@ -364,14 +371,16 @@ async function adminSaveUser(request, env) {
   } catch {
     return json({ ok: false, error: "Bad request." }, 400);
   }
-  const email = (body.email || "").toString().trim().toLowerCase();
-  if (!email || email.indexOf("@") < 0) return json({ ok: false, error: "Enter a valid email." }, 400);
+  const id = (body.id || "").toString().trim();
+  let email = (body.email || "").toString().trim().toLowerCase();
+  const username = (body.username || "").toString().trim().toLowerCase().replace(/\s+/g, "");
+  if (email && email.indexOf("@") < 0) return json({ ok: false, error: "Enter a valid email." }, 400);
+  if (!email && !username) return json({ ok: false, error: "Enter an email or a username." }, 400);
+  if (!email) email = username + SYNTH_DOMAIN; // username-only: hidden internal key
+
   const role = body.role === "master" ? "master" : "client";
-  const patch = { email, role, perms: cleanPerms(body.perms || {}) };
-  if ("username" in body) {
-    const un = (body.username || "").toString().trim().toLowerCase().replace(/\s+/g, "");
-    patch.username = un || null;
-  }
+  const patch = { email, role, username: username || null };
+  if ("perms" in body) patch.perms = cleanPerms(body.perms || {});
   if ("active" in body) patch.active = body.active !== false;
   if (role === "client") {
     const clientName = (body.client || "").toString().trim();
@@ -383,17 +392,24 @@ async function adminSaveUser(request, env) {
     patch.client_id = null;
   }
 
-  const existing = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=id`);
-  if (existing && existing.length) {
-    const res = await sbUpdate(env, "app_users", existing[0].id, patch);
-    if (!res.ok) return json({ ok: false, error: "Could not update the login." }, 502);
+  // Update by id (lets the email change); otherwise fall back to matching email.
+  let row = null;
+  if (id) {
+    const r = await sbSelect(env, `app_users?id=eq.${encodeURIComponent(id)}&select=id`);
+    row = r && r[0];
+  } else {
+    const r = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=id`);
+    row = r && r[0];
+  }
+  if (row) {
+    const res = await sbUpdate(env, "app_users", row.id, patch);
+    if (!res.ok) return json({ ok: false, error: "Could not update the login. The email or username may already be in use." }, 502);
     return json({ ok: true, updated: true });
   }
-  // New login: set a password if given, otherwise a random one (magic-link only).
   const pw = (body.password || "").toString();
   patch.password_hash = await hashPassword(pw.length >= 8 ? pw : randomToken());
   const ins = await sbInsert(env, "app_users", patch);
-  if (!ins.ok) return json({ ok: false, error: "Could not create the login." }, 502);
+  if (!ins.ok) return json({ ok: false, error: "Could not create the login. The email or username may already be in use." }, 502);
   return json({ ok: true, created: true });
 }
 

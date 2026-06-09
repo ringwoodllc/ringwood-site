@@ -132,9 +132,11 @@
   var clientSel = document.getElementById("client");
   var topicSel = document.getElementById("topic");
   var statusSel = document.getElementById("status");
-  // A client login only sees its own tickets, so hide the client filter.
+  // A client login only sees its own tickets, so hide the client filter and the
+  // Client field in the editor.
+  var IS_CLIENT = false;
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
-    if (w && w.ok && w.role === "client"){ var f = clientSel.closest(".field"); if (f) f.style.display = "none"; }
+    if (w && w.ok && w.role === "client"){ IS_CLIENT = true; var f = clientSel.closest(".field"); if (f) f.style.display = "none"; }
   }).catch(function(){});
   var listEl = document.getElementById("list");
   var editWrap = document.getElementById("editWrap");
@@ -278,7 +280,7 @@
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
         "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
         "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
-        "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
+        (IS_CLIENT ? "" : "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>") +
         "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
         "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
         "<div class='field'><label>Description</label>" +
@@ -346,10 +348,11 @@
     document.getElementById("e_back").addEventListener("click", render);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
+      var ecl = document.getElementById("e_client");
       var payload = {
         id: t.id,
         status: document.getElementById("e_status").value,
-        client: document.getElementById("e_client").value,
+        client: ecl ? ecl.value : undefined,
         category: document.getElementById("e_cat").value,
         location: document.getElementById("e_loc").value,
         description: document.getElementById("e_desc").value,

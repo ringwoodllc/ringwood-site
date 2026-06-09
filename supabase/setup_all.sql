@@ -1,12 +1,9 @@
 -- ============================================================
 -- Ringwood — ONE-SHOT SETUP. Run this whole file once in the
--- Supabase SQL Editor (Dashboard -> SQL Editor -> New query ->
--- paste everything -> Run). Safe to re-run; it skips what exists.
--- It creates all tables, the login accounts, the magic-link
--- table, and sample data, in the correct order.
+-- Supabase SQL Editor. Safe to re-run; it skips what exists.
 -- ============================================================
 
--- ===== 1) Core schema (tables, relationships, master lists) =====
+-- ===== 1) Core schema =====
 -- Ringwood backend schema for Supabase (Postgres)
 -- Run this once in the Supabase SQL editor (Dashboard -> SQL Editor -> New query -> paste -> Run).
 -- It creates every table, the relationships (foreign keys), seeds the master
@@ -180,7 +177,7 @@ alter table tickets          enable row level security;
 alter table service_records  enable row level security;
 alter table contacts         enable row level security;
 
--- ===== 2) Login accounts (master + sample client) =====
+-- ===== 2) Login accounts =====
 -- Login accounts for the app. The worker verifies passwords against this table
 -- (PBKDF2) and issues a signed session carrying the role and client scope.
 -- A 'master' sees every client. A 'client' login only sees its own data.
@@ -232,15 +229,19 @@ select 'moment@ringwood.ai', 'pbkdf2$100000$K-O6lBbWhR4msyZXj0Fx1w$yE5uPxHd-HnFK
 
 create table if not exists login_tokens (
   token text primary key,
-  user_email text not null references app_users(email) on delete cascade,
+  user_email text not null references app_users(email) on update cascade on delete cascade,
   label text,
   expires_at timestamptz,
   revoked boolean not null default false,
   created_at timestamptz not null default now()
 );
 alter table login_tokens enable row level security;
+-- Allow editing a login's email without breaking its magic links:
+alter table login_tokens drop constraint if exists login_tokens_user_email_fkey;
+alter table login_tokens add constraint login_tokens_user_email_fkey
+  foreign key (user_email) references app_users(email) on update cascade on delete cascade;
 
--- ===== 4) Sample QR assets (QR-1/2/3) =====
+-- ===== 4) Sample QR assets =====
 -- Three sample assets with QR tags (QR-1, QR-2, QR-3) so you can demo the
 -- "scan a code, jump straight to the asset" flow without printing anything yet.
 -- Run once: Supabase SQL Editor -> New query -> paste -> Run. Skips ones already there.
