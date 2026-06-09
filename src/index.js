@@ -694,15 +694,17 @@ async function getLists(env) {
 // Safe diagnostic: tells us whether the token is present and what the Airtable
 // reads return, without ever exposing the token itself.
 async function diag(env) {
-  const out = { hasToken: !!env.AIRTABLE_TOKEN, base: ASSET_BASE_ID };
+  const out = { hasToken: !!env.AIRTABLE_TOKEN, base: ASSET_BASE_ID, clientsTable: CLIENTS_TABLE, equipTable: EQUIP_TABLE };
   if (env.AIRTABLE_TOKEN) {
-    const lists = await getLists(env); // only these 4 reads, so diag matches /api/options
-    out.listsCounts = {
-      clients: lists.clients.length,
-      types: lists.types.length,
-      locations: lists.locations.length,
-      serviceTypes: lists.serviceTypes.length,
-    };
+    const headers = { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` };
+    try {
+      const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${CLIENTS_TABLE}?pageSize=2`, { headers });
+      out.clientsStatus = r.status;
+      const d = await r.json();
+      out.clientsBody = d; // raw response: records + field keys, or the error
+    } catch (e) {
+      out.clientsFetchError = String(e);
+    }
   }
   return new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
