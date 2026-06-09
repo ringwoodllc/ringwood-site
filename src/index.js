@@ -1104,7 +1104,8 @@ async function listTickets(url, env) {
         created: x.createdTime || "",
       };
     });
-    if (client) rows = rows.filter((t) => (t.client || "").toLowerCase() === client.toLowerCase());
+    if (client === "__unassigned") rows = rows.filter((t) => !t.client);
+    else if (client) rows = rows.filter((t) => (t.client || "").toLowerCase() === client.toLowerCase());
     if (!showArchived) rows = rows.filter((t) => t.status !== "Archived");
     rows.sort((a, b) => (a.created < b.created ? 1 : -1));
     return Response.json(rows);
@@ -1128,6 +1129,7 @@ async function updateTicket(request, env) {
   if ("status" in body) fields[F_STATUS] = body.status;
   if ("category" in body) fields[F_CATEGORY] = body.category;
   if ("description" in body) fields[F_DESCRIPTION] = body.description;
+  if ("client" in body) fields[F_TICKET_CLIENT] = body.client;
   try {
     const res = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}/${id}`, {
       method: "PATCH",

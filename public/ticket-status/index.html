@@ -47,6 +47,9 @@
   .pill.Open{background:#e3efe7;color:var(--green-deep)}
   .pill.Closed{background:#e7e2d6;color:#6b675c}
   .pill.Archived{background:#f0e0d4;color:#8a5a36}
+  .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .qbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
+  .qbtn:hover{border-color:var(--green)}
   .empty{color:var(--muted);padding:18px 4px}
 
   .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:15px;border-radius:4px}
@@ -107,6 +110,7 @@
   var archToggle = document.getElementById("archToggle");
   var showArchived = false;
   var CATEGORIES = [];
+  var CLIENTS = [];
 
   function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
@@ -117,9 +121,11 @@
   function readClientsCache(){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); return (c&&c.data&&c.data.clients&&c.data.clients.length)?c.data.clients:null; }catch(e){ return null; } }
   function writeClientsCache(clients){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null")||{}; c.t=Date.now(); c.data=c.data||{}; c.data.clients=clients; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); }catch(e){} }
   function renderClients(clients){
+    CLIENTS = clients || [];
     var keep = clientSel.value;
     var html = "<option value=''>" + (clients&&clients.length?"Select a client":"No clients yet") + "</option>";
-    (clients||[]).forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
+    CLIENTS.forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
+    html += "<option value='__unassigned'>Unassigned</option>";
     clientSel.innerHTML = html;
     if(keep) clientSel.value = keep;
   }
@@ -152,26 +158,41 @@
       countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s") + " · " + open + " open";
       listEl.innerHTML = rows.map(function(t){
         var meta = [t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
+        var actions;
+        if (t.status === "Open") actions = qbtn("Close", t.id, "Closed") + qbtn("Archive", t.id, "Archived");
+        else if (t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
+        else actions = qbtn("Reopen", t.id, "Open");
         return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
           "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
           (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
           (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
+          "<div class='actions'>" + actions + "</div>" +
           "</div><span class='pill " + t.status + "'>" + t.status + "</span></div>";
       }).join("");
     }).catch(function(){ listEl.innerHTML = "<div class='empty'>Could not load tickets.</div>"; });
   }
+
+  function qbtn(label, id, status){
+    return "<button class='qbtn' onclick='event.stopPropagation(); quickStatus(\"" + id + "\",\"" + status + "\")'>" + label + "</button>";
+  }
+  window.quickStatus = function(id, status){
+    fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:id, status:status }) })
+      .then(function(r){return r.json();}).then(function(){ loadTickets(); }).catch(function(){ loadTickets(); });
+  };
 
   window.openEdit = function(t){
     listEl.innerHTML = "";
     countEl.textContent = "";
     var statusOpts = ["Open","Closed","Archived"].map(function(s){ return "<option" + (t.status===s?" selected":"") + ">" + s + "</option>"; }).join("");
     var catOpts = "<option value=''>Select…</option>" + CATEGORIES.map(function(c){ return "<option" + (t.category===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
+    var clientOpts = "<option value=''>— none —</option>" + CLIENTS.map(function(c){ return "<option" + (t.client===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
     editWrap.innerHTML =
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
-        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + esc(t.client) + (t.location?(" · " + esc(t.location)):"") + "</div>" +
+        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + (t.location?(" · " + esc(t.location)):"") + "</div>" +
         (t.photo ? "<img class='photo' src='" + esc(t.photo) + "' alt='' />" : "") +
         "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
+        "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
         "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
         "<div class='field'><label>Description</label><textarea id='e_desc'>" + esc(t.description) + "</textarea></div>" +
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
@@ -182,7 +203,7 @@
     document.getElementById("e_back").addEventListener("click", loadTickets);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
-      var payload = { id:t.id, status:document.getElementById("e_status").value, category:document.getElementById("e_cat").value, description:document.getElementById("e_desc").value };
+      var payload = { id:t.id, status:document.getElementById("e_status").value, client:document.getElementById("e_client").value, category:document.getElementById("e_cat").value, description:document.getElementById("e_desc").value };
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
           if(d&&d.ok){ loadTickets(); }
