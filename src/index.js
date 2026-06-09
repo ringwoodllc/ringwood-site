@@ -560,6 +560,15 @@ async function diag(env) {
     const byStatus = {};
     (Array.isArray(plain) ? plain : []).forEach((t) => { const s = t.status || "Open"; byStatus[s] = (byStatus[s] || 0) + 1; });
     out.tickets = { plain: Array.isArray(plain) ? plain.length : null, embed: Array.isArray(embed) ? embed.length : null, byStatus };
+    // Login readiness: are the accounts + token tables there?
+    const users = await sbSelect(env, "app_users?select=email,role");
+    const toks = await sbSelect(env, "login_tokens?select=token&limit=1");
+    out.auth = {
+      enforced: env.LOGIN_REQUIRED === "1",
+      users: Array.isArray(users) ? users.length : null, // null = app_users table missing (run setup_all.sql)
+      master: Array.isArray(users) ? users.filter((u) => u.role === "master").length : 0,
+      tokensTable: Array.isArray(toks),
+    };
   }
   return noStore(out);
 }
