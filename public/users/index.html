@@ -46,6 +46,14 @@
   .msg{font-size:.9rem;margin-top:10px;min-height:16px}
   .msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
   .linkbox{font-size:.78rem;color:var(--muted);word-break:break-all;background:var(--bg);border:1px dashed var(--line);border-radius:6px;padding:8px 10px;margin-top:10px;display:none}
+  .uitem{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden}
+  .usum{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;padding:14px 16px}
+  .usum:hover{background:rgba(33,68,58,.04)}
+  .usum .um{font-weight:600;color:var(--green-deep);word-break:break-all}
+  .usum .us{color:var(--muted);font-size:.82rem;margin-top:2px}
+  .caret{color:var(--muted);font-size:1.1rem;transition:transform .15s;display:inline-block}
+  .uitem.open .caret{transform:rotate(90deg)}
+  .ubody{padding:14px 16px 16px;border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -80,6 +88,7 @@
   </div>
 
   <h2>Existing logins</h2>
+  <input id="filter" type="text" autocomplete="off" placeholder="Search email, username, or client…" style="margin-bottom:12px" />
   <div id="list"><div class="lead">Loading…</div></div>
 </div>
 <script>
@@ -109,33 +118,49 @@
       document.getElementById("n_perms").style.display = client ? "flex" : "none";
     });
     document.getElementById("n_add").addEventListener("click", addLogin);
+    document.getElementById("filter").addEventListener("input", renderList);
     loadUsers();
   }
 
   function clientOpts(sel){ return "<option value=''>Select…</option>" + CLIENTS.map(function(c){ return "<option"+(c===sel?" selected":"")+">"+esc(c)+"</option>"; }).join(""); }
   function permSel(id, val){ var o=["none","view","edit"].map(function(p){ return "<option value='"+p+"'"+(p===val?" selected":"")+">"+(p==="none"?"None":p==="view"?"View":"Edit")+"</option>"; }).join(""); return "<select id='"+id+"'>"+o+"</select>"; }
 
+  var USERS = [];
   function loadUsers(){
     fetch("/api/admin/users").then(function(r){return r.json();}).then(function(d){
-      var list = document.getElementById("list");
-      var us = (d&&d.users)||[];
-      if(!us.length){ list.innerHTML = "<div class='lead'>No logins yet.</div>"; return; }
-      list.innerHTML = us.map(renderUser).join("");
-      us.forEach(function(u){ wireUser(u.email); });
+      USERS = (d&&d.users)||[];
+      renderList();
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='lead'>Could not load logins.</div>"; });
   }
+  function renderList(){
+    var list = document.getElementById("list");
+    var q = (document.getElementById("filter").value||"").trim().toLowerCase();
+    var us = USERS.filter(function(u){
+      if(!q) return true;
+      return (u.email+" "+(u.username||"")+" "+(u.client||"")+" "+u.role).toLowerCase().indexOf(q) >= 0;
+    });
+    if(!us.length){ list.innerHTML = "<div class='lead'>"+(USERS.length?"No logins match.":"No logins yet.")+"</div>"; return; }
+    list.innerHTML = us.map(renderUser).join("");
+    us.forEach(function(u){ wireUser(u); });
+  }
 
+  function ukey(email){ return btoa(email).replace(/=/g,""); }
   function renderUser(u){
-    var k = btoa(u.email).replace(/=/g,"");
+    var k = ukey(u.email);
     var isMaster = u.role === "master";
     var roleTag = "<span class='urole "+(isMaster?"":"client")+(u.active?"":" off")+"'>"+(u.active?(isMaster?"Master":"Client"):"Disabled")+"</span>";
-    var body =
-      "<div class='uhead'><span class='uemail'>"+esc(u.email)+"</span>"+roleTag+"</div>";
-    if (isMaster){
-      body += "<div class='lead' style='margin:0'>Full access to every client.</div>";
-    } else {
-      body +=
-        "<div class='field'><label>Username <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='un_"+k+"' type='text' autocomplete='off' value='"+esc(u.username||"")+"' placeholder='e.g. moment' /></div>"+
+    var sum = [];
+    if(u.username) sum.push("@"+u.username);
+    sum.push(isMaster ? "all clients" : (u.client || "no client set"));
+    if(!u.active) sum.push("disabled");
+    var head =
+      "<div class='usum' onclick=\"toggleUser('"+k+"')\">"+
+        "<div><div class='um'>"+esc(u.email)+"</div><div class='us'>"+esc(sum.join(" · "))+"</div></div>"+
+        "<div style='display:flex;align-items:center;gap:10px'>"+roleTag+"<span class='caret'>›</span></div>"+
+      "</div>";
+    var ed = "<div class='field'><label>Username <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='un_"+k+"' type='text' autocomplete='off' value='"+esc(u.username||"")+"' placeholder='e.g. moment' /></div>";
+    if(!isMaster){
+      ed +=
         "<div class='field'><label>Client</label><select id='c_"+k+"'>"+clientOpts(u.client)+"</select></div>"+
         "<div class='row3'>"+
           "<div class='field'><label>Tickets</label>"+permSel("pt_"+k,u.perms.tickets)+"</div>"+
@@ -143,33 +168,41 @@
           "<div class='field'><label>Service</label>"+permSel("ps_"+k,u.perms.service)+"</div>"+
         "</div>"+
         "<label class='chk'><input type='checkbox' id='ac_"+k+"' "+(u.active?"checked":"")+" /> Active (can sign in)</label>";
+    } else {
+      ed += "<div class='lead' style='margin:4px 0 0'>Master has full access to every client.</div>";
     }
-    body +=
+    ed +=
       "<div class='btns'>"+
-        (isMaster ? "" : "<button class='btn sm' id='sv_"+k+"' type='button'>Save</button>")+
+        "<button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
         "<button class='btn sm ghost' id='pw_"+k+"' type='button'>Reset password</button>"+
         (isMaster ? "" : "<button class='btn sm ghost' id='ml_"+k+"' type='button'>Magic link</button>")+
       "</div>"+
       "<div class='linkbox' id='lk_"+k+"'></div>"+
       "<div class='msg' id='m_"+k+"'></div>";
-    return "<div class='panel' data-email='"+esc(u.email)+"'>"+body+"</div>";
+    return "<div class='uitem' id='it_"+k+"'>"+head+"<div class='ubody' id='b_"+k+"' style='display:none'>"+ed+"</div></div>";
   }
+  window.toggleUser = function(k){
+    var it=document.getElementById("it_"+k), b=document.getElementById("b_"+k);
+    var open = b.style.display !== "none";
+    b.style.display = open ? "none" : "block";
+    it.classList.toggle("open", !open);
+  };
 
-  function wireUser(email){
-    var k = btoa(email).replace(/=/g,"");
-    var sv = document.getElementById("sv_"+k);
-    if (sv) sv.addEventListener("click", function(){
-      var msg = document.getElementById("m_"+k); msg.className="msg";
-      var payload = { email: email, role: "client",
-        username: document.getElementById("un_"+k).value.trim(),
-        client: document.getElementById("c_"+k).value,
-        active: document.getElementById("ac_"+k).checked,
-        perms: { tickets: document.getElementById("pt_"+k).value, assets: document.getElementById("pa_"+k).value, service: document.getElementById("ps_"+k).value } };
+  function wireUser(u){
+    var k = ukey(u.email), email = u.email, isMaster = u.role === "master";
+    document.getElementById("sv_"+k).addEventListener("click", function(){
+      var sv = this, msg = document.getElementById("m_"+k); msg.className="msg";
+      var payload = { email: email, role: u.role, username: document.getElementById("un_"+k).value.trim() };
+      if(!isMaster){
+        payload.client = document.getElementById("c_"+k).value;
+        payload.active = document.getElementById("ac_"+k).checked;
+        payload.perms = { tickets: document.getElementById("pt_"+k).value, assets: document.getElementById("pa_"+k).value, service: document.getElementById("ps_"+k).value };
+      }
       sv.disabled = true; sv.textContent="Saving…";
       fetch("/api/admin/user",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){
           sv.disabled=false; sv.textContent="Save";
-          if(d&&d.ok){ msg.className="msg ok"; msg.textContent="Saved. Changes apply next time they sign in."; }
+          if(d&&d.ok){ msg.className="msg ok"; msg.textContent="Saved."; loadUsers(); }
           else { msg.className="msg err"; msg.textContent=(d&&d.error)||"Could not save."; }
         }).catch(function(){ sv.disabled=false; sv.textContent="Save"; msg.className="msg err"; msg.textContent="Couldn't reach the server."; });
     });
