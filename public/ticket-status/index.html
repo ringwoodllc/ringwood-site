@@ -94,15 +94,27 @@
   <div class="intro">
     <div class="eyebrow">Ticket status</div>
     <h1>Tickets</h1>
-    <p>All tickets, newest first. Filter by client or topic. Open one to update it, close it, or archive it.</p>
+    <p>Open tickets by default, newest first. Use Status, Client, or Topic to filter. Open one to update it, move it along, or archive it.</p>
   </div>
 
-  <div style="display:flex;gap:10px">
-    <div class="field" style="flex:1">
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:150px">
+      <label for="status">Status</label>
+      <select id="status">
+        <option value="Open" selected>Open</option>
+        <option value="Scheduled">Scheduled</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Complete">Complete</option>
+        <option value="Archived">Archived</option>
+        <option value="__active">All active</option>
+        <option value="__all">All (incl. archived)</option>
+      </select>
+    </div>
+    <div class="field" style="flex:1;min-width:150px">
       <label for="client">Client</label>
       <select id="client"><option value="">All clients</option></select>
     </div>
-    <div class="field" style="flex:1">
+    <div class="field" style="flex:1;min-width:150px">
       <label for="topic">Topic</label>
       <select id="topic"><option value="">All topics</option></select>
     </div>
@@ -110,7 +122,6 @@
 
   <div class="toolbar">
     <div id="count" style="color:var(--muted);font-size:.9rem"></div>
-    <button id="archToggle" class="archbtn" type="button">Show archived</button>
   </div>
 
   <div id="list"></div>
@@ -120,11 +131,10 @@
 <script>
   var clientSel = document.getElementById("client");
   var topicSel = document.getElementById("topic");
+  var statusSel = document.getElementById("status");
   var listEl = document.getElementById("list");
   var editWrap = document.getElementById("editWrap");
   var countEl = document.getElementById("count");
-  var archToggle = document.getElementById("archToggle");
-  var showArchived = false;
   var CATEGORIES = [];
   var CLIENTS = [];
   var LOCATIONS = [];
@@ -204,17 +214,19 @@
   }
   function render(){
     editWrap.innerHTML = "";
-    var client = clientSel.value, topic = topicSel.value;
+    var client = clientSel.value, topic = topicSel.value, status = statusSel.value;
     var rows = ALL_TICKETS.filter(function(t){
-      if (!showArchived && t.status === "Archived") return false;
+      // Status filter: a specific status, all active (hide Archived), or everything.
+      if (status === "__all") { /* show all */ }
+      else if (status === "__active") { if (t.status === "Archived") return false; }
+      else { if (t.status !== status) return false; }
       if (client === "__unassigned") { if (t.client) return false; }
       else if (client) { if (t.client !== client) return false; }
       if (topic && t.category !== topic) return false;
       return true;
     });
     if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets match.</div>"; countEl.textContent = ""; return; }
-    var open = rows.filter(function(t){return t.status==="Open";}).length;
-    countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s") + " · " + open + " open";
+    countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s");
     listEl.innerHTML = rows.map(function(t){
       var meta = [t.client, t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
       var actions;
@@ -351,12 +363,7 @@
 
   clientSel.addEventListener("change", render);
   topicSel.addEventListener("change", render);
-  archToggle.addEventListener("click", function(){
-    showArchived = !showArchived;
-    archToggle.classList.toggle("on", showArchived);
-    archToggle.textContent = showArchived ? "Hide archived" : "Show archived";
-    render();
-  });
+  statusSel.addEventListener("change", render);
 </script>
 </body>
 </html>
