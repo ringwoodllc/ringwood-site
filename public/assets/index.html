@@ -290,7 +290,7 @@
     types: ["Office Equipment","HVAC","AV","Beverage","Refrigeration / Freezer","Other"],
     locations: ["Office","Conference Room","Kitchen / Break Room","Reception / Lobby","Hallway","Restroom","Storage / Closet","Server / IT Room","Mechanical Room","Basement","Rooftop","Attic","Exterior / Grounds","Garage / Parking","Other"]
   };
-  var CACHE_KEY = "rw_lists_v1";
+  var CACHE_KEY = "rw_lists_v2";
   function readCache(){ try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return (c && c.data) ? c.data : null; } catch(e){ return null; } }
   function writeCache(d){ try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), data: d })); } catch(e){} }
 

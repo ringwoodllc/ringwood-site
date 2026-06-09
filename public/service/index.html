@@ -161,7 +161,7 @@
   // A ~6h timer keeps the cached fallback fresh on its own.
   var SEED_SVC = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
   var SEED_CLIENTS = ["Bloom","Moment","Ridge","Robin","Summit","United"];
-  var CACHE_KEY = "rw_lists_v1";
+  var CACHE_KEY = "rw_lists_v2";
   function readCache(){ try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return (c && c.data) ? c.data : null; } catch(e){ return null; } }
   function writeCache(d){ try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null") || {}; c.t = Date.now(); c.data = Object.assign(c.data || {}, d); localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch(e){} }
 

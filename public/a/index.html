@@ -111,7 +111,7 @@
   // Lists from /api/options, with a resilient cache: render from the last good
   // values in this browser first, then refresh live (with retries) and update
   // the cache. A ~6h timer keeps the cached fallback fresh on its own.
-  var CACHE_KEY = "rw_lists_v1";
+  var CACHE_KEY = "rw_lists_v2";
   function readCache(){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); return (c&&c.data)?c.data:null; }catch(e){ return null; } }
   function writeCache(d){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(),data:d})); }catch(e){} }
   function renderClientFilter(clients){

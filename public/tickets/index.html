@@ -210,7 +210,7 @@ var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
 // this browser (or built-in seeds), then refresh live with retries and update
 // the cache. A ~6h timer keeps the cached fallback fresh on its own.
 var SEED_CLIENTS = ["Bloom", "Moment", "Ridge", "Robin", "Summit", "United"];
-var CACHE_KEY = "rw_lists_v1";
+var CACHE_KEY = "rw_lists_v2";
 function readClientsCache() {
   try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return (c && c.data && c.data.clients && c.data.clients.length) ? c.data.clients : null; } catch (e) { return null; }
 }

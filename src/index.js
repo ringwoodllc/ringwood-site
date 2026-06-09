@@ -670,7 +670,10 @@ async function getLists(env) {
 }
 
 async function optionsHandler(env) {
-  return Response.json(await getLists(env));
+  const data = await getLists(env);
+  return new Response(JSON.stringify(data), {
+    headers: { "content-type": "application/json", "cache-control": "no-store, max-age=0" },
+  });
 }
 
 // Add a client to the Clients table from the forms, so day-to-day work never
