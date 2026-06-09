@@ -77,6 +77,9 @@ export default {
     if (url.pathname === "/api/options" && request.method === "GET") {
       return optionsHandler(env);
     }
+    if (url.pathname === "/api/clients" && request.method === "POST") {
+      return createClient(request, env);
+    }
     if (url.pathname === "/api/service/get" && request.method === "GET") {
       return getService(url, env);
     }
@@ -649,6 +652,44 @@ async function getLists(env) {
 
 async function optionsHandler(env) {
   return Response.json(await getLists(env));
+}
+
+// Add a client to the Clients table from the forms, so day-to-day work never
+// needs Airtable. Reuses an existing client if the name already exists
+// (case-insensitive), so the one list never grows duplicates.
+async function createClient(request, env) {
+  if (!env.AIRTABLE_TOKEN) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const name = (body.name || "").toString().trim();
+  if (!name) return json({ ok: false, error: "Please enter a client name." }, 400);
+
+  try {
+    const lists = await getLists(env);
+    const existing = (lists.clients || []).find((c) => c.toLowerCase() === name.toLowerCase());
+    if (existing) return json({ ok: true, name: existing, existed: true });
+  } catch {
+    /* fall through and try to create */
+  }
+
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${CLIENTS_TABLE}`, {
+      method: "POST",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields: { "Client Name": name, Status: "Active" }, typecast: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return json({ ok: false, error: data?.error?.message || "Could not add the client." }, 502);
+    }
+    return json({ ok: true, name });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
+  }
 }
 
 // Map a typed value to an existing one when it matches case-insensitively, so

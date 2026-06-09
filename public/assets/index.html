@@ -103,6 +103,14 @@
       <select id="client">
         <option value="">Loading clients…</option>
       </select>
+      <div id="addClientRow" style="display:none;margin-top:10px">
+        <input id="newClient" type="text" autocomplete="off" placeholder="New client name" />
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button type="button" id="addClientBtn" style="background:var(--green);color:#f6f2e8;border:none;border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer">Add client</button>
+          <button type="button" id="cancelClientBtn" style="background:transparent;color:var(--green-deep);border:1px solid var(--line);border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer">Cancel</button>
+        </div>
+        <div id="addClientMsg" style="color:#8a3d1c;font-size:.86rem;margin-top:6px"></div>
+      </div>
     </div>
 
     <div class="group-label">Photos</div>
@@ -251,26 +259,61 @@
   var clientSel = document.getElementById("client");
   var locationSel = document.getElementById("location");
   var equipSel = document.getElementById("equipmentType");
+  var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
 
   // All four lists are read live from Airtable. Equipment type and location
   // fall back to the hardcoded options if the request fails; clients come only
-  // from the Clients table (one source), so there is no hardcoded fallback.
-  function fillSelect(sel, values, emptyLabel){
+  // from the Clients table (one source). The client menu also offers a "＋ Add
+  // a client" option so new clients are created from here, not in Airtable.
+  function fillSelect(sel, values, emptyLabel, addClient){
     if (!values || !values.length){
-      if (emptyLabel) sel.innerHTML = "<option value=''>" + emptyLabel + "</option>";
+      if (emptyLabel) sel.innerHTML = "<option value=''>" + emptyLabel + "</option>" + (addClient ? ADD_CLIENT : "");
       return;
     }
     var keep = sel.value;
     var html = "<option value=''>Select…</option>";
     values.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
+    if (addClient) html += ADD_CLIENT;
     sel.innerHTML = html;
     if (keep) sel.value = keep;
   }
   fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
-    fillSelect(clientSel, o.clients, "No clients found");
+    fillSelect(clientSel, o.clients, "No clients yet", true);
     fillSelect(equipSel, o.types);
     fillSelect(locationSel, o.locations);
-  }).catch(function(){ clientSel.innerHTML = "<option value=''>Could not load clients</option>"; });
+  }).catch(function(){ clientSel.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; });
+
+  // ---- add a client without leaving the form ----
+  var addClientRow = document.getElementById("addClientRow");
+  var newClient = document.getElementById("newClient");
+  var addClientBtn = document.getElementById("addClientBtn");
+  var cancelClientBtn = document.getElementById("cancelClientBtn");
+  var addClientMsg = document.getElementById("addClientMsg");
+
+  clientSel.addEventListener("change", function(){
+    if (clientSel.value === "__add"){ addClientRow.style.display = "block"; addClientMsg.textContent = ""; newClient.focus(); }
+    else { addClientRow.style.display = "none"; }
+  });
+  cancelClientBtn.addEventListener("click", function(){
+    addClientRow.style.display = "none"; newClient.value = ""; addClientMsg.textContent = ""; clientSel.value = "";
+  });
+  addClientBtn.addEventListener("click", function(){
+    var name = newClient.value.trim();
+    addClientMsg.textContent = "";
+    if (!name){ addClientMsg.textContent = "Enter a client name."; return; }
+    addClientBtn.disabled = true; addClientBtn.textContent = "Adding…";
+    fetch("/api/clients", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        addClientBtn.disabled = false; addClientBtn.textContent = "Add client";
+        if (d && d.ok){
+          var nm = d.name || name, found = false;
+          for (var i = 0; i < clientSel.options.length; i++){ if (clientSel.options[i].value === nm){ found = true; break; } }
+          if (!found){ var op = document.createElement("option"); op.value = nm; op.textContent = nm; clientSel.insertBefore(op, clientSel.querySelector("option[value='__add']")); }
+          clientSel.value = nm;
+          newClient.value = ""; addClientRow.style.display = "none";
+        } else { addClientMsg.textContent = (d && d.error) || "Could not add the client."; }
+      }).catch(function(){ addClientBtn.disabled = false; addClientBtn.textContent = "Add client"; addClientMsg.textContent = "Couldn't reach the server."; });
+  });
 
   var form = document.getElementById("assetForm");
   var submitBtn = document.getElementById("submitBtn");
@@ -322,7 +365,7 @@
 
   form.addEventListener("submit", function(e){
     e.preventDefault();
-    var client = clientSel.value;
+    var client = clientSel.value === "__add" ? "" : clientSel.value;
     var payload = {
       description: document.getElementById("description").value,
       manufacturer: document.getElementById("manufacturer").value,
