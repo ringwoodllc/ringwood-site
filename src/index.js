@@ -49,8 +49,23 @@ export default {
     // Ticket status page.
     if (url.pathname.startsWith("/t/") && env.ASSETS) return env.ASSETS.fetch(rewrite(url, "/ticket-status/", request));
 
-    // Each app's subdomain serves its form at the root.
+    // Unified app (one install, several buttons): the hub plus path-based
+    // sub-apps, all on one origin so navigation stays inside the app. These
+    // paths work on any host so the hub's buttons and relative links resolve.
+    const APP_PAGES = {
+      "/assets": "/assets/",
+      "/tickets": "/tickets/",
+      "/status": "/ticket-status/",
+      "/service": "/service/",
+      "/lookup": "/a/",
+      "/app": "/app/",
+    };
+    const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
+    if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
+
+    // Each app's subdomain serves its form at the root (app. -> the hub).
     if (env.ASSETS && (url.pathname === "/" || url.pathname === "")) {
+      if (sub === "app") return env.ASSETS.fetch(rewrite(url, "/app/", request));
       if (sub === "assets") return env.ASSETS.fetch(rewrite(url, "/assets/", request));
       if (sub === "tickets") return env.ASSETS.fetch(rewrite(url, "/tickets/", request));
       if (sub === "service") return env.ASSETS.fetch(rewrite(url, "/service/", request));
