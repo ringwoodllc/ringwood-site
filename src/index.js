@@ -1094,6 +1094,7 @@ async function getAssetFull(url, env, session) {
     status: a.verification || "Pending",
     aiReading: a.nameplate_reading || "",
     qr: a.qr_tag || "",
+    loggedAt: a.logged_at || "",
     photos: assetPhotos(a),
     overallPhoto: a.overall_photo_url || "",
     nameplatePhoto: a.nameplate_photo_url || "",

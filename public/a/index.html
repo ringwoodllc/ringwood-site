@@ -249,7 +249,8 @@
     var list = assetPhotoList(a);
     var photos = list.map(function(u){ return "<figure><img src='"+esc(u)+"' alt=''/></figure>"; }).join("");
     photos = photos?"<div class='photos'>"+photos+"</div>":"";
-    var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+"</dl></div>";
+    var added = a.loggedAt ? new Date(a.loggedAt).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) + " at " + new Date(a.loggedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}) : "";
+    var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+row("Logged",added)+"</dl></div>";
     var ai = a.aiReading?"<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>"+esc(a.aiReading)+"</div></div>":"";
     var hist;
     if(a.services && a.services.length){
