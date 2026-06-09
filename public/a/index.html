@@ -34,7 +34,17 @@
   textarea{min-height:62px;resize:vertical}
   select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
   select:focus,input:focus,textarea:focus{outline:none;border-color:var(--green)}
-  .or{text-align:center;color:var(--muted);font-size:.85rem;margin:12px 0}
+  .or{text-align:center;color:var(--muted);font-size:.85rem;margin:14px 0}
+  .assetlist{max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+  .arow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line);cursor:pointer}
+  .arow:last-child{border-bottom:none}
+  .arow:hover{background:var(--bg-2)}
+  .arow .an{font-weight:600;color:var(--green-deep);font-size:.98rem;word-break:break-word}
+  .arow .am{color:var(--muted);font-size:.82rem;margin-top:2px}
+  .arow .acl{flex:0 0 auto;color:var(--muted);font-size:.78rem;text-align:right;white-space:nowrap}
+  .assetlist .empty{color:var(--muted);padding:14px 13px;font-size:.92rem}
+  .qrchip{display:inline-block;background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font-size:.85rem;font-weight:600;cursor:pointer;margin:0 6px 6px 0}
+  .qrchip:hover{border-color:var(--green)}
   .qrrow{display:flex;gap:8px}
   .qrrow input{flex:1}
   .gobtn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1rem;padding:0 18px;border-radius:4px}
@@ -94,12 +104,16 @@
   <div class="eyebrow">Asset lookup</div>
   <div class="lookup">
     <h1>Find an asset</h1>
-    <div class="field"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
-    <label for="assetSel">Asset</label>
-    <select id="assetSel"><option value="">Loading assets…</option></select>
-    <div class="or">— or —</div>
-    <label for="qrInput">Paste an asset ID, QR code, or link</label>
-    <div class="qrrow"><input id="qrInput" type="text" autocomplete="off" placeholder="rec… or a scanned link" /><button class="gobtn" id="goBtn" type="button">View</button></div>
+    <div style="display:flex;gap:10px">
+      <div class="field" style="flex:1;margin-bottom:10px"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
+      <div class="field" style="flex:1;margin-bottom:10px"><label for="searchInput">Search</label><input id="searchInput" type="text" autocomplete="off" placeholder="Name, model, serial…" /></div>
+    </div>
+    <div id="assetCount" style="color:var(--muted);font-size:.86rem;margin-bottom:8px"></div>
+    <div id="assetList" class="assetlist"><div class="empty">Loading assets…</div></div>
+    <div class="or">— or scan / paste —</div>
+    <label for="qrInput">Asset ID, QR code, or link</label>
+    <div class="qrrow"><input id="qrInput" type="text" autocomplete="off" placeholder="QR-1, rec…, or a scanned link" /><button class="gobtn" id="goBtn" type="button">View</button></div>
+    <div id="qrSamples" style="margin-top:10px"></div>
   </div>
   <div id="view"></div>
 </main>
@@ -112,7 +126,7 @@
   var SERVICE_TYPES = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
   var OPTIONS = { types:[], locations:[], clients:[] };
 
-  var assetSel=document.getElementById("assetSel"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter");
+  var assetList=document.getElementById("assetList"), searchInput=document.getElementById("searchInput"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter"), assetCount=document.getElementById("assetCount"), qrSamples=document.getElementById("qrSamples");
   var allAssets=[], curAsset=null, curId="";
 
   // Lists from /api/options, with a resilient cache: render from the last good
@@ -141,20 +155,53 @@
 
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
     allAssets = Array.isArray(list)?list:[];
-    renderAssetOptions("");
-    var initial = parseId(new URLSearchParams(location.search).get("id") || location.pathname.replace(/^\/a\//,""));
-    if (initial && /^rec/.test(initial)){ assetSel.value=initial; load(initial); }
-  }).catch(function(){ assetSel.innerHTML="<option value=''>Could not load list</option>"; });
+    renderList();
+    renderSamples();
+    // Deep link: ?id=<uuid> loads directly; a QR tag resolves to its asset.
+    var raw = new URLSearchParams(location.search).get("id") || new URLSearchParams(location.search).get("qr") || location.pathname.replace(/^\/a\//,"");
+    var id = resolveRef(raw);
+    if (id && /^rec|^[0-9a-f]{8}-/.test(id)){ load(id); }
+  }).catch(function(){ assetList.innerHTML="<div class='empty'>Could not load assets.</div>"; });
 
-  function renderAssetOptions(client){
-    var arr = client ? allAssets.filter(function(a){ return a.client===client; }) : allAssets;
-    assetSel.innerHTML = "<option value=''>"+(arr.length?"Choose an asset":"No assets")+"</option>";
-    arr.forEach(function(a){ var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; assetSel.appendChild(o); });
+  // Turn a pasted value (uuid, /a/?id=, a QR tag like QR-1) into an asset id.
+  function resolveRef(raw){
+    var s=(raw||"").trim(); if(!s) return "";
+    var id=parseId(s);
+    var byQr=allAssets.find(function(a){ return a.qr && a.qr.toLowerCase()===s.toLowerCase(); });
+    if(byQr) return byQr.id;
+    var byQr2=allAssets.find(function(a){ return a.qr && a.qr.toLowerCase()===id.toLowerCase(); });
+    if(byQr2) return byQr2.id;
+    return id;
   }
-  clientFilter.addEventListener("change", function(){ renderAssetOptions(clientFilter.value); });
-  assetSel.addEventListener("change", function(){ if(assetSel.value) load(assetSel.value); });
-  document.getElementById("goBtn").addEventListener("click", function(){ var id=parseId(qrInput.value); if(id) load(id); });
-  qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=parseId(qrInput.value); if(id) load(id); } });
+
+  function renderList(){
+    var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase();
+    var arr=allAssets.filter(function(a){
+      if(client && a.client!==client) return false;
+      if(q){ var hay=[a.name,a.make,a.model,a.serial,a.type,a.location,a.qr].join(" ").toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      return true;
+    });
+    assetCount.textContent = allAssets.length ? (arr.length+" of "+allAssets.length+" asset"+(allAssets.length===1?"":"s")) : "";
+    if(!arr.length){ assetList.innerHTML="<div class='empty'>"+(allAssets.length?"No assets match.":"No assets yet.")+"</div>"; return; }
+    assetList.innerHTML = arr.map(function(a){
+      var meta=[a.make,a.model,a.serial?("SN "+a.serial):"",a.location].filter(Boolean).map(esc).join(" · ");
+      return "<div class='arow' onclick=\"load('"+esc(a.id)+"')\">"+
+        "<div><div class='an'>"+esc(a.name)+(a.qr?" <span class='acl'>("+esc(a.qr)+")</span>":"")+"</div>"+
+        (meta?"<div class='am'>"+meta+"</div>":"")+"</div>"+
+        (a.client?"<div class='acl'>"+esc(a.client)+"</div>":"")+"</div>";
+    }).join("");
+  }
+  function renderSamples(){
+    var withQr=allAssets.filter(function(a){ return a.qr; });
+    if(!withQr.length){ qrSamples.innerHTML=""; return; }
+    qrSamples.innerHTML="<div style='color:var(--muted);font-size:.82rem;margin-bottom:6px'>Sample QR codes (tap to open, like scanning):</div>"+
+      withQr.slice(0,6).map(function(a){ return "<span class='qrchip' onclick=\"load('"+esc(a.id)+"')\">"+esc(a.qr)+"</span>"; }).join("");
+  }
+
+  clientFilter.addEventListener("change", renderList);
+  searchInput.addEventListener("input", renderList);
+  document.getElementById("goBtn").addEventListener("click", function(){ var id=resolveRef(qrInput.value); if(id) load(id); });
+  qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=resolveRef(qrInput.value); if(id) load(id); } });
 
   function load(id){
     curId=id; view.innerHTML="<div class='state'>Loading asset…</div>";

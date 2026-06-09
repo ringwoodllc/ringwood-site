@@ -814,12 +814,21 @@ async function setVerified(request, env) {
 
 async function listAssets(env) {
   if (!sbReady(env)) return json([]);
-  const rows = await sbSelect(env, "assets?select=id,name,description,model,client:clients(name)&order=logged_at.desc");
+  const rows = await sbSelect(
+    env,
+    "assets?select=id,name,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)&order=logged_at.desc"
+  );
   return json(
     (rows || []).map((x) => ({
       id: x.id,
       name: x.name || x.description || x.model || "Asset",
       client: (x.client && x.client.name) || "",
+      type: (x.equipment_type && x.equipment_type.name) || "",
+      location: (x.location && x.location.name) || "",
+      model: x.model || "",
+      make: x.make || "",
+      serial: x.serial || "",
+      qr: x.qr_tag || "",
     }))
   );
 }
