@@ -1406,6 +1406,24 @@ async function createContact(request, env) {
 
 /* ===================== Tickets ===================== */
 
+// Work out the asset a ticket links to: an existing asset (id), a brand-new
+// minimal asset (newAssetName), or nothing. Returns the asset id or null.
+async function resolveTicketAsset(env, body, clientId, session) {
+  const assetId = (body.assetId || "").toString().trim();
+  const newName = (body.newAssetName || "").toString().trim();
+  if (assetId) {
+    if (!(await ownsRecord(env, session, "assets", assetId))) return null;
+    return assetId;
+  }
+  if (newName) {
+    const row = { name: newName, verification: "Pending", qr_tag: await genAssetKey(env) };
+    if (clientId) row.client_id = clientId;
+    const res = await sbInsert(env, "assets", row);
+    if (res.ok && res.data) return res.data.id;
+  }
+  return null;
+}
+
 async function createTicket(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Not connected yet." }, 503);
   if (!can(session, "tickets", "edit")) return deny("tickets");
@@ -1435,6 +1453,8 @@ async function createTicket(request, env, ctx, session) {
   const clId = findId(refs.clients, client);
   if (catId) row.category_id = catId;
   if (clId) row.client_id = clId;
+  const linkAsset = await resolveTicketAsset(env, body, clId, session);
+  if (linkAsset) row.asset_id = linkAsset;
 
   const res = await sbInsert(env, "tickets", row);
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the ticket." }, 502);
@@ -1531,7 +1551,7 @@ async function listTickets(url, env, session) {
 
   let rows = await sbSelect(
     env,
-    `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,category:ticket_categories(name),client:clients(name)${filter}&order=created_at.desc`
+    `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name)${filter}&order=created_at.desc`
   );
   // If the foreign-key embed fails (returns null), fall back to a plain read so
   // tickets still show. Resolve client/category names from the cached refs.
@@ -1547,6 +1567,8 @@ async function listTickets(url, env, session) {
       title: t.title || "Ticket",
       category: embedded ? ((t.category && t.category.name) || "") : nameById(refs.cats, t.category_id),
       client: embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id),
+      assetId: t.asset_id || "",
+      asset: embedded ? ((t.asset && t.asset.name) || "") : "",
       status: t.status || "Open",
       description: t.description || "",
       ref: t.ref || "",
@@ -1578,6 +1600,17 @@ async function updateTicket(request, env, session) {
   if ("location" in body) patch.location = body.location;
   if ("title" in body && body.title) patch.title = body.title;
   if ("client" in body && scopeName(session) == null) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
+  // Link / relink / unlink an asset.
+  if ("assetId" in body) {
+    const aid = (body.assetId || "").toString().trim();
+    if (aid) { if (await ownsRecord(env, session, "assets", aid)) patch.asset_id = aid; }
+    else patch.asset_id = null;
+  } else if (body.newAssetName) {
+    const tr = await sbSelect(env, `tickets?id=eq.${id}&select=client_id`);
+    const cid = tr && tr[0] ? tr[0].client_id : null;
+    const ar = await sbInsert(env, "assets", { name: body.newAssetName.toString().trim(), verification: "Pending", qr_tag: await genAssetKey(env), client_id: cid });
+    if (ar.ok && ar.data) patch.asset_id = ar.data.id;
+  }
   // Only touch the photo columns when the photos actually changed. The editor
   // always sends keepPhotos, so writing them every time would (a) be wasteful
   // and (b) fail an ordinary status/text save if anything about the photo write

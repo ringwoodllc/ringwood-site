@@ -209,6 +209,9 @@
     renderTopics();
   }).catch(function(){});
 
+  var ALL_ASSETS = [];
+  fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){ ALL_ASSETS = Array.isArray(list)?list:[]; }).catch(function(){});
+
   /* ---- tickets ---- */
   function loadAll(){
     editWrap.innerHTML = "";
@@ -234,7 +237,7 @@
     if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets match.</div>"; countEl.textContent = ""; return; }
     countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s");
     listEl.innerHTML = rows.map(function(t){
-      var meta = [t.client, t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
+      var meta = [t.client, t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
       var actions;
       if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
       else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
@@ -273,6 +276,11 @@
     var locOpts = "<option value=''>— not set —</option>" +
       LOCATIONS.map(function(l){ return "<option" + (t.location===l?" selected":"") + ">" + esc(l) + "</option>"; }).join("") +
       (t.location && !hasLoc ? "<option selected>" + esc(t.location) + "</option>" : "");
+    var tClient = t.client || "";
+    var assetArr = ALL_ASSETS.filter(function(a){ return !tClient || a.client === tClient; });
+    var assetOpts = "<option value=''>— None —</option>" +
+      assetArr.map(function(a){ return "<option value='" + esc(a.id) + "'" + (t.assetId===a.id?" selected":"") + ">" + esc(a.name||"Asset") + "</option>"; }).join("") +
+      "<option value='__new'>＋ New asset…</option>";
 
     editWrap.innerHTML =
       "<div class='panel'>" +
@@ -282,6 +290,9 @@
         "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
         (IS_CLIENT ? "" : "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>") +
         "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
+        "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
+          "<select id='e_asset'>" + assetOpts + "</select>" +
+          "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
         "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
         "<div class='field'><label>Description</label>" +
           "<textarea id='e_desc' style='min-height:120px'>" + esc(t.description) + "</textarea>" +
@@ -296,6 +307,9 @@
         "<div class='msg' id='e_msg'></div>" +
       "</div>";
     window.scrollTo(0,0);
+
+    var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
+    assetSelEl.addEventListener("change", function(){ newAssetEl.style.display = assetSelEl.value === "__new" ? "block" : "none"; if(assetSelEl.value==="__new") newAssetEl.focus(); });
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
@@ -360,6 +374,8 @@
         keepPhotos: existingPhotos,
         addPhotos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
       };
+      if (assetSelEl.value === "__new"){ var nn = newAssetEl.value.trim(); if(nn) payload.newAssetName = nn; }
+      else { payload.assetId = assetSelEl.value; }  // "" clears the link
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
           if(d&&d.ok){ loadAll(); }

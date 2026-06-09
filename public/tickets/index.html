@@ -145,6 +145,14 @@
       </div>
     </div>
 
+    <div class="field">
+      <label for="asset">Asset <span class="hint">— optional, the equipment this is about</span></label>
+      <select id="asset"><option value="">— None —</option></select>
+      <div id="newAssetRow" style="display:none;margin-top:10px">
+        <input id="newAssetName" type="text" autocomplete="off" placeholder="New asset name (e.g. Lobby TV)" />
+      </div>
+    </div>
+
     <button class="btn" type="submit" id="submitBtn" disabled>Submit ticket</button>
     <div class="msg" id="msg"></div>
   </form>
@@ -273,6 +281,37 @@ function loadClients(tries) {
 loadClients();
 setInterval(function () { loadClients(); }, 6 * 3600 * 1000);
 
+// ---- optional asset link: pick an existing asset, make a new one, or none ----
+var assetEl = document.getElementById("asset");
+var newAssetRow = document.getElementById("newAssetRow");
+var newAssetNameEl = document.getElementById("newAssetName");
+var ALL_ASSETS = [];
+function renderAssetOptions() {
+  var client = clientValue();
+  var keep = assetEl.value;
+  var arr = ALL_ASSETS.filter(function (a) { return !client || a.client === client; });
+  var html = "<option value=''>— None —</option>";
+  arr.forEach(function (a) { html += "<option value='" + a.id + "'>" + (a.name || "Asset").replace(/</g, "&lt;") + "</option>"; });
+  html += "<option value='__new'>＋ New asset…</option>";
+  assetEl.innerHTML = html;
+  if (keep) assetEl.value = keep;
+}
+function loadAssets() {
+  fetch("/api/assets/list").then(function (r) { return r.json(); }).then(function (list) {
+    ALL_ASSETS = Array.isArray(list) ? list : [];
+    renderAssetOptions();
+  }).catch(function () {});
+}
+loadAssets();
+assetEl.addEventListener("change", function () {
+  newAssetRow.style.display = assetEl.value === "__new" ? "block" : "none";
+  if (assetEl.value === "__new") newAssetNameEl.focus();
+});
+function assetValue() {
+  if (assetEl.value === "__new") { var n = newAssetNameEl.value.trim(); return n ? { newAssetName: n } : {}; }
+  return assetEl.value ? { assetId: assetEl.value } : {};
+}
+
 // ---- add a client without leaving the form ----
 var addClientRow = document.getElementById("addClientRow");
 var newClient = document.getElementById("newClient");
@@ -283,6 +322,8 @@ var addClientMsg = document.getElementById("addClientMsg");
 clientEl.addEventListener("change", function () {
   if (clientEl.value === "__add") { addClientRow.style.display = "block"; addClientMsg.textContent = ""; newClient.focus(); }
   else { addClientRow.style.display = "none"; }
+  if (assetEl.value && assetEl.value !== "__new") assetEl.value = "";  // asset belongs to a client
+  renderAssetOptions();
   refresh();
 });
 cancelClientBtn.addEventListener("click", function () {
@@ -402,16 +443,20 @@ form.addEventListener("submit", function (e) {
   submitBtn.disabled = true;
   submitBtn.textContent = "Submitting…";
   msg.className = "msg";
+  var payload = {
+    client: clientValue(),
+    category: categoryEl.value,
+    location: locationValue(),
+    note: noteEl.value,
+    photos: photos.map(function (p) { return { base64: p.base64, contentType: p.contentType }; })
+  };
+  var av = assetValue();
+  if (av.assetId) payload.assetId = av.assetId;
+  if (av.newAssetName) payload.newAssetName = av.newAssetName;
   fetch("/api/tickets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client: clientValue(),
-      category: categoryEl.value,
-      location: locationValue(),
-      note: noteEl.value,
-      photos: photos.map(function (p) { return { base64: p.base64, contentType: p.contentType }; })
-    })
+    body: JSON.stringify(payload)
   }).then(function (r) { return r.json(); }).then(function (res) {
     if (res.ok) {
       document.getElementById("ref").textContent = res.ref;
@@ -442,6 +487,7 @@ document.getElementById("again").addEventListener("click", function () {
   clientEl.value = "";
   locationEl.value = ""; categoryEl.value = ""; noteEl.value = "";
   addLocRow.style.display = "none"; newLoc.value = "";
+  assetEl.value = ""; newAssetRow.style.display = "none"; newAssetNameEl.value = ""; renderAssetOptions();
   submitBtn.textContent = "Submit ticket";
   document.getElementById("done").style.display = "none";
   document.getElementById("intro").style.display = "block";

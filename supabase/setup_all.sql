@@ -92,6 +92,7 @@ create table if not exists tickets (
   title text,
   category_id uuid references ticket_categories(id),
   client_id uuid references clients(id),
+  asset_id uuid references assets(id),            -- optional: the asset this ticket is about
   description text,
   location text,
   status text not null default 'Open',            -- Open | Scheduled | In Progress | Complete | Archived
@@ -101,8 +102,9 @@ create table if not exists tickets (
 );
 create index if not exists tickets_client_idx on tickets (client_id);
 create index if not exists tickets_status_idx on tickets (status);
--- For databases created before multi-photo tickets:
+-- For databases created before multi-photo tickets / asset links:
 alter table tickets add column if not exists photo_urls text[];
+alter table tickets add column if not exists asset_id uuid references assets(id);
 
 create table if not exists service_records (
   id uuid primary key default gen_random_uuid(),
