@@ -739,6 +739,19 @@ async function diag(env) {
       bucket = null;
     }
     out.storage = bucket ? { bucket: "photos", public: !!bucket.public } : { bucket: "missing" };
+    // Actually try a write so we see the real reason uploads fail (if they do).
+    try {
+      const wr = await fetch(`${env.SUPABASE_URL}/storage/v1/object/photos/diag/test-${Date.now()}.txt`, {
+        method: "POST",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "content-type": "text/plain", "x-upsert": "true" },
+        body: "ringwood storage test",
+      });
+      out.storage.writeOk = wr.ok;
+      if (!wr.ok) out.storage.writeError = (await wr.text()).slice(0, 300);
+    } catch (e) {
+      out.storage.writeOk = false;
+      out.storage.writeError = String(e).slice(0, 300);
+    }
   }
   return noStore(out);
 }
