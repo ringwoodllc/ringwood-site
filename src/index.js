@@ -369,7 +369,7 @@ async function getCategories(env) {
 }
 
 async function diag(env) {
-  const out = { hasUrl: !!env.SUPABASE_URL, hasKey: !!env.SUPABASE_SERVICE_KEY };
+  const out = { hasUrl: !!env.SUPABASE_URL, hasKey: !!env.SUPABASE_SERVICE_KEY, hasAnon: !!env.SUPABASE_ANON_KEY };
   if (sbReady(env)) {
     const lists = await getLists(env);
     out.counts = {
