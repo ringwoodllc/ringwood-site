@@ -30,6 +30,9 @@
   .btn:hover{background:var(--green-deep)}
   .btn:disabled{opacity:.6;cursor:default}
   .msg{margin-top:14px;font-size:.92rem;color:#8a3d1c;text-align:center;min-height:18px}
+  .pwwrap{position:relative}
+  .pwwrap input{padding-right:64px}
+  .pwtoggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--green-deep);font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;padding:6px 8px}
 </style>
 </head>
 <body>
@@ -47,7 +50,10 @@
     </div>
     <div class="field">
       <label for="password">Password</label>
-      <input id="password" type="password" autocomplete="current-password" placeholder="Your password" />
+      <div class="pwwrap">
+        <input id="password" type="password" autocomplete="current-password" placeholder="Your password" />
+        <button type="button" class="pwtoggle" id="pwToggle" aria-label="Show password">Show</button>
+      </div>
     </div>
     <button class="btn" type="submit" id="btn">Sign in</button>
     <div class="msg" id="msg"></div>
@@ -55,6 +61,15 @@
 </div>
 <script>
   var f = document.getElementById("f"), btn = document.getElementById("btn"), msg = document.getElementById("msg");
+  (function(){
+    var pw = document.getElementById("password"), t = document.getElementById("pwToggle");
+    t.addEventListener("click", function(){
+      var show = pw.type === "password";
+      pw.type = show ? "text" : "password";
+      t.textContent = show ? "Hide" : "Show";
+      pw.focus();
+    });
+  })();
   function nextUrl(){
     var n = new URLSearchParams(location.search).get("next");
     if (n && n.charAt(0) === "/" && n.charAt(1) !== "/") return n;

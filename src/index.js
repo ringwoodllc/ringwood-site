@@ -79,6 +79,7 @@ export default {
       "/app": "/app/",
       "/login": "/login/",
       "/signin": "/signin/",
+      "/account": "/account/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
