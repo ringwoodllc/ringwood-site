@@ -265,9 +265,9 @@
   function showEdit(a, note){
     view.innerHTML =
       "<div class='titlerow'><h1 class='assetname'>Edit asset</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
-      (note?"<div class='agentnote'>"+esc(note)+"</div>":"<div class='sub'>Run the Ringwood Agent to read the photos, or edit by hand. Pick from the lists to avoid duplicates. Saving marks it Verified.</div>")+
+      (note?"<div class='agentnote'>"+esc(note)+"</div>":"<div class='sub'>Use Suggest with AI to read the photos, or edit by hand. Pick from the lists to avoid duplicates. Saving marks it Verified.</div>")+
       editPhotos(a)+
-      "<div class='btnrow'><button class='btn' id='runBtn' type='button'>Run Ringwood Agent</button></div>"+
+      "<div class='btnrow'><button class='btn' id='runBtn' type='button'>✨ Suggest with AI</button></div>"+
       "<div id='editmsg' class='err' style='margin-bottom:10px'></div>"+
       field("f_name","Name",a.name)+field("f_desc","Description",a.description,true)+
       field("f_make","Manufacturer",a.manufacturer)+field("f_model","Model",a.model)+field("f_serial","Serial",a.serial)+
@@ -282,11 +282,11 @@
   }
 
   function runAgentNow(){
-    var b=document.getElementById("runBtn"); b.disabled=true; b.textContent="Running Ringwood Agent…"; setMsg("");
+    var b=document.getElementById("runBtn"); b.disabled=true; b.textContent="Thinking…"; setMsg("");
     fetch("/api/asset/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:curId})}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ return fetch("/api/asset?id="+encodeURIComponent(curId)).then(function(r){return r.json();}).then(function(a){ if(a&&a.ok){ curAsset=a; showEdit(a,"The Ringwood Agent updated the fields below. Review and Save."); } }); }
-      else { b.disabled=false; b.textContent="Run Ringwood Agent"; setMsg((d&&d.error)||"The agent could not run."); }
-    }).catch(function(){ b.disabled=false; b.textContent="Run Ringwood Agent"; setMsg("Couldn't reach the agent."); });
+      else { b.disabled=false; b.textContent="✨ Suggest with AI"; setMsg((d&&d.error)||"The agent could not run."); }
+    }).catch(function(){ b.disabled=false; b.textContent="✨ Suggest with AI"; setMsg("Couldn't reach the agent."); });
   }
 
   function saveEdit(){
