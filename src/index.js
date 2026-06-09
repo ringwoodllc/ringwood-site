@@ -721,6 +721,8 @@ async function diag(env) {
     const byStatus = {};
     (Array.isArray(plain) ? plain : []).forEach((t) => { const s = t.status || "Open"; byStatus[s] = (byStatus[s] || 0) + 1; });
     out.tickets = { plain: Array.isArray(plain) ? plain.length : null, embed: Array.isArray(embed) ? embed.length : null, byStatus };
+    // Is the asset-link column there? (null = the asset_id column is missing)
+    out.tickets.hasAssetLink = Array.isArray(await sbSelect(env, "tickets?select=asset_id&limit=1"));
     // Login readiness: are the accounts + token tables there?
     const users = await sbSelect(env, "app_users?select=email,role");
     const toks = await sbSelect(env, "login_tokens?select=token&limit=1");
@@ -1523,7 +1525,7 @@ async function createTicket(request, env, ctx, session) {
   if (linkAsset) row.asset_id = linkAsset;
 
   const res = await sbInsert(env, "tickets", row);
-  if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the ticket." }, 502);
+  if (!res.ok || !res.data) return json({ ok: false, error: ("Could not save the ticket. " + (res.error || "")).slice(0, 300) }, 502);
   const id = res.data.id;
 
   // Upload photos synchronously so the ticket truly carries them before we reply
