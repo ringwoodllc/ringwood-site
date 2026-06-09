@@ -1051,7 +1051,22 @@ async function updateTicket(request, env) {
   if ("status" in body) patch.status = body.status;
   if ("category" in body) patch.category_id = findId(refs.cats, body.category);
   if ("description" in body) patch.description = body.description;
+  if ("location" in body) patch.location = body.location;
+  if ("title" in body && body.title) patch.title = body.title;
   if ("client" in body) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
+  // Append any newly added photos to the existing set.
+  if (Array.isArray(body.addPhotos) && body.addPhotos.length) {
+    const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls,photo_url`);
+    const urls = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls.slice() : [];
+    for (let i = 0; i < body.addPhotos.length; i++) {
+      const p = body.addPhotos[i];
+      if (!p || !p.base64) continue;
+      const u = await uploadToStorage(env, `tickets/${id}/add-${Date.now()}-${i}.jpg`, p.base64, p.contentType);
+      if (u) urls.push(u);
+    }
+    patch.photo_urls = urls;
+    if (urls.length && !(cur && cur[0] && cur[0].photo_url)) patch.photo_url = urls[0];
+  }
   const res = await sbUpdate(env, "tickets", id, patch);
   if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
   return json({ ok: true });
@@ -1079,7 +1094,8 @@ async function suggestTicket(request, env) {
   }
   const note = (body.note || "").toString().trim();
   const pics = normalizePics(body);
-  if (!note && !pics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
+  const urlPics = Array.isArray(body.photoUrls) ? body.photoUrls.filter(Boolean) : [];
+  if (!note && !pics.length && !urlPics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
 
   let cats = ["Repair", "Maintenance", "Install / Setup", "Buildout / Project", "Other"];
   try {
@@ -1095,19 +1111,24 @@ async function suggestTicket(request, env) {
     "They may attach several photos (for example a wide shot of a wall and a close-up of a sign) plus a short note. " +
     "Work out what they want done and write the ticket.\n\n" +
     "- description: one or two plain sentences describing the request or problem and, where shown, the location or surface (e.g. 'Mount the framed sign on the drywall wall by the entrance.'). Build on their note and keep their intent.\n" +
-    "- category: choose exactly one from this list: " + cats.join(", ") + ".\n\n" +
+    "- category: choose exactly one from this list: " + cats.join(", ") + ".\n" +
+    "- title: a short, specific title (max 8 words, Title Case, no quotes, no period).\n\n" +
     "Important: describe only what the photos and note actually show or say. Do NOT invent brands, model numbers, measurements, dimensions, names, or any detail you cannot verify. If something is unclear, keep it general or leave it out.\n" +
     (note ? 'Their note: "' + note + '"\n' : "") +
     "If a field cannot be determined, use an empty string for it.";
 
   const content = [];
   pics.forEach((p) => content.push({ type: "image", source: { type: "base64", media_type: p.contentType || "image/jpeg", data: p.base64 } }));
+  for (const u of urlPics) {
+    const img = await fetchImageBase64(u);
+    if (img) content.push({ type: "image", source: { type: "base64", media_type: img.media_type, data: img.base64 } });
+  }
   content.push({ type: "text", text: prompt });
 
   const schema = {
     type: "object",
-    properties: { description: { type: "string" }, category: { type: "string" } },
-    required: ["description", "category"],
+    properties: { description: { type: "string" }, category: { type: "string" }, title: { type: "string" } },
+    required: ["description", "category", "title"],
     additionalProperties: false,
   };
 
@@ -1133,7 +1154,8 @@ async function suggestTicket(request, env) {
       return json({ ok: false, error: "Couldn't read the suggestion." }, 502);
     }
     const match = cats.find((c) => c.toLowerCase() === (out.category || "").toLowerCase());
-    return json({ ok: true, description: out.description || "", category: match || "" });
+    const title = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 90);
+    return json({ ok: true, description: out.description || "", category: match || "", title: title });
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }

@@ -125,10 +125,30 @@
   var showArchived = false;
   var CATEGORIES = [];
   var CLIENTS = [];
+  var LOCATIONS = [];
   var ALL_TICKETS = [];
 
   function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
+
+  /* Read a chosen file, downscale it, and hand back base64 + content type. */
+  function processPhoto(file){
+    return new Promise(function(resolve, reject){
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function(){
+        var max = 1600, w = img.width, h = img.height;
+        if (w > max || h > max){ if (w >= h){ h = Math.round(h*max/w); w = max; } else { w = Math.round(w*max/h); h = max; } }
+        var c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        var dataUrl = c.toDataURL("image/jpeg", 0.82);
+        resolve({ base64: dataUrl.split(",")[1], contentType: "image/jpeg", preview: dataUrl });
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error("bad image")); };
+      img.src = url;
+    });
+  }
 
   /* ---- resilient client list (cache + retry, like the other pages) ---- */
   var SEED_CLIENTS = [];
@@ -149,6 +169,7 @@
     tries = tries||0;
     fetch("/api/options", { cache:"no-store" }).then(function(r){return r.json();}).then(function(o){
       var clients = (o&&o.clients)||[];
+      if(o&&o.locations&&o.locations.length) LOCATIONS = o.locations;
       if(!clients.length && tries<2){ setTimeout(function(){ loadClients(tries+1); }, 2500); return; }
       if(clients.length){ renderClients(clients); writeClientsCache(clients); }
     }).catch(function(){ if(tries<2) setTimeout(function(){ loadClients(tries+1); }, 2500); });
@@ -216,27 +237,98 @@
   window.openEdit = function(t){
     listEl.innerHTML = "";
     countEl.textContent = "";
+    var existingPhotos = (t.photos && t.photos.length) ? t.photos.slice() : (t.photo ? [t.photo] : []);
+    var newPhotos = [];          // {base64, contentType, preview}
+    var genTitle = t.title || "";  // title the AI suggests, sent on save
+
     var statusOpts = ["Open","Closed","Archived"].map(function(s){ return "<option" + (t.status===s?" selected":"") + ">" + s + "</option>"; }).join("");
     var catOpts = "<option value=''>Select…</option>" + CATEGORIES.map(function(c){ return "<option" + (t.category===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
     var clientOpts = "<option value=''>— none —</option>" + CLIENTS.map(function(c){ return "<option" + (t.client===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
+    var hasLoc = !t.location || LOCATIONS.indexOf(t.location) >= 0;
+    var locOpts = "<option value=''>— not set —</option>" +
+      LOCATIONS.map(function(l){ return "<option" + (t.location===l?" selected":"") + ">" + esc(l) + "</option>"; }).join("") +
+      (t.location && !hasLoc ? "<option selected>" + esc(t.location) + "</option>" : "");
+
     editWrap.innerHTML =
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
-        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + (t.location?(" · " + esc(t.location)):"") + "</div>" +
-        ((t.photos && t.photos.length) ? t.photos.map(function(u){ return "<img class='photo' src='" + esc(u) + "' alt='' style='margin-bottom:8px' />"; }).join("") : (t.photo ? "<img class='photo' src='" + esc(t.photo) + "' alt='' />" : "")) +
+        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
+        "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
         "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
         "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
         "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
-        "<div class='field'><label>Description</label><textarea id='e_desc'>" + esc(t.description) + "</textarea></div>" +
+        "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
+        "<div class='field'><label>Description</label>" +
+          "<textarea id='e_desc' style='min-height:120px'>" + esc(t.description) + "</textarea>" +
+          "<button class='qbtn' id='e_ai' type='button' style='margin-top:8px'>✨ Suggest with AI</button>" +
+        "</div>" +
+        "<div class='field'><label>Photos</label>" +
+          "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
+          "<input type='file' id='e_file' accept='image/*' multiple capture='environment' />" +
+        "</div>" +
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
         "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
         "<div class='msg' id='e_msg'></div>" +
       "</div>";
     window.scrollTo(0,0);
+
+    var thumbsEl = document.getElementById("e_thumbs");
+    function renderThumbs(){
+      var html = existingPhotos.map(function(u){
+        return "<img src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />";
+      }).join("");
+      html += newPhotos.map(function(p, i){
+        return "<span style='position:relative;display:inline-block'>" +
+          "<img src='" + p.preview + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
+          "<button type='button' onclick='__rmNewPhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
+          "</span>";
+      }).join("");
+      thumbsEl.innerHTML = html || "<span style='color:var(--muted);font-size:.9rem'>No photos yet.</span>";
+    }
+    window.__rmNewPhoto = function(i){ newPhotos.splice(i,1); renderThumbs(); };
+    renderThumbs();
+
+    document.getElementById("e_file").addEventListener("change", function(e){
+      var files = Array.prototype.slice.call(e.target.files||[]);
+      e.target.value = "";
+      Promise.all(files.map(processPhoto)).then(function(arr){
+        arr.forEach(function(p){ newPhotos.push(p); });
+        renderThumbs();
+      }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
+    });
+
+    document.getElementById("e_ai").addEventListener("click", function(){
+      var b = document.getElementById("e_ai"); b.disabled = true; b.textContent = "Thinking…";
+      var msg = document.getElementById("e_msg"); msg.textContent = "";
+      var payload = {
+        note: document.getElementById("e_desc").value,
+        photos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }),
+        photoUrls: existingPhotos
+      };
+      fetch("/api/tickets/suggest", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
+        .then(function(r){return r.json();}).then(function(d){
+          b.disabled = false; b.textContent = "✨ Suggest with AI";
+          if(d&&d.ok){
+            if(d.description) document.getElementById("e_desc").value = d.description;
+            if(d.category){ var cs=document.getElementById("e_cat"); for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===d.category||cs.options[i].text===d.category){ cs.selectedIndex=i; break; } } }
+            if(d.title){ genTitle = d.title; document.getElementById("e_title").value = d.title; }
+          } else { msg.textContent = (d&&d.error)||"The assistant couldn't respond."; }
+        }).catch(function(){ b.disabled=false; b.textContent="✨ Suggest with AI"; msg.textContent="Couldn't reach the assistant."; });
+    });
+
     document.getElementById("e_back").addEventListener("click", render);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
-      var payload = { id:t.id, status:document.getElementById("e_status").value, client:document.getElementById("e_client").value, category:document.getElementById("e_cat").value, description:document.getElementById("e_desc").value };
+      var payload = {
+        id: t.id,
+        status: document.getElementById("e_status").value,
+        client: document.getElementById("e_client").value,
+        category: document.getElementById("e_cat").value,
+        location: document.getElementById("e_loc").value,
+        description: document.getElementById("e_desc").value,
+        title: document.getElementById("e_title").value || genTitle,
+        addPhotos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
+      };
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
           if(d&&d.ok){ loadAll(); }
