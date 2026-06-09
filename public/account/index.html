@@ -36,6 +36,21 @@
   .msg{margin-top:14px;font-size:.92rem;text-align:center;min-height:18px}
   .msg.err{color:#8a3d1c}
   .msg.ok{color:var(--green-deep)}
+  .sec{margin-top:30px}
+  .sec h2{font-family:"Spectral",serif;font-weight:500;font-size:1.3rem;color:var(--green-deep);margin-bottom:4px}
+  .sec .lead{color:var(--muted);font-size:.92rem;margin-bottom:14px}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:18px 16px}
+  select{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:12px 14px;-webkit-appearance:none;appearance:none}
+  .tok{border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-top:10px;background:var(--bg)}
+  .tok .th{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .tok .tc{font-weight:600;color:var(--green-deep)}
+  .tok .te{font-size:.78rem;color:var(--muted)}
+  .tok .tu{font-size:.78rem;color:var(--muted);word-break:break-all;margin:6px 0 8px}
+  .tok .tb{display:flex;gap:8px;flex-wrap:wrap}
+  .tok button{background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
+  .tok button:hover{border-color:var(--green)}
+  .tok.revoked{opacity:.55}
+  .tag{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:#f0e0d4;color:#8a5a36}
 </style>
 </head>
 <body>
@@ -69,17 +84,85 @@
     <button class="btn" type="submit" id="btn">Update password</button>
     <div class="msg" id="msg"></div>
   </form>
+
+  <div id="admin"></div>
 </div>
 <script>
   var f = document.getElementById("f"), btn = document.getElementById("btn"), msg = document.getElementById("msg");
 
-  // Show who's signed in.
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  // Show who's signed in; master sees the client-links panel.
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if (d && d.ok){
       var role = d.role === "master" ? "Master — all clients" : (d.client ? d.client : "Client");
       document.getElementById("who").textContent = d.email + " · " + role;
+      if (d.role === "master") buildAdmin();
     } else { window.location.replace("/login?next=/account"); }
   }).catch(function(){});
+
+  function buildAdmin(){
+    var el = document.getElementById("admin");
+    el.innerHTML =
+      "<div class='sec'><h2>Client magic links</h2>"+
+      "<div class='lead'>Send a client a link to sign in with no password. Links last 30 days and can be revoked.</div>"+
+      "<div class='panel'>"+
+        "<div class='field'><label>Client</label><select id='m_client'><option value=''>Loading…</option></select></div>"+
+        "<div class='field'><label>Their email</label><input id='m_email' type='email' inputmode='email' autocomplete='off' placeholder='name@client.com' /></div>"+
+        "<button class='btn' id='m_make' type='button'>Generate link</button>"+
+        "<div class='msg' id='m_msg'></div>"+
+        "<div id='m_list'></div>"+
+      "</div></div>";
+    var sel = document.getElementById("m_client");
+    fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+      var cl = (o&&o.clients)||[];
+      sel.innerHTML = "<option value=''>Select a client…</option>" + cl.map(function(c){ return "<option>"+esc(c)+"</option>"; }).join("");
+    }).catch(function(){ sel.innerHTML = "<option value=''>Could not load</option>"; });
+    document.getElementById("m_make").addEventListener("click", makeLink);
+    loadTokens();
+  }
+
+  function makeLink(){
+    var b = document.getElementById("m_make"), mm = document.getElementById("m_msg");
+    var client = document.getElementById("m_client").value, email = document.getElementById("m_email").value.trim();
+    mm.className = "msg";
+    if (!client || !email){ mm.className="msg err"; mm.textContent="Pick a client and enter their email."; return; }
+    b.disabled = true; b.textContent = "Generating…"; mm.textContent = "";
+    fetch("/api/admin/token", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ client: client, email: email }) })
+      .then(function(r){return r.json();}).then(function(d){
+        b.disabled=false; b.textContent="Generate link";
+        if (d && d.ok){ mm.className="msg ok"; mm.textContent="Link created."; document.getElementById("m_email").value=""; loadTokens(); }
+        else { mm.className="msg err"; mm.textContent=(d&&d.error)||"Could not create the link."; }
+      }).catch(function(){ b.disabled=false; b.textContent="Generate link"; mm.className="msg err"; mm.textContent="Couldn't reach the server."; });
+  }
+
+  function loadTokens(){
+    fetch("/api/admin/tokens").then(function(r){return r.json();}).then(function(d){
+      var list = document.getElementById("m_list"); if(!list) return;
+      var ts = (d&&d.tokens)||[];
+      if(!ts.length){ list.innerHTML="<div class='lead' style='margin-top:14px'>No links yet.</div>"; return; }
+      list.innerHTML = ts.map(function(t){
+        var exp = t.expires_at ? new Date(t.expires_at).toLocaleDateString() : "—";
+        return "<div class='tok"+(t.revoked?" revoked":"")+"'>"+
+          "<div class='th'><span class='tc'>"+esc(t.client||t.email)+"</span>"+(t.revoked?"<span class='tag'>Revoked</span>":"<span class='te'>Expires "+esc(exp)+"</span>")+"</div>"+
+          "<div class='te'>"+esc(t.email)+"</div>"+
+          "<div class='tu'>"+esc(t.url)+"</div>"+
+          (t.revoked?"":"<div class='tb'><button type='button' onclick=\"copyTok('"+esc(t.url)+"',this)\">Copy link</button>"+
+            "<button type='button' onclick=\"revokeTok('"+esc(t.token)+"')\">Revoke</button></div>")+
+          "</div>";
+      }).join("");
+    }).catch(function(){});
+  }
+
+  window.copyTok = function(url, btn){
+    var done=function(){ var o=btn.textContent; btn.textContent="Copied"; setTimeout(function(){btn.textContent=o;},1400); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done,function(){}); }
+    else { var i=document.createElement("input"); i.value=url; document.body.appendChild(i); i.select(); try{document.execCommand("copy");}catch(e){} document.body.removeChild(i); done(); }
+  };
+  window.revokeTok = function(token){
+    fetch("/api/admin/token/revoke", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ token: token }) })
+      .then(function(r){return r.json();}).then(function(){ loadTokens(); }).catch(function(){});
+  };
 
   // Show/hide for each password field.
   Array.prototype.forEach.call(document.querySelectorAll(".pwtoggle"), function(t){

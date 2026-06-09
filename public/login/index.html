@@ -61,6 +61,19 @@
 </div>
 <script>
   var f = document.getElementById("f"), btn = document.getElementById("btn"), msg = document.getElementById("msg");
+
+  // Magic link: ?token=... signs in with no password.
+  (function(){
+    var token = new URLSearchParams(location.search).get("token");
+    if (!token) return;
+    msg.textContent = "Signing you in…";
+    fetch("/api/login", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ token: token }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.ok){ window.location.replace(nextUrl()); }
+        else { msg.textContent = (d && d.error) || "This link is no longer valid."; }
+      }).catch(function(){ msg.textContent = "Couldn't reach the server."; });
+  })();
+
   (function(){
     var pw = document.getElementById("password"), t = document.getElementById("pwToggle");
     t.addEventListener("click", function(){

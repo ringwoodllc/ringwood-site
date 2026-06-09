@@ -28,6 +28,9 @@ export default {
     if (url.pathname === "/api/logout" && request.method === "POST") return logout();
     if (url.pathname === "/api/whoami" && request.method === "GET") return whoami(request, env);
     if (url.pathname === "/api/account/password" && request.method === "POST") return changePassword(request, env);
+    if (url.pathname === "/api/admin/token" && request.method === "POST") return adminCreateToken(request, env);
+    if (url.pathname === "/api/admin/tokens" && request.method === "GET") return adminListTokens(request, env);
+    if (url.pathname === "/api/admin/token/revoke" && request.method === "POST") return adminRevokeToken(request, env);
 
     // One session lookup, reused for the gate and for per-client data scoping.
     const session = await getSession(request, env);
@@ -208,22 +211,112 @@ async function login(request, env) {
   } catch {
     return json({ ok: false, error: "Bad request." }, 400);
   }
-  const email = (body.email || "").toString().trim().toLowerCase();
-  const password = (body.password || "").toString();
-  if (!email || !password) return json({ ok: false, error: "Enter your email and password." }, 400);
-
-  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email,password_hash,role,active,client:clients(name)`);
-  const u = rows && rows[0];
-  const ok = u && u.active !== false && (await verifyPassword(password, u.password_hash));
-  if (!ok) return json({ ok: false, error: "Wrong email or password." }, 401);
+  // Two ways in: a magic-link token, or email + password.
+  let u;
+  const token = (body.token || "").toString().trim();
+  if (token) {
+    const trows = await sbSelect(env, `login_tokens?token=eq.${encodeURIComponent(token)}&select=user_email,expires_at,revoked`);
+    const t = trows && trows[0];
+    if (!t || t.revoked === true || (t.expires_at && new Date(t.expires_at).getTime() < Date.now())) {
+      return json({ ok: false, error: "This link is no longer valid. Ask for a new one." }, 401);
+    }
+    const urows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(t.user_email)}&select=email,role,active,client:clients(name)`);
+    u = urows && urows[0];
+    if (!u || u.active === false) return json({ ok: false, error: "This account is not active." }, 401);
+  } else {
+    const email = (body.email || "").toString().trim().toLowerCase();
+    const password = (body.password || "").toString();
+    if (!email || !password) return json({ ok: false, error: "Enter your email and password." }, 400);
+    const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email,password_hash,role,active,client:clients(name)`);
+    u = rows && rows[0];
+    if (!u || u.active === false || !(await verifyPassword(password, u.password_hash))) {
+      return json({ ok: false, error: "Wrong email or password." }, 401);
+    }
+  }
 
   const role = u.role === "master" ? "master" : "client";
   const client = role === "client" ? (u.client && u.client.name) || "" : null;
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
-  const session = await signSession({ email, role, client, exp }, env);
+  const session = await signSession({ email: u.email, role, client, exp }, env);
   return new Response(JSON.stringify({ ok: true, role, client }), {
     headers: { "content-type": "application/json", "set-cookie": sessionCookie(session, SESSION_DAYS * 86400) },
   });
+}
+
+// ---- master-only: client magic links ----
+async function requireMaster(request, env) {
+  const s = await verifySession(getCookie(request, "rw_session"), env);
+  return s && s.role === "master" ? s : null;
+}
+function randomToken() {
+  return b64urlBytes(crypto.getRandomValues(new Uint8Array(24)));
+}
+
+// Create (or reuse) a client account and mint a 30-day magic link for it.
+async function adminCreateToken(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const email = (body.email || "").toString().trim().toLowerCase();
+  const clientName = (body.client || "").toString().trim();
+  if (!email || !clientName) return json({ ok: false, error: "Pick a client and enter an email." }, 400);
+  const refs = await getRefs(env);
+  const cid = findId(refs.clients, clientName);
+  if (!cid) return json({ ok: false, error: "Unknown client." }, 400);
+
+  // Ensure the client account exists (password-less; magic link only).
+  const exist = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email`);
+  if (!exist || !exist.length) {
+    const ins = await sbInsert(env, "app_users", { email, password_hash: await hashPassword(randomToken()), role: "client", client_id: cid });
+    if (!ins.ok) return json({ ok: false, error: "Could not create the client login." }, 502);
+  }
+  const token = randomToken();
+  const expires = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+  const ins2 = await sbInsert(env, "login_tokens", { token, user_email: email, label: clientName, expires_at: expires });
+  if (!ins2.ok) return json({ ok: false, error: "Could not create the link." }, 502);
+  const origin = new URL(request.url).origin;
+  return json({ ok: true, token, url: `${origin}/login?token=${token}`, email, client: clientName, expires_at: expires });
+}
+
+async function adminListTokens(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const rows = await sbSelect(env, "login_tokens?select=token,user_email,label,expires_at,revoked,created_at&order=created_at.desc");
+  const origin = new URL(request.url).origin;
+  return noStore({
+    ok: true,
+    tokens: (rows || []).map((t) => ({
+      token: t.token,
+      email: t.user_email,
+      client: t.label || "",
+      url: `${origin}/login?token=${t.token}`,
+      expires_at: t.expires_at,
+      revoked: t.revoked === true,
+      created_at: t.created_at,
+    })),
+  });
+}
+
+async function adminRevokeToken(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const token = (body.token || "").toString();
+  if (!token) return json({ ok: false, error: "No token." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/login_tokens?token=eq.${encodeURIComponent(token)}`, {
+    method: "PATCH",
+    headers: sbHeaders(env, { Prefer: "return=minimal" }),
+    body: JSON.stringify({ revoked: true }),
+  });
+  if (!r.ok) return json({ ok: false, error: "Could not revoke." }, 502);
+  return json({ ok: true });
 }
 
 function logout() {
