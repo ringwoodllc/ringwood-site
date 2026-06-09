@@ -846,10 +846,26 @@ async function handleCreateAsset(request, env, ctx, session) {
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the asset." }, 502);
   const id = res.data.id;
 
-  const manual = { description, manufacturer, model, serial, equipmentType };
-  if (ctx && ctx.waitUntil) ctx.waitUntil(processAssetMedia(id, body, manual, env));
+  // Upload photos synchronously so they're saved before we reply.
+  const pics = assetPicsFromBody(body);
+  let savedPhotos = 0;
+  if (pics.length) {
+    const urls = [];
+    for (let i = 0; i < pics.length; i++) {
+      const u = await uploadToStorage(env, `assets/${id}/${i}.jpg`, pics[i].base64, pics[i].contentType);
+      if (u) urls.push(u);
+    }
+    if (urls.length) {
+      await sbUpdate(env, "assets", id, { photo_urls: urls });
+      savedPhotos = urls.length;
+    }
+  }
 
-  return json({ ok: true, id });
+  // Read the nameplate with Claude in the background (it's slow); it fills blanks.
+  const manual = { description, manufacturer, model, serial, equipmentType };
+  if (pics.length && ctx && ctx.waitUntil) ctx.waitUntil(processAssetAI(id, pics, manual, env));
+
+  return json({ ok: true, id, savedPhotos });
 }
 
 // An asset's photos as one list: prefer the photo_urls array; fall back to the
@@ -880,42 +896,31 @@ function assetPicsFromBody(body) {
   return [body.overallPhoto, body.nameplatePhoto, body.serialPhoto].filter((p) => p && p.base64);
 }
 
-// Background: upload the photos to Storage, then read the nameplate with Claude
-// and fill in any blanks.
-async function processAssetMedia(id, body, manual, env) {
-  const patch = {};
-  const pics = assetPicsFromBody(body);
-  const urls = [];
-  for (let i = 0; i < pics.length; i++) {
-    const u = await uploadToStorage(env, `assets/${id}/${i}.jpg`, pics[i].base64, pics[i].contentType);
-    if (u) urls.push(u);
-  }
-  if (urls.length) patch.photo_urls = urls;
-
+// Background: read the nameplate with Claude and fill in any blanks. Photos are
+// already uploaded synchronously by handleCreateAsset.
+async function processAssetAI(id, pics, manual, env) {
   const images = pics.map((p) => ({ media_type: p.contentType, base64: p.base64 }));
-  if (images.length && env.ANTHROPIC_API_KEY) {
-    let read = null;
-    try {
-      read = await runAgent(images, env);
-    } catch {
-      read = null;
-    }
-    if (read) {
-      patch.verification = "AI suggested";
-      if (!manual.description && read.description) patch.description = read.description;
-      if (!manual.manufacturer && read.manufacturer) patch.make = read.manufacturer;
-      if (!manual.model && read.model) patch.model = read.model;
-      if (!manual.serial && read.serial) patch.serial = read.serial;
-      if (read.assetName) patch.name = read.assetName;
-      if (!manual.equipmentType && read.equipmentType) {
-        const refs = await getRefs(env);
-        const etId = findId(refs.equip, read.equipmentType);
-        if (etId) patch.equipment_type_id = etId;
-      }
-      patch.nameplate_reading = buildReadingNote(read);
-    }
+  if (!images.length || !env.ANTHROPIC_API_KEY) return;
+  let read = null;
+  try {
+    read = await runAgent(images, env);
+  } catch {
+    read = null;
   }
-  if (Object.keys(patch).length) await sbUpdate(env, "assets", id, patch);
+  if (!read) return;
+  const patch = { verification: "AI suggested" };
+  if (!manual.description && read.description) patch.description = read.description;
+  if (!manual.manufacturer && read.manufacturer) patch.make = read.manufacturer;
+  if (!manual.model && read.model) patch.model = read.model;
+  if (!manual.serial && read.serial) patch.serial = read.serial;
+  if (read.assetName) patch.name = read.assetName;
+  if (!manual.equipmentType && read.equipmentType) {
+    const refs = await getRefs(env);
+    const etId = findId(refs.equip, read.equipmentType);
+    if (etId) patch.equipment_type_id = etId;
+  }
+  patch.nameplate_reading = buildReadingNote(read);
+  await sbUpdate(env, "assets", id, patch);
 }
 
 /* ----- the Ringwood AI agent (unchanged) ----- */
@@ -1296,21 +1301,22 @@ async function createService(request, env, ctx, session) {
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the service record." }, 502);
   const id = res.data.id;
 
+  // Upload photos synchronously so they're saved before we reply.
   const pics = Array.isArray(body.photos) ? body.photos : [];
-  if (pics.length && ctx && ctx.waitUntil) {
-    ctx.waitUntil(
-      (async () => {
-        const urls = [];
-        for (let i = 0; i < pics.length; i++) {
-          const u = await uploadToStorage(env, `service/${id}/${i}.jpg`, pics[i] && pics[i].base64, pics[i] && pics[i].contentType);
-          if (u) urls.push(u);
-        }
-        if (urls.length) await sbUpdate(env, "service_records", id, { photo_urls: urls });
-      })()
-    );
+  let savedPhotos = 0;
+  if (pics.length) {
+    const urls = [];
+    for (let i = 0; i < pics.length; i++) {
+      const u = await uploadToStorage(env, `service/${id}/${i}.jpg`, pics[i] && pics[i].base64, pics[i] && pics[i].contentType);
+      if (u) urls.push(u);
+    }
+    if (urls.length) {
+      await sbUpdate(env, "service_records", id, { photo_urls: urls });
+      savedPhotos = urls.length;
+    }
   }
 
-  return json({ ok: true, id });
+  return json({ ok: true, id, savedPhotos });
 }
 
 async function getService(url, env, session) {
