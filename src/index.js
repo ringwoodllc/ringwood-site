@@ -940,10 +940,16 @@ async function createTicket(request, env, ctx) {
   const category = body.category || "Other";
   const client = body.client || "";
   const location = body.location || "";
-  const title = [category, client, location].filter(Boolean).join(" · ") || ref;
+  const note = (body.note || "").trim();
+  // Title is auto-generated from the description; fall back to a plain label.
+  let title = [category, client, location].filter(Boolean).join(" · ") || ref;
+  if (env.ANTHROPIC_API_KEY && note) {
+    const aiTitle = await titleFromDescription(note, category, env);
+    if (aiTitle) title = aiTitle;
+  }
 
   const refs = await getRefs(env);
-  const row = { ref, title, description: body.note || "", location, status: "Open" };
+  const row = { ref, title, description: note, location, status: "Open" };
   const catId = findId(refs.cats, category);
   const clId = findId(refs.clients, client);
   if (catId) row.category_id = catId;
@@ -962,7 +968,33 @@ async function createTicket(request, env, ctx) {
     );
   }
 
-  return json({ ok: true, ref });
+  return json({ ok: true, ref, title });
+}
+
+// A short, specific ticket title from the description (Claude).
+async function titleFromDescription(description, category, env) {
+  try {
+    const schema = { type: "object", properties: { title: { type: "string" } }, required: ["title"], additionalProperties: false };
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 60,
+        messages: [{ role: "user", content: "Write a short, specific ticket title (max 8 words, Title Case, no quotes, no period) for this facilities issue.\nCategory: " + category + "\nIssue: " + description }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return null;
+    const out = JSON.parse(block.text);
+    const t = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 90);
+    return t || null;
+  } catch {
+    return null;
+  }
 }
 
 async function listTickets(url, env) {

@@ -130,7 +130,7 @@
 
     <div class="field">
       <label for="note">Description — anything we should know? <span class="req">*</span></label>
-      <input id="note" type="text" placeholder="A line of detail helps us route it faster." />
+      <textarea id="note" rows="4" style="min-height:120px" placeholder="A line or two of detail helps us route it faster."></textarea>
       <button type="button" id="suggestBtn" style="margin-top:9px;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:8px 15px;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer">✨ Suggest with AI</button>
       <div id="suggestMsg" class="photoNote" style="margin-top:7px"></div>
     </div>
@@ -401,9 +401,10 @@ form.addEventListener("submit", function (e) {
   }).then(function (r) { return r.json(); }).then(function (res) {
     if (res.ok) {
       document.getElementById("ref").textContent = res.ref;
-      var rb = "<div><strong>Client.</strong> " + escapeHtml(clientValue()) + "</div>" +
-        "<div><strong>Work.</strong> " + escapeHtml(categoryEl.value) + "</div>" +
-        "<div><strong>Location.</strong> " + escapeHtml(locationValue()) + "</div>";
+      var rb = (res.title ? "<div><strong>Title.</strong> " + escapeHtml(res.title) + "</div>" : "") +
+        "<div><strong>Client.</strong> " + escapeHtml(clientValue()) + "</div>" +
+        "<div><strong>Work.</strong> " + escapeHtml(categoryEl.value) + "</div>";
+      if (locationValue()) rb += "<div><strong>Location.</strong> " + escapeHtml(locationValue()) + "</div>";
       if (noteEl.value.trim()) rb += "<div><strong>Note.</strong> " + escapeHtml(noteEl.value) + "</div>";
       document.getElementById("recapBody").innerHTML = rb;
       document.getElementById("intro").style.display = "none";
