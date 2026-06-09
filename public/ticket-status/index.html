@@ -91,13 +91,19 @@
 <main class="wrap">
   <div class="intro">
     <div class="eyebrow">Ticket status</div>
-    <h1>Tickets by client</h1>
-    <p>Pick a client to see their tickets. Open one to update it, close it, or archive it.</p>
+    <h1>Tickets</h1>
+    <p>All tickets, newest first. Filter by client or topic. Open one to update it, close it, or archive it.</p>
   </div>
 
-  <div class="field">
-    <label for="client">Client</label>
-    <select id="client"><option value="">Loading clients…</option></select>
+  <div style="display:flex;gap:10px">
+    <div class="field" style="flex:1">
+      <label for="client">Client</label>
+      <select id="client"><option value="">All clients</option></select>
+    </div>
+    <div class="field" style="flex:1">
+      <label for="topic">Topic</label>
+      <select id="topic"><option value="">All topics</option></select>
+    </div>
   </div>
 
   <div class="toolbar">
@@ -111,6 +117,7 @@
 
 <script>
   var clientSel = document.getElementById("client");
+  var topicSel = document.getElementById("topic");
   var listEl = document.getElementById("list");
   var editWrap = document.getElementById("editWrap");
   var countEl = document.getElementById("count");
@@ -118,6 +125,7 @@
   var showArchived = false;
   var CATEGORIES = [];
   var CLIENTS = [];
+  var ALL_TICKETS = [];
 
   function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
@@ -130,7 +138,7 @@
   function renderClients(clients){
     CLIENTS = clients || [];
     var keep = clientSel.value;
-    var html = "<option value=''>" + (clients&&clients.length?"Select a client":"No clients yet") + "</option>";
+    var html = "<option value=''>All clients</option>";
     CLIENTS.forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
     html += "<option value='__unassigned'>Unassigned</option>";
     clientSel.innerHTML = html;
@@ -147,44 +155,62 @@
   }
   loadClients();
 
+  function renderTopics(){
+    var keep = topicSel.value;
+    var html = "<option value=''>All topics</option>";
+    CATEGORIES.forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
+    topicSel.innerHTML = html;
+    if(keep) topicSel.value = keep;
+  }
   fetch("/api/categories", { cache:"no-store" }).then(function(r){return r.json();}).then(function(list){
     CATEGORIES = (list||[]).map(function(i){ return i.name; });
+    renderTopics();
   }).catch(function(){});
 
   /* ---- tickets ---- */
-  function loadTickets(){
+  function loadAll(){
     editWrap.innerHTML = "";
-    var client = clientSel.value;
-    if(!client){ listEl.innerHTML = ""; countEl.textContent = ""; return; }
     listEl.innerHTML = "<div class='empty'>Loading…</div>";
-    var url = "/api/tickets/list?client=" + encodeURIComponent(client) + (showArchived ? "&archived=1" : "");
-    fetch(url, { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){
-      rows = rows||[];
-      if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets for " + esc(client) + (showArchived?"":" yet") + ".</div>"; countEl.textContent = ""; return; }
-      var open = rows.filter(function(t){return t.status==="Open";}).length;
-      countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s") + " · " + open + " open";
-      listEl.innerHTML = rows.map(function(t){
-        var meta = [t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
-        var actions;
-        if (t.status === "Open") actions = qbtn("Close", t.id, "Closed") + qbtn("Archive", t.id, "Archived");
-        else if (t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
-        else actions = qbtn("Reopen", t.id, "Open");
-        return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
-          "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
-          (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
-          (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
-          "<div class='actions'>" + actions + "</div>" +
-          "</div><span class='pill " + t.status + "'>" + t.status + "</span></div>";
-      }).join("");
+    fetch("/api/tickets/list?archived=1", { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){
+      ALL_TICKETS = rows || [];
+      render();
     }).catch(function(){ listEl.innerHTML = "<div class='empty'>Could not load tickets.</div>"; });
   }
+  function render(){
+    editWrap.innerHTML = "";
+    var client = clientSel.value, topic = topicSel.value;
+    var rows = ALL_TICKETS.filter(function(t){
+      if (!showArchived && t.status === "Archived") return false;
+      if (client === "__unassigned") { if (t.client) return false; }
+      else if (client) { if (t.client !== client) return false; }
+      if (topic && t.category !== topic) return false;
+      return true;
+    });
+    if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets match.</div>"; countEl.textContent = ""; return; }
+    var open = rows.filter(function(t){return t.status==="Open";}).length;
+    countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s") + " · " + open + " open";
+    listEl.innerHTML = rows.map(function(t){
+      var meta = [t.client, t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
+      var actions;
+      if (t.status === "Open") actions = qbtn("Close", t.id, "Closed") + qbtn("Archive", t.id, "Archived");
+      else if (t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
+      else actions = qbtn("Reopen", t.id, "Open");
+      return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
+        "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
+        (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
+        (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
+        "<div class='actions'>" + actions + "</div>" +
+        "</div><span class='pill " + t.status + "'>" + t.status + "</span></div>";
+    }).join("");
+  }
+  loadAll();
 
   function qbtn(label, id, status){
     return "<button class='qbtn' onclick='event.stopPropagation(); quickStatus(\"" + id + "\",\"" + status + "\")'>" + label + "</button>";
   }
   window.quickStatus = function(id, status){
     fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:id, status:status }) })
-      .then(function(r){return r.json();}).then(function(){ loadTickets(); }).catch(function(){ loadTickets(); });
+      .then(function(r){return r.json();}).then(function(){ loadAll(); }).catch(function(){ loadAll(); });
   };
 
   window.openEdit = function(t){
@@ -207,24 +233,25 @@
         "<div class='msg' id='e_msg'></div>" +
       "</div>";
     window.scrollTo(0,0);
-    document.getElementById("e_back").addEventListener("click", loadTickets);
+    document.getElementById("e_back").addEventListener("click", render);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
       var payload = { id:t.id, status:document.getElementById("e_status").value, client:document.getElementById("e_client").value, category:document.getElementById("e_cat").value, description:document.getElementById("e_desc").value };
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ loadTickets(); }
+          if(d&&d.ok){ loadAll(); }
           else { b.disabled=false; b.textContent="Save"; document.getElementById("e_msg").textContent=(d&&d.error)||"Save failed."; }
         }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("e_msg").textContent="Couldn't reach the server."; });
     });
   };
 
-  clientSel.addEventListener("change", loadTickets);
+  clientSel.addEventListener("change", render);
+  topicSel.addEventListener("change", render);
   archToggle.addEventListener("click", function(){
     showArchived = !showArchived;
     archToggle.classList.toggle("on", showArchived);
     archToggle.textContent = showArchived ? "Hide archived" : "Show archived";
-    loadTickets();
+    render();
   });
 </script>
 </body>

@@ -129,13 +129,21 @@
     </div>
 
     <div class="field">
-      <label for="location">Where is it? <span class="req">*</span></label>
-      <input id="location" type="text" placeholder="e.g. Conference Room 1, kitchen, suite 200" />
+      <label for="note">Description — anything we should know? <span class="req">*</span></label>
+      <input id="note" type="text" placeholder="A line of detail helps us route it faster." />
     </div>
 
     <div class="field">
-      <label for="note">Anything we should know? <span class="hint">— optional</span></label>
-      <textarea id="note" placeholder="A line or two of detail helps us route it faster."></textarea>
+      <label for="location">Where is it? <span class="req">*</span></label>
+      <select id="location"><option value="">Loading…</option></select>
+      <div id="addLocRow" style="display:none;margin-top:10px">
+        <input id="newLoc" type="text" autocomplete="off" placeholder="New location" />
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button type="button" id="addLocBtn" style="background:var(--green);color:#f6f2e8;border:none;border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer">Add</button>
+          <button type="button" id="cancelLocBtn" style="background:transparent;color:var(--green-deep);border:1px solid var(--line);border-radius:4px;padding:11px 18px;font-weight:600;cursor:pointer">Cancel</button>
+        </div>
+        <div id="addLocMsg" style="color:#8a3d1c;font-size:.86rem;margin-top:6px"></div>
+      </div>
     </div>
 
     <button class="btn" type="submit" id="submitBtn" disabled>Submit ticket</button>
@@ -177,6 +185,9 @@ var form = document.getElementById("ticketForm");
 function clientValue() {
   return clientEl.value === "__add" ? "" : clientEl.value;
 }
+function locationValue() {
+  return locationEl.value === "__add" ? "" : locationEl.value;
+}
 function needsPhoto() { return !!photoReq[categoryEl.value]; }
 
 function updatePhotoNote() {
@@ -191,7 +202,7 @@ function updatePhotoNote() {
 }
 
 function refresh() {
-  var ok = clientValue() && categoryEl.value && locationEl.value.trim() && (needsPhoto() ? photoBase64 : true);
+  var ok = clientValue() && categoryEl.value && noteEl.value.trim() && locationValue() && (needsPhoto() ? photoBase64 : true);
   submitBtn.disabled = !ok;
   updatePhotoNote();
 }
@@ -229,11 +240,22 @@ function renderClients(clients) {
   (clients || []).forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
   clientEl.innerHTML = html + ADD_CLIENT;
 }
+// Location uses the same Locations master as the asset form.
+var ADD_LOC = "<option value='__add'>＋ Add a location…</option>";
+function renderLocations(locs) {
+  if (!locs || !locs.length) return;
+  var keep = locationEl.value;
+  var html = "<option value=''>Select…</option>";
+  locs.forEach(function (l) { html += "<option>" + l.replace(/</g, "&lt;") + "</option>"; });
+  locationEl.innerHTML = html + ADD_LOC;
+  if (keep && keep !== "__add") locationEl.value = keep;
+}
 renderClients(readClientsCache() || SEED_CLIENTS);
 function loadClients(tries) {
   tries = tries || 0;
   fetch("/api/options", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (o) {
     var clients = (o && o.clients) || [];
+    if (o && o.locations) renderLocations(o.locations);
     if (!clients.length && tries < 2) { setTimeout(function () { loadClients(tries + 1); }, 2500); return; }
     if (clients.length) { renderClients(clients); writeClientsCache(clients); }
   }).catch(function () { if (tries < 2) { setTimeout(function () { loadClients(tries + 1); }, 2500); } });
@@ -274,6 +296,36 @@ addClientBtn.addEventListener("click", function () {
     }).catch(function () { addClientBtn.disabled = false; addClientBtn.textContent = "Add client"; addClientMsg.textContent = "Couldn't reach the server."; });
 });
 
+// ---- location (same Locations master as the asset form), with inline add ----
+var addLocRow = document.getElementById("addLocRow");
+var newLoc = document.getElementById("newLoc");
+var addLocBtn = document.getElementById("addLocBtn");
+var cancelLocBtn = document.getElementById("cancelLocBtn");
+var addLocMsg = document.getElementById("addLocMsg");
+locationEl.addEventListener("change", function () {
+  if (locationEl.value === "__add") { addLocRow.style.display = "block"; addLocMsg.textContent = ""; newLoc.focus(); }
+  else { addLocRow.style.display = "none"; }
+  refresh();
+});
+cancelLocBtn.addEventListener("click", function () {
+  addLocRow.style.display = "none"; newLoc.value = ""; addLocMsg.textContent = ""; locationEl.value = ""; refresh();
+});
+addLocBtn.addEventListener("click", function () {
+  var name = newLoc.value.trim(); addLocMsg.textContent = "";
+  if (!name) { addLocMsg.textContent = "Enter a location."; return; }
+  addLocBtn.disabled = true; addLocBtn.textContent = "Adding…";
+  fetch("/api/picklist", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ list: "Location", value: name }) })
+    .then(function (r) { return r.json(); }).then(function (d) {
+      addLocBtn.disabled = false; addLocBtn.textContent = "Add";
+      if (d && d.ok) {
+        var nm = d.value || name, found = false;
+        for (var i = 0; i < locationEl.options.length; i++) { if (locationEl.options[i].value === nm) { found = true; break; } }
+        if (!found) { var op = document.createElement("option"); op.value = nm; op.textContent = nm; locationEl.insertBefore(op, locationEl.querySelector("option[value='__add']")); }
+        locationEl.value = nm; newLoc.value = ""; addLocRow.style.display = "none"; refresh();
+      } else { addLocMsg.textContent = (d && d.error) || "Could not add the location."; }
+    }).catch(function () { addLocBtn.disabled = false; addLocBtn.textContent = "Add"; addLocMsg.textContent = "Couldn't reach the server."; });
+});
+
 photoBtn.addEventListener("click", function () { fileInput.click(); });
 retake.addEventListener("click", function () { fileInput.click(); });
 
@@ -306,7 +358,7 @@ fileInput.addEventListener("change", function (e) {
   reader.readAsDataURL(file);
 });
 
-locationEl.addEventListener("input", refresh);
+noteEl.addEventListener("input", refresh);
 categoryEl.addEventListener("change", refresh);
 
 form.addEventListener("submit", function (e) {
@@ -320,7 +372,7 @@ form.addEventListener("submit", function (e) {
     body: JSON.stringify({
       client: clientValue(),
       category: categoryEl.value,
-      location: locationEl.value,
+      location: locationValue(),
       note: noteEl.value,
       photoBase64: photoBase64,
       photoContentType: photoType,
@@ -331,7 +383,7 @@ form.addEventListener("submit", function (e) {
       document.getElementById("ref").textContent = res.ref;
       var rb = "<div><strong>Client.</strong> " + escapeHtml(clientValue()) + "</div>" +
         "<div><strong>Work.</strong> " + escapeHtml(categoryEl.value) + "</div>" +
-        "<div><strong>Location.</strong> " + escapeHtml(locationEl.value) + "</div>";
+        "<div><strong>Location.</strong> " + escapeHtml(locationValue()) + "</div>";
       if (noteEl.value.trim()) rb += "<div><strong>Note.</strong> " + escapeHtml(noteEl.value) + "</div>";
       document.getElementById("recapBody").innerHTML = rb;
       document.getElementById("intro").style.display = "none";
@@ -353,6 +405,7 @@ document.getElementById("again").addEventListener("click", function () {
   fileInput.value = "";
   clientEl.value = "";
   locationEl.value = ""; categoryEl.value = ""; noteEl.value = "";
+  addLocRow.style.display = "none"; newLoc.value = "";
   preview.classList.add("hidden");
   photoBtn.classList.remove("hidden");
   submitBtn.textContent = "Submit ticket";
