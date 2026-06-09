@@ -55,6 +55,7 @@ export default {
     if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
+    if (url.pathname === "/api/asset/delete" && request.method === "POST") return deleteAsset(request, env, session);
     if (url.pathname === "/api/asset/verify" && request.method === "POST") return setVerified(request, env, session);
     if (url.pathname === "/api/service" && request.method === "POST") return createService(request, env, ctx, session);
     if (url.pathname === "/api/service/list" && request.method === "GET") return listServices(url, env, session);
@@ -959,7 +960,7 @@ const AGENT_PROMPT =
   "- assetName: a clear, specific name a facilities manager would use. Include the brand, the product line or model, " +
   "and what the thing is. Example: 'HP Color LaserJet Pro M255dw Printer'. Never return vague names like 'Other' or 'Unit'.\n" +
   "- shortName: the everyday name a person calls this kind of equipment, 1 to 3 words, Title Case, NO brand and NO model. " +
-  "Examples: 'Ice Machine', 'Fridge', 'Freezer', 'Printer', 'Rooftop HVAC Unit', 'Coffee Machine'.\n" +
+  "Examples: 'Ice Machine', 'Fridge', 'Freezer', 'Printer', 'Rooftop HVAC Unit', 'Espresso Machine'. Be specific about the kind: an espresso machine is 'Espresso Machine', not 'Coffee Machine'.\n" +
   "- description: one short sentence in English. Leave out marketing language, certification or regulatory text, and anything not in English.\n" +
   "- manufacturer: the brand.\n" +
   "- model: the model name or number.\n" +
@@ -1234,6 +1235,26 @@ async function updateAsset(request, env, session) {
   return json({ ok: true });
 }
 
+async function deleteAsset(request, env, session) {
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "assets", "edit")) return deny("assets");
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No asset id." }, 400);
+  if (!(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
+  // Unlink references first so the delete isn't blocked by foreign keys.
+  await fetch(`${env.SUPABASE_URL}/rest/v1/tickets?asset_id=eq.${id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ asset_id: null }) });
+  await fetch(`${env.SUPABASE_URL}/rest/v1/service_records?asset_id=eq.${id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ asset_id: null }) });
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/assets?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete the asset." }, 502);
+  return json({ ok: true });
+}
+
 async function setVerified(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   if (!can(session, "assets", "edit")) return deny("assets");
@@ -1261,13 +1282,13 @@ async function listAssets(env, session) {
   }
   let rows = await sbSelect(
     env,
-    `assets?select=id,name,nickname,description,make,model,serial,qr_tag,service_records(count),equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
+    `assets?select=id,name,nickname,description,make,model,serial,qr_tag,logged_at,service_records(count),equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
   );
   // If the count embed isn't supported, fall back to the plain list.
   if (rows === null) {
     rows = await sbSelect(
       env,
-      `assets?select=id,name,nickname,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
+      `assets?select=id,name,nickname,description,make,model,serial,qr_tag,logged_at,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
     );
   }
   return json(
@@ -1283,6 +1304,7 @@ async function listAssets(env, session) {
       serial: x.serial || "",
       qr: x.qr_tag || "",
       services: (x.service_records && x.service_records[0] && x.service_records[0].count) || 0,
+      loggedAt: x.logged_at || "",
     }))
   );
 }
@@ -1655,7 +1677,7 @@ async function shortNameFromAsset(a, env) {
         max_tokens: 40,
         messages: [{ role: "user", content:
           "Give the everyday name a person calls this kind of equipment: 1 to 3 words, Title Case, NO brand and NO model number. " +
-          "Examples: 'Ice Machine', 'Fridge', 'Freezer', 'Printer', 'Rooftop HVAC Unit', 'Coffee Machine'.\n" +
+          "Examples: 'Ice Machine', 'Fridge', 'Freezer', 'Printer', 'Rooftop HVAC Unit', 'Espresso Machine'. Be specific about the kind: an espresso machine is 'Espresso Machine', not 'Coffee Machine'.\n" +
           "Equipment: " + ctx }],
         output_config: { format: { type: "json_schema", schema } },
       }),

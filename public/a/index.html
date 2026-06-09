@@ -117,9 +117,10 @@
   <div class="eyebrow">Asset lookup</div>
   <div class="lookup">
     <h1>Find an asset</h1>
-    <div style="display:flex;gap:10px">
-      <div class="field" style="flex:1;margin-bottom:10px"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
-      <div class="field" style="flex:1;margin-bottom:10px"><label for="searchInput">Search</label><input id="searchInput" type="text" autocomplete="off" placeholder="Name, model, serial…" /></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:140px;margin-bottom:10px"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
+      <div class="field" style="flex:1;min-width:140px;margin-bottom:10px"><label for="searchInput">Search</label><input id="searchInput" type="text" autocomplete="off" placeholder="Name, model, serial…" /></div>
+      <div class="field" style="flex:1;min-width:140px;margin-bottom:10px"><label for="sortSel">Sort</label><select id="sortSel"><option value="alpha">A – Z</option><option value="new">Newest first</option><option value="old">Oldest first</option></select></div>
     </div>
     <div id="assetCount" style="color:var(--muted);font-size:.86rem;margin-bottom:8px"></div>
     <div id="assetList" class="assetlist"><div class="empty">Loading assets…</div></div>
@@ -195,11 +196,16 @@
   }
 
   function renderList(){
-    var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase();
+    var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase(), sort=document.getElementById("sortSel").value;
     var arr=allAssets.filter(function(a){
       if(client && a.client!==client) return false;
       if(q){ var hay=[a.name,a.make,a.model,a.serial,a.type,a.location,a.qr].join(" ").toLowerCase(); if(hay.indexOf(q)<0) return false; }
       return true;
+    });
+    arr.sort(function(a,b){
+      if(sort==="new") return (b.loggedAt||"").localeCompare(a.loggedAt||"");
+      if(sort==="old") return (a.loggedAt||"").localeCompare(b.loggedAt||"");
+      return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase());  // A–Z default
     });
     assetCount.textContent = allAssets.length ? (arr.length+" of "+allAssets.length+" asset"+(allAssets.length===1?"":"s")) : "";
     if(!arr.length){ assetList.innerHTML="<div class='empty'>"+(allAssets.length?"No assets match.":"No assets yet.")+"</div>"; return; }
@@ -221,6 +227,7 @@
 
   clientFilter.addEventListener("change", renderList);
   searchInput.addEventListener("input", renderList);
+  document.getElementById("sortSel").addEventListener("change", renderList);
   document.getElementById("goBtn").addEventListener("click", function(){ var id=resolveRef(qrInput.value); if(id) load(id); });
   qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=resolveRef(qrInput.value); if(id) load(id); } });
   document.getElementById("scanInput").addEventListener("change", function(e){
@@ -467,9 +474,18 @@
         "</div>"+
         "<div id='f_qrmsg' style='font-size:.84rem;color:var(--muted);margin-top:6px'></div>"+
       "</div>"+
-      "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>";
+      "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>"+
+      "<div class='btnrow' style='margin-top:18px'><button class='btn ghost' id='delBtn' type='button' style='color:#8a3d1c;border-color:rgba(138,61,28,.4)'>Delete asset</button></div>";
     document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
     document.getElementById("saveBtn").addEventListener("click", saveEdit);
+    document.getElementById("delBtn").addEventListener("click", function(){
+      if(!confirm("Delete this asset? Any tickets or service records linked to it will be unlinked (not deleted).")) return;
+      var b=this; b.disabled=true; b.textContent="Deleting…";
+      fetch("/api/asset/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:curId})}).then(function(r){return r.json();}).then(function(d){
+        if(d&&d.ok){ location.replace("/a/"); }
+        else { b.disabled=false; b.textContent="Delete asset"; setMsg((d&&d.error)||"Could not delete."); }
+      }).catch(function(){ b.disabled=false; b.textContent="Delete asset"; setMsg("Couldn't reach the server."); });
+    });
     document.getElementById("runBtn").addEventListener("click", runAgentNow);
     document.getElementById("f_qrscan").addEventListener("change", function(e){
       var file=e.target.files&&e.target.files[0]; e.target.value="";
