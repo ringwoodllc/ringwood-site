@@ -206,22 +206,33 @@ fetch("/api/categories").then(function (r) { return r.json(); }).then(function (
 // The menu also offers "＋ Add a client" so new clients are created here, not
 // in Airtable.
 var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
-// Load clients, retrying on a failed or empty response (covers the brief
-// post-deploy window where the edge can return a transient 403).
+// Resilient client list: render instantly from the last good list cached in
+// this browser (or built-in seeds), then refresh live with retries and update
+// the cache. A ~6h timer keeps the cached fallback fresh on its own.
+var SEED_CLIENTS = ["Bloom", "Moment", "Ridge", "Robin", "Summit", "United"];
+var CACHE_KEY = "rw_lists_v1";
+function readClientsCache() {
+  try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return (c && c.data && c.data.clients && c.data.clients.length) ? c.data.clients : null; } catch (e) { return null; }
+}
+function writeClientsCache(clients) {
+  try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null") || {}; c.t = Date.now(); c.data = c.data || {}; c.data.clients = clients; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch (e) {}
+}
+function renderClients(clients) {
+  var html = "<option value=''>" + (clients && clients.length ? "Select…" : "No clients yet") + "</option>";
+  (clients || []).forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
+  clientEl.innerHTML = html + ADD_CLIENT;
+}
+renderClients(readClientsCache() || SEED_CLIENTS);
 function loadClients(tries) {
   tries = tries || 0;
   fetch("/api/options").then(function (r) { return r.json(); }).then(function (o) {
     var clients = (o && o.clients) || [];
     if (!clients.length && tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); return; }
-    var html = "<option value=''>" + (clients.length ? "Select…" : "No clients yet") + "</option>";
-    clients.forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
-    clientEl.innerHTML = html + ADD_CLIENT;
-  }).catch(function () {
-    if (tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); }
-    else { clientEl.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; }
-  });
+    if (clients.length) { renderClients(clients); writeClientsCache(clients); }
+  }).catch(function () { if (tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); } });
 }
 loadClients();
+setInterval(function () { loadClients(); }, 6 * 3600 * 1000);
 
 // ---- add a client without leaving the form ----
 var addClientRow = document.getElementById("addClientRow");

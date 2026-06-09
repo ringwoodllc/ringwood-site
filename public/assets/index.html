@@ -279,22 +279,38 @@
     sel.innerHTML = html + addHtml;
     if (keep) sel.value = keep;
   }
-  // Load the lists, retrying on a failed or empty response (covers the brief
-  // post-deploy window where the edge can return a transient 403).
+  // Lists load live from Airtable, but stay resilient with a layered fallback:
+  //   1) the last good lists, cached in this browser (kept fresh automatically)
+  //   2) built-in seed values, if there is no cache yet and the network fails
+  // We render instantly from the cache/seed, then refresh from the server (with
+  // retries), updating the cache on success. A timer re-checks every ~6 hours
+  // while the page stays open, so the fallback never goes stale on its own.
+  var SEED = {
+    clients: ["Bloom","Moment","Ridge","Robin","Summit","United"],
+    types: ["Office Equipment","HVAC","AV","Beverage","Refrigeration / Freezer","Other"],
+    locations: ["Office","Conference Room","Kitchen / Break Room","Reception / Lobby","Hallway","Restroom","Storage / Closet","Server / IT Room","Mechanical Room","Basement","Rooftop","Attic","Exterior / Grounds","Garage / Parking","Other"]
+  };
+  var CACHE_KEY = "rw_lists_v1";
+  function readCache(){ try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return (c && c.data) ? c.data : null; } catch(e){ return null; } }
+  function writeCache(d){ try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), data: d })); } catch(e){} }
+
+  function applyLists(o){
+    fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
+    fillSelect(equipSel, o.types, null, ADD_EQUIP);
+    fillSelect(locationSel, o.locations, null, ADD_LOC);
+  }
+  applyLists(readCache() || SEED);
+
   function loadOptions(tries){
     tries = tries || 0;
     fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
       o = o || {};
       if ((!o.clients || !o.clients.length) && tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); return; }
-      fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
-      fillSelect(equipSel, o.types, null, ADD_EQUIP);
-      fillSelect(locationSel, o.locations, null, ADD_LOC);
-    }).catch(function(){
-      if (tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); }
-      else { clientSel.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; }
-    });
+      if (o.clients && o.clients.length){ applyLists(o); writeCache(o); }
+    }).catch(function(){ if (tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); } });
   }
   loadOptions();
+  setInterval(function(){ loadOptions(); }, 6 * 3600 * 1000);
 
   // Reusable "＋ Add" for the Dropdown Lists (type, location). Builds an inline
   // input under the select and writes the new value to the Dropdown Lists table.

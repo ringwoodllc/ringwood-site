@@ -108,14 +108,29 @@
   var assetSel=document.getElementById("assetSel"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter");
   var allAssets=[], curAsset=null, curId="";
 
-  // Client filter comes only from the Clients table (one source), via /api/options.
-  fetch("/api/options").then(function(r){return r.json();}).then(function(o){
-    if(o){
-      OPTIONS=o;
-      if(o.serviceTypes&&o.serviceTypes.length) SERVICE_TYPES=o.serviceTypes;
-      (o.clients||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c; op.textContent=c; clientFilter.appendChild(op); });
-    }
-  }).catch(function(){});
+  // Lists from /api/options, with a resilient cache: render from the last good
+  // values in this browser first, then refresh live (with retries) and update
+  // the cache. A ~6h timer keeps the cached fallback fresh on its own.
+  var CACHE_KEY = "rw_lists_v1";
+  function readCache(){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); return (c&&c.data)?c.data:null; }catch(e){ return null; } }
+  function writeCache(d){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(),data:d})); }catch(e){} }
+  function renderClientFilter(clients){
+    var keep=clientFilter.value, html="<option value=''>All clients</option>";
+    (clients||[]).forEach(function(c){ html+="<option>"+c.replace(/</g,"&lt;")+"</option>"; });
+    clientFilter.innerHTML=html; if(keep) clientFilter.value=keep;
+  }
+  var cachedLists = readCache();
+  if(cachedLists){ OPTIONS=cachedLists; if(cachedLists.serviceTypes&&cachedLists.serviceTypes.length) SERVICE_TYPES=cachedLists.serviceTypes; renderClientFilter(cachedLists.clients); }
+  function loadLists(tries){
+    tries=tries||0;
+    fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+      o=o||{};
+      if((!o.clients||!o.clients.length) && tries<4){ setTimeout(function(){loadLists(tries+1);},1200); return; }
+      if(o.clients&&o.clients.length){ OPTIONS=o; if(o.serviceTypes&&o.serviceTypes.length) SERVICE_TYPES=o.serviceTypes; renderClientFilter(o.clients); writeCache(o); }
+    }).catch(function(){ if(tries<4) setTimeout(function(){loadLists(tries+1);},1200); });
+  }
+  loadLists();
+  setInterval(function(){ loadLists(); }, 6*3600*1000);
 
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
     allAssets = Array.isArray(list)?list:[];

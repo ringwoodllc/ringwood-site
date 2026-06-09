@@ -156,19 +156,48 @@
   // the hardcoded options above if the request fails).
   var serviceTypeSel = document.getElementById("serviceType");
   var ADD_SVC = "<option value='__add'>＋ Add a type…</option>";
-  fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
-    if (o && o.serviceTypes && o.serviceTypes.length){
-      SERVICE_TYPES = o.serviceTypes;
-      var keep = serviceTypeSel.value;
-      var html = "<option value=''>Select…</option>";
-      o.serviceTypes.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
-      serviceTypeSel.innerHTML = html + ADD_SVC;
-      if (keep) serviceTypeSel.value = keep;
-    }
-    // Client filter comes only from the Clients table (one source).
-    var cls = (o && o.clients) || [];
-    cls.forEach(function(c){ var op=document.createElement("option"); op.value=c; op.textContent=c; clientFilter.appendChild(op); });
-  }).catch(function(){ /* keep fallback */ });
+  // Resilient lists: render from the last good values cached in this browser
+  // (or built-in seeds), then refresh live with retries and update the cache.
+  // A ~6h timer keeps the cached fallback fresh on its own.
+  var SEED_SVC = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
+  var SEED_CLIENTS = ["Bloom","Moment","Ridge","Robin","Summit","United"];
+  var CACHE_KEY = "rw_lists_v1";
+  function readCache(){ try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return (c && c.data) ? c.data : null; } catch(e){ return null; } }
+  function writeCache(d){ try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null") || {}; c.t = Date.now(); c.data = Object.assign(c.data || {}, d); localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch(e){} }
+
+  function renderServiceTypes(types){
+    if (!types || !types.length) return;
+    SERVICE_TYPES = types;
+    var keep = serviceTypeSel.value;
+    var html = "<option value=''>Select…</option>";
+    types.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
+    serviceTypeSel.innerHTML = html + ADD_SVC;
+    if (keep) serviceTypeSel.value = keep;
+  }
+  function renderClientFilter(clients){
+    var keep = clientFilter.value;
+    var html = "<option value=''>All clients</option>";
+    (clients || []).forEach(function(c){ html += "<option>" + c.replace(/</g,"&lt;") + "</option>"; });
+    clientFilter.innerHTML = html;
+    if (keep) clientFilter.value = keep;
+  }
+  var cached = readCache() || {};
+  renderServiceTypes(cached.serviceTypes || SEED_SVC);
+  renderClientFilter(cached.clients || SEED_CLIENTS);
+
+  function loadServiceOptions(tries){
+    tries = tries || 0;
+    fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
+      o = o || {};
+      var hasClients = o.clients && o.clients.length, hasTypes = o.serviceTypes && o.serviceTypes.length;
+      if (!hasClients && !hasTypes && tries < 4){ setTimeout(function(){ loadServiceOptions(tries + 1); }, 1200); return; }
+      if (hasTypes) renderServiceTypes(o.serviceTypes);
+      if (hasClients) renderClientFilter(o.clients);
+      if (hasClients || hasTypes) writeCache({ serviceTypes: o.serviceTypes || cached.serviceTypes, clients: o.clients || cached.clients });
+    }).catch(function(){ if (tries < 4){ setTimeout(function(){ loadServiceOptions(tries + 1); }, 1200); } });
+  }
+  loadServiceOptions();
+  setInterval(function(){ loadServiceOptions(); }, 6 * 3600 * 1000);
 
   // Reusable "＋ Add" that writes a new value to the Dropdown Lists table.
   function makeAdder(sel, listName, label){
