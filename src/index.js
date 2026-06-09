@@ -44,6 +44,7 @@ export default {
 
     if (url.pathname === "/api/assets" && request.method === "POST") return handleCreateAsset(request, env, ctx, session);
     if (url.pathname === "/api/assets/list" && request.method === "GET") return listAssets(env, session);
+    if (url.pathname === "/api/assets/nickname-all") return nicknameAllAssets(request, env);
     if (url.pathname === "/api/options" && request.method === "GET") return optionsHandler(env, session);
     if (url.pathname === "/api/diag" && request.method === "GET") return diag(env);
     if (url.pathname === "/api/clients" && request.method === "POST") return createClient(request, env);
@@ -1638,6 +1639,55 @@ async function titleFromDescription(description, category, env) {
   } catch {
     return null;
   }
+}
+
+// The short everyday name for an asset, from its existing fields (no photos needed).
+async function shortNameFromAsset(a, env) {
+  const ctx = [a.name, a.make, a.model, a.equipmentType].filter(Boolean).join(" / ");
+  if (!ctx) return "";
+  try {
+    const schema = { type: "object", properties: { shortName: { type: "string" } }, required: ["shortName"], additionalProperties: false };
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 40,
+        messages: [{ role: "user", content:
+          "Give the everyday name a person calls this kind of equipment: 1 to 3 words, Title Case, NO brand and NO model number. " +
+          "Examples: 'Ice Machine', 'Fridge', 'Freezer', 'Printer', 'Rooftop HVAC Unit', 'Coffee Machine'.\n" +
+          "Equipment: " + ctx }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return "";
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return "";
+    return (JSON.parse(block.text).shortName || "").trim().replace(/^["']|["']$/g, "").slice(0, 40);
+  } catch {
+    return "";
+  }
+}
+
+// One-shot (master): give every asset that lacks a nickname a short AI nickname,
+// auto-numbered per client. Leaves any nickname you've already set alone.
+async function nicknameAllAssets(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  const rows = await sbSelect(env, "assets?select=id,name,nickname,make,model,client_id,equipment_type:equipment_types(name)&order=logged_at.desc");
+  let checked = 0, updated = 0;
+  for (const a of rows || []) {
+    if ((a.nickname || "").trim()) continue;
+    checked++;
+    const sn = await shortNameFromAsset({ name: a.name, make: a.make, model: a.model, equipmentType: a.equipment_type && a.equipment_type.name }, env);
+    if (sn) {
+      const nick = await uniqueNickname(env, sn, a.client_id);
+      await sbUpdate(env, "assets", a.id, { nickname: nick });
+      updated++;
+    }
+  }
+  return noStore({ ok: true, checked, updated });
 }
 
 // One-time backfill: regenerate the plain "Category · Client" titles on older
