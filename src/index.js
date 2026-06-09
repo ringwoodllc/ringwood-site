@@ -694,17 +694,23 @@ async function getLists(env) {
 // Safe diagnostic: tells us whether the token is present and what the Airtable
 // reads return, without ever exposing the token itself.
 async function diag(env) {
-  const out = { hasToken: !!env.AIRTABLE_TOKEN, base: ASSET_BASE_ID, clientsTable: CLIENTS_TABLE, equipTable: EQUIP_TABLE };
+  const out = { hasToken: !!env.AIRTABLE_TOKEN };
   if (env.AIRTABLE_TOKEN) {
     const headers = { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` };
-    try {
-      const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${CLIENTS_TABLE}?pageSize=2`, { headers });
-      out.clientsStatus = r.status;
-      const d = await r.json();
-      out.clientsBody = d; // raw response: records + field keys, or the error
-    } catch (e) {
-      out.clientsFetchError = String(e);
-    }
+    const probe = async (label, table) => {
+      try {
+        const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?pageSize=200`, { headers });
+        const d = await r.json().catch(() => ({}));
+        out[label] = { status: r.status, records: d && d.records ? d.records.length : null, error: d && d.error ? d.error.type || d.error : null };
+      } catch (e) {
+        out[label] = { status: "fetch_failed", error: String(e) };
+      }
+    };
+    // Same 4 reads getLists does, in the same order, so we see which one fails.
+    await probe("r1_clients", CLIENTS_TABLE);
+    await probe("r2_equip", EQUIP_TABLE);
+    await probe("r3_location", LOCATION_TABLE);
+    await probe("r4_serviceType", SERVICETYPE_TABLE);
   }
   return new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
