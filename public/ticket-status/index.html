@@ -274,8 +274,11 @@
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
-      var html = existingPhotos.map(function(u){
-        return "<img src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />";
+      var html = existingPhotos.map(function(u, i){
+        return "<span style='position:relative;display:inline-block'>" +
+          "<img src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
+          "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
+          "</span>";
       }).join("");
       html += newPhotos.map(function(p, i){
         return "<span style='position:relative;display:inline-block'>" +
@@ -286,6 +289,7 @@
       thumbsEl.innerHTML = html || "<span style='color:var(--muted);font-size:.9rem'>No photos yet.</span>";
     }
     window.__rmNewPhoto = function(i){ newPhotos.splice(i,1); renderThumbs(); };
+    window.__rmPhoto = function(i){ existingPhotos.splice(i,1); renderThumbs(); };
     renderThumbs();
 
     document.getElementById("e_file").addEventListener("change", function(e){
@@ -327,6 +331,7 @@
         location: document.getElementById("e_loc").value,
         description: document.getElementById("e_desc").value,
         title: document.getElementById("e_title").value || genTitle,
+        keepPhotos: existingPhotos,
         addPhotos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
       };
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })

@@ -75,6 +75,10 @@ create table if not exists assets (
 );
 create index if not exists assets_client_idx on assets (client_id);
 create index if not exists assets_type_idx on assets (equipment_type_id);
+-- Assets now hold any number of photos in one list (overall first, then the
+-- nameplate, then whatever else). The three legacy columns above still work for
+-- older rows; the app reads photo_urls when it is present.
+alter table assets add column if not exists photo_urls text[];
 
 create table if not exists tickets (
   id uuid primary key default gen_random_uuid(),

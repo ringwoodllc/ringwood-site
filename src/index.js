@@ -483,20 +483,34 @@ async function handleCreateAsset(request, env, ctx) {
   return json({ ok: true, id });
 }
 
-// Background: upload the 3 photos to Storage, then read the nameplate with
-// Claude and fill in any blanks.
+// An asset's photos as one list: prefer the photo_urls array; fall back to the
+// three legacy single-slot columns for assets created before the switch.
+function assetPhotos(a) {
+  if (a && Array.isArray(a.photo_urls) && a.photo_urls.length) return a.photo_urls.filter(Boolean);
+  return [a && a.overall_photo_url, a && a.nameplate_photo_url, a && a.serial_photo_url].filter(Boolean);
+}
+
+// Pull the submitted photos as a flat list. New clients send a `photos` array
+// (overall first, then nameplate, then anything else); older ones may still
+// send the three named slots.
+function assetPicsFromBody(body) {
+  if (Array.isArray(body.photos)) return body.photos.filter((p) => p && p.base64);
+  return [body.overallPhoto, body.nameplatePhoto, body.serialPhoto].filter((p) => p && p.base64);
+}
+
+// Background: upload the photos to Storage, then read the nameplate with Claude
+// and fill in any blanks.
 async function processAssetMedia(id, body, manual, env) {
   const patch = {};
-  const o = await uploadToStorage(env, `assets/${id}/overall.jpg`, body.overallPhoto && body.overallPhoto.base64, body.overallPhoto && body.overallPhoto.contentType);
-  const n = await uploadToStorage(env, `assets/${id}/nameplate.jpg`, body.nameplatePhoto && body.nameplatePhoto.base64, body.nameplatePhoto && body.nameplatePhoto.contentType);
-  const s = await uploadToStorage(env, `assets/${id}/serial.jpg`, body.serialPhoto && body.serialPhoto.base64, body.serialPhoto && body.serialPhoto.contentType);
-  if (o) patch.overall_photo_url = o;
-  if (n) patch.nameplate_photo_url = n;
-  if (s) patch.serial_photo_url = s;
+  const pics = assetPicsFromBody(body);
+  const urls = [];
+  for (let i = 0; i < pics.length; i++) {
+    const u = await uploadToStorage(env, `assets/${id}/${i}.jpg`, pics[i].base64, pics[i].contentType);
+    if (u) urls.push(u);
+  }
+  if (urls.length) patch.photo_urls = urls;
 
-  const images = [body.nameplatePhoto, body.serialPhoto, body.overallPhoto]
-    .filter((p) => p && p.base64)
-    .map((p) => ({ media_type: p.contentType, base64: p.base64 }));
+  const images = pics.map((p) => ({ media_type: p.contentType, base64: p.base64 }));
   if (images.length && env.ANTHROPIC_API_KEY) {
     let read = null;
     try {
@@ -677,6 +691,7 @@ async function getAssetFull(url, env) {
     location: (a.location && a.location.name) || "",
     status: a.verification || "Pending",
     aiReading: a.nameplate_reading || "",
+    photos: assetPhotos(a),
     overallPhoto: a.overall_photo_url || "",
     nameplatePhoto: a.nameplate_photo_url || "",
     serialPhoto: a.serial_photo_url || "",
@@ -697,10 +712,10 @@ async function analyzeAsset(request, env) {
   const id = (body.id || "").trim();
   if (!id) return json({ ok: false, error: "No asset id." }, 400);
 
-  const rows = await sbSelect(env, `assets?id=eq.${id}&select=overall_photo_url,nameplate_photo_url,serial_photo_url`);
+  const rows = await sbSelect(env, `assets?id=eq.${id}&select=photo_urls,overall_photo_url,nameplate_photo_url,serial_photo_url`);
   const a = rows && rows[0];
   if (!a) return json({ ok: false, error: "Asset not found." }, 404);
-  const urls = [a.nameplate_photo_url, a.serial_photo_url, a.overall_photo_url].filter(Boolean);
+  const urls = assetPhotos(a);
   if (!urls.length) return json({ ok: false, error: "This asset has no photos to analyze." }, 400);
 
   const images = [];
@@ -756,6 +771,26 @@ async function updateAsset(request, env) {
   if ("equipmentType" in body) patch.equipment_type_id = findId(refs.equip, c(body.equipmentType));
   if ("client" in body) patch.client_id = findId(refs.clients, c(body.client));
   if ("location" in body) patch.location_id = findId(refs.locs, c(body.location));
+  // Rebuild the photo list when the editor sends one: keep the photos the user
+  // didn't delete, then append new uploads. Clear the legacy single-slot columns
+  // so photos live in one place from now on.
+  const hasKeep = Array.isArray(body.keepPhotos);
+  const hasAdd = Array.isArray(body.addPhotos) && body.addPhotos.length;
+  if (hasKeep || hasAdd) {
+    let urls = hasKeep ? body.keepPhotos.filter(Boolean) : [];
+    if (hasAdd) {
+      for (let i = 0; i < body.addPhotos.length; i++) {
+        const p = body.addPhotos[i];
+        if (!p || !p.base64) continue;
+        const u = await uploadToStorage(env, `assets/${id}/add-${Date.now()}-${i}.jpg`, p.base64, p.contentType);
+        if (u) urls.push(u);
+      }
+    }
+    patch.photo_urls = urls;
+    patch.overall_photo_url = null;
+    patch.nameplate_photo_url = null;
+    patch.serial_photo_url = null;
+  }
   const res = await sbUpdate(env, "assets", id, patch);
   if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
   return json({ ok: true });
@@ -1070,18 +1105,28 @@ async function updateTicket(request, env) {
   if ("location" in body) patch.location = body.location;
   if ("title" in body && body.title) patch.title = body.title;
   if ("client" in body) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
-  // Append any newly added photos to the existing set.
-  if (Array.isArray(body.addPhotos) && body.addPhotos.length) {
-    const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls,photo_url`);
-    const urls = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls.slice() : [];
-    for (let i = 0; i < body.addPhotos.length; i++) {
-      const p = body.addPhotos[i];
-      if (!p || !p.base64) continue;
-      const u = await uploadToStorage(env, `tickets/${id}/add-${Date.now()}-${i}.jpg`, p.base64, p.contentType);
-      if (u) urls.push(u);
+  // Rebuild the photo set when the editor sends one: keep the photos the user
+  // didn't delete (keepPhotos), then append any newly added ones (addPhotos).
+  const hasKeep = Array.isArray(body.keepPhotos);
+  const hasAdd = Array.isArray(body.addPhotos) && body.addPhotos.length;
+  if (hasKeep || hasAdd) {
+    let urls;
+    if (hasKeep) {
+      urls = body.keepPhotos.filter(Boolean);
+    } else {
+      const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls`);
+      urls = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls.slice() : [];
+    }
+    if (hasAdd) {
+      for (let i = 0; i < body.addPhotos.length; i++) {
+        const p = body.addPhotos[i];
+        if (!p || !p.base64) continue;
+        const u = await uploadToStorage(env, `tickets/${id}/add-${Date.now()}-${i}.jpg`, p.base64, p.contentType);
+        if (u) urls.push(u);
+      }
     }
     patch.photo_urls = urls;
-    if (urls.length && !(cur && cur[0] && cur[0].photo_url)) patch.photo_url = urls[0];
+    patch.photo_url = urls.length ? urls[0] : null;
   }
   const res = await sbUpdate(env, "tickets", id, patch);
   if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);

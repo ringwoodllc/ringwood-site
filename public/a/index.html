@@ -166,9 +166,10 @@
   }
   function statusClass(s){ return s==="AI suggested"?"ai":(s==="Verified"?"verified":"pending"); }
 
+  function assetPhotoList(a){ if(a.photos && a.photos.length) return a.photos; return [a.overallPhoto,a.nameplatePhoto,a.serialPhoto].filter(Boolean); }
   function renderRead(a){
-    function fig(u,cap){ return u?"<figure><img src='"+u+"' alt='"+esc(cap)+"'/><figcaption>"+esc(cap)+"</figcaption></figure>":""; }
-    var photos = (fig(a.overallPhoto,"Overall")+fig(a.nameplatePhoto,"Nameplate")+fig(a.serialPhoto,"Serial"));
+    var list = assetPhotoList(a);
+    var photos = list.map(function(u){ return "<figure><img src='"+esc(u)+"' alt=''/></figure>"; }).join("");
     photos = photos?"<div class='photos'>"+photos+"</div>":"";
     var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+"</dl></div>";
     var ai = a.aiReading?"<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>"+esc(a.aiReading)+"</div></div>":"";
@@ -211,7 +212,54 @@
   function field(id,label,val,ta){ var c = ta?"<textarea id='"+id+"'>"+esc(val||"")+"</textarea>":"<input id='"+id+"' type='text' value='"+esc(val||"")+"'/>"; return "<div class='field'><label>"+esc(label)+"</label>"+c+"</div>"; }
   function comboField(id,label,val,options){ return "<div class='field'><label>"+esc(label)+"</label>"+combo(id,val,options)+"</div>"; }
 
-  function editPhotos(a){ function f(u,cap){ return u?"<figure><img src='"+u+"' alt='"+esc(cap)+"'/><figcaption>"+esc(cap)+"</figcaption></figure>":""; } var p=f(a.overallPhoto,"Overall")+f(a.nameplatePhoto,"Nameplate")+f(a.serialPhoto,"Serial"); return p?"<div class='photos'>"+p+"</div>":"<div class='sub' style='color:var(--clay)'>No photos on this asset.</div>"; }
+  // Shrink large phone photos client-side so uploads are quick on cell signal.
+  function processPhoto(file){
+    return new Promise(function(resolve, reject){
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function(){
+        var max=1600, w=img.width, h=img.height;
+        if(w>max||h>max){ if(w>=h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } }
+        var c=document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        var d=c.toDataURL("image/jpeg",0.82);
+        resolve({ base64:d.split(",")[1], contentType:"image/jpeg", preview:d });
+      };
+      img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("bad image")); };
+      img.src=url;
+    });
+  }
+  var editKeep = [];   // existing photo URLs still kept
+  var editNew = [];    // newly added {base64,contentType,preview}
+  function renderEditThumbs(){
+    var el=document.getElementById("editthumbs"); if(!el) return;
+    var html = editKeep.map(function(u,i){
+      return "<span style='position:relative;display:inline-block'><img src='"+esc(u)+"' alt='' style='width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/>"+
+        "<button type='button' onclick='__aRmKeep("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
+    }).join("");
+    html += editNew.map(function(p,i){
+      return "<span style='position:relative;display:inline-block'><img src='"+p.preview+"' alt='' style='width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/>"+
+        "<button type='button' onclick='__aRmNew("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
+    }).join("");
+    el.innerHTML = html || "<span class='sub' style='color:var(--muted)'>No photos yet. Add an overall shot first, then the nameplate.</span>";
+  }
+  window.__aRmKeep=function(i){ editKeep.splice(i,1); renderEditThumbs(); };
+  window.__aRmNew=function(i){ editNew.splice(i,1); renderEditThumbs(); };
+  function editPhotos(a){
+    editKeep = assetPhotoList(a).slice();
+    editNew = [];
+    return "<div id='editthumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px'></div>"+
+      "<div class='field'><input type='file' id='a_file' accept='image/*' multiple capture='environment' /></div>";
+  }
+  function wireEditPhotos(){
+    renderEditThumbs();
+    var f=document.getElementById("a_file"); if(!f) return;
+    f.addEventListener("change", function(e){
+      var files=Array.prototype.slice.call(e.target.files||[]); e.target.value="";
+      Promise.all(files.map(processPhoto)).then(function(arr){ arr.forEach(function(p){ editNew.push(p); }); renderEditThumbs(); })
+        .catch(function(){ setMsg("Couldn't read one of the photos."); });
+    });
+  }
   function setMsg(t){ var e=document.getElementById("editmsg"); if(e) e.textContent=t||""; }
 
   function showEdit(a, note){
@@ -230,6 +278,7 @@
     document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
     document.getElementById("saveBtn").addEventListener("click", saveEdit);
     document.getElementById("runBtn").addEventListener("click", runAgentNow);
+    wireEditPhotos();
   }
 
   function runAgentNow(){
@@ -242,7 +291,7 @@
 
   function saveEdit(){
     var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
-    var payload={ id:curId, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location") };
+    var payload={ id:curId, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }
     }).catch(function(){ b.disabled=false; b.textContent="Save"; setMsg("Couldn't reach the server."); });

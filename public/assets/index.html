@@ -58,6 +58,14 @@
   .slot .pick:hover{border-color:var(--green)}
   .slot .cap{display:block;font-size:.72rem;letter-spacing:.04em;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:6px}
   .slot img.preview{display:none;width:100%;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+  /* Flexible photo list */
+  .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .thumbs .ph{position:relative;display:inline-block}
+  .thumbs .ph img{width:92px;height:92px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block}
+  .thumbs .ph .x{position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer}
+  .thumbs .ord{position:absolute;left:5px;bottom:5px;background:rgba(33,68,58,.85);color:#f6f2e8;font-size:.62rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 6px;border-radius:999px}
+  .addpick{display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:54px;padding:12px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);font-weight:600;font-size:.92rem;background:var(--bg);margin-bottom:22px}
+  .addpick:hover{border-color:var(--green)}
 
   .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:16px;border-radius:4px;transition:background .2s}
   .btn:hover{background:var(--green-deep)}
@@ -120,36 +128,13 @@
       </div>
     </div>
 
-    <div class="group-label">Photos</div>
-    <div class="photos">
-      <div class="slot">
-        <span class="cap">1 · Overall</span>
-        <input type="file" id="overallInput" accept="image/*" capture="environment" />
-        <label class="pick" for="overallInput" id="overallPick">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
-          <span id="overallText">Whole unit</span>
-        </label>
-        <img class="preview" id="overallPreview" alt="" />
-      </div>
-      <div class="slot">
-        <span class="cap">2 · Nameplate</span>
-        <input type="file" id="nameplateInput" accept="image/*" capture="environment" />
-        <label class="pick" for="nameplateInput" id="nameplatePick">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
-          <span id="nameplateText">Data plate</span>
-        </label>
-        <img class="preview" id="nameplatePreview" alt="" />
-      </div>
-      <div class="slot">
-        <span class="cap">3 · Serial</span>
-        <input type="file" id="serialInput" accept="image/*" capture="environment" />
-        <label class="pick" for="serialInput" id="serialPick">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
-          <span id="serialText">Serial #</span>
-        </label>
-        <img class="preview" id="serialPreview" alt="" />
-      </div>
-    </div>
+    <div class="group-label">Photos <span class="hint" style="text-transform:none;letter-spacing:0">— take an overall shot first, then the nameplate, then anything else</span></div>
+    <div id="thumbs" class="thumbs"></div>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" multiple style="display:none" />
+    <label class="pick addpick" for="photoInput" id="photoPick">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L19 6h0a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+      <span>Add photos</span>
+    </label>
 
     <div class="group-label">Details <span class="hint" style="text-transform:none;letter-spacing:0">— all optional, we'll fill blanks</span></div>
 
@@ -238,30 +223,27 @@
     });
   }
 
-  var photos = { overall: null, nameplate: null, serial: null };
-
-  function wireSlot(key, label){
-    var input = document.getElementById(key + "Input");
-    var preview = document.getElementById(key + "Preview");
-    var pick = document.getElementById(key + "Pick");
-    var text = document.getElementById(key + "Text");
-    input.addEventListener("change", function(){
-      var file = input.files && input.files[0];
-      if (!file) return;
-      text.textContent = "…";
-      processPhoto(file).then(function(res){
-        photos[key] = res;
-        preview.src = res.preview;
-        preview.style.display = "block";
-        pick.style.display = "none";
-      }).catch(function(){ text.textContent = label; });
-    });
-    // tapping the preview lets you retake
-    preview.addEventListener("click", function(){ input.click(); });
+  // Photos are one ordered list now. The first is the overall shot, the second
+  // the nameplate; the rest are extras. The AI reads them all.
+  var photos = [];
+  var thumbsEl = document.getElementById("thumbs");
+  function photoOrderLabel(i){ return i===0 ? "Overall" : (i===1 ? "Nameplate" : ("Photo " + (i+1))); }
+  function renderThumbs(){
+    thumbsEl.innerHTML = photos.map(function(p, i){
+      return "<span class='ph'><img src='" + p.preview + "' alt='' />" +
+        "<span class='ord'>" + photoOrderLabel(i) + "</span>" +
+        "<button type='button' class='x' onclick='removePhoto(" + i + ")'>×</button></span>";
+    }).join("");
   }
-  wireSlot("overall", "Whole unit");
-  wireSlot("nameplate", "Data plate");
-  wireSlot("serial", "Serial #");
+  window.removePhoto = function(i){ photos.splice(i,1); renderThumbs(); };
+  document.getElementById("photoInput").addEventListener("change", function(e){
+    var files = Array.prototype.slice.call(e.target.files || []);
+    e.target.value = "";
+    Promise.all(files.map(processPhoto)).then(function(arr){
+      arr.forEach(function(p){ photos.push(p); });
+      renderThumbs();
+    }).catch(function(){ showMsg("err", "Couldn't read one of the photos."); });
+  });
 
   var clientSel = document.getElementById("client");
   var locationSel = document.getElementById("location");
@@ -448,9 +430,7 @@
       client: client,
       location: locationSel.value === "__add" ? "" : locationSel.value,
       notes: document.getElementById("notes").value,
-      overallPhoto: photos.overall,
-      nameplatePhoto: photos.nameplate,
-      serialPhoto: photos.serial
+      photos: photos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
     };
 
     submitBtn.disabled = true;
@@ -464,11 +444,8 @@
     }).then(function(r){ return r.json(); }).then(function(data){
       if (data && data.ok){
         form.reset();
-        photos = { overall: null, nameplate: null, serial: null };
-        ["overall","nameplate","serial"].forEach(function(k){
-          document.getElementById(k + "Preview").style.display = "none";
-          document.getElementById(k + "Pick").style.display = "flex";
-        });
+        photos = [];
+        renderThumbs();
         showMsg("ok", "Saved — go ahead with the next one.");
         if (data.id) trackCapture(data.id);
       } else {
