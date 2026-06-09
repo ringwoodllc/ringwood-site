@@ -1137,18 +1137,17 @@ async function updateTicket(request, env) {
   if ("location" in body) patch.location = body.location;
   if ("title" in body && body.title) patch.title = body.title;
   if ("client" in body) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
-  // Rebuild the photo set when the editor sends one: keep the photos the user
-  // didn't delete (keepPhotos), then append any newly added ones (addPhotos).
+  // Only touch the photo columns when the photos actually changed. The editor
+  // always sends keepPhotos, so writing them every time would (a) be wasteful
+  // and (b) fail an ordinary status/text save if anything about the photo write
+  // is off. Apply the core fields first so a change like Archive always lands.
   const hasKeep = Array.isArray(body.keepPhotos);
   const hasAdd = Array.isArray(body.addPhotos) && body.addPhotos.length;
+  let photoPatch = null;
   if (hasKeep || hasAdd) {
-    let urls;
-    if (hasKeep) {
-      urls = body.keepPhotos.filter(Boolean);
-    } else {
-      const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls`);
-      urls = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls.slice() : [];
-    }
+    const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls`);
+    const current = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls : [];
+    let urls = hasKeep ? body.keepPhotos.filter(Boolean) : current.slice();
     if (hasAdd) {
       for (let i = 0; i < body.addPhotos.length; i++) {
         const p = body.addPhotos[i];
@@ -1157,11 +1156,18 @@ async function updateTicket(request, env) {
         if (u) urls.push(u);
       }
     }
-    patch.photo_urls = urls;
-    patch.photo_url = urls.length ? urls[0] : null;
+    const changed = hasAdd || urls.length !== current.length || urls.some((u, i) => u !== current[i]);
+    if (changed) photoPatch = { photo_urls: urls, photo_url: urls.length ? urls[0] : null };
   }
-  const res = await sbUpdate(env, "tickets", id, patch);
-  if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
+
+  if (Object.keys(patch).length) {
+    const res = await sbUpdate(env, "tickets", id, patch);
+    if (!res.ok) return json({ ok: false, error: ("Save failed. " + (res.error || "")).slice(0, 300) }, 502);
+  }
+  if (photoPatch) {
+    const res2 = await sbUpdate(env, "tickets", id, photoPatch);
+    if (!res2.ok) return json({ ok: false, error: ("Saved the details, but the photos did not update. " + (res2.error || "")).slice(0, 300) }, 502);
+  }
   return json({ ok: true });
 }
 
