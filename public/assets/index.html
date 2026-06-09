@@ -175,19 +175,12 @@
       <label for="location">Location</label>
       <select id="location">
         <option value="">Select…</option>
-        <optgroup label="Inside">
-          <option>Office</option><option>Conference Room</option><option>Kitchen / Break Room</option>
-          <option>Reception / Lobby</option><option>Hallway</option><option>Restroom</option>
-          <option>Storage / Closet</option><option>Server / IT Room</option><option>Mechanical Room</option>
-          <option>Basement</option>
-        </optgroup>
-        <optgroup label="Outside">
-          <option>Rooftop</option><option>Attic</option><option>Exterior / Grounds</option>
-          <option>Garage / Parking</option>
-        </optgroup>
-        <option value="__other">Other (type below)</option>
+        <option>Office</option><option>Conference Room</option><option>Kitchen / Break Room</option>
+        <option>Reception / Lobby</option><option>Hallway</option><option>Restroom</option>
+        <option>Storage / Closet</option><option>Server / IT Room</option><option>Mechanical Room</option>
+        <option>Basement</option><option>Rooftop</option><option>Attic</option>
+        <option>Exterior / Grounds</option><option>Garage / Parking</option><option>Other</option>
       </select>
-      <input id="locationOther" type="text" autocomplete="off" placeholder="Where is it?" style="display:none;margin-top:8px" />
     </div>
 
     <div class="field">
@@ -266,10 +259,25 @@
   });
 
   var locationSel = document.getElementById("location");
-  var locationOther = document.getElementById("locationOther");
-  locationSel.addEventListener("change", function(){
-    locationOther.style.display = locationSel.value === "__other" ? "block" : "none";
-  });
+  var equipSel = document.getElementById("equipmentType");
+
+  // Master lists, read live from Airtable. Fall back to the hardcoded options
+  // already in the markup if the request fails.
+  function fillSelect(sel, values, opts){
+    if (!values || !values.length) return;
+    opts = opts || {};
+    var keep = sel.value;
+    var html = "<option value=''>Select…</option>";
+    values.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
+    if (opts.other) html += "<option value='__other'>Other (type below)</option>";
+    sel.innerHTML = html;
+    if (keep) sel.value = keep;
+  }
+  fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
+    fillSelect(clientSel, o.clients, { other: true });
+    fillSelect(equipSel, o.types, {});
+    fillSelect(locationSel, o.locations, {});
+  }).catch(function(){ /* keep the fallback options */ });
 
   var form = document.getElementById("assetForm");
   var submitBtn = document.getElementById("submitBtn");
@@ -322,15 +330,14 @@
   form.addEventListener("submit", function(e){
     e.preventDefault();
     var client = clientSel.value === "__other" ? clientOther.value : clientSel.value;
-    var location = locationSel.value === "__other" ? locationOther.value : locationSel.value;
     var payload = {
       description: document.getElementById("description").value,
       manufacturer: document.getElementById("manufacturer").value,
       model: document.getElementById("model").value,
       serial: document.getElementById("serial").value,
-      equipmentType: document.getElementById("equipmentType").value,
+      equipmentType: equipSel.value,
       client: client,
-      location: location,
+      location: locationSel.value,
       notes: document.getElementById("notes").value,
       overallPhoto: photos.overall,
       nameplatePhoto: photos.nameplate,

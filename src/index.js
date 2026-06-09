@@ -26,6 +26,13 @@ const F_SERIAL_PHOTO = "fldShtSdGtepVypBm";
 const SERVICE_TABLE = "tblYJok5bmKI3aDrr";
 const F_SVC_PHOTOS = "fldVmzwXmbQZWcumX";
 
+/* ---- Master dropdown lists (same base) ----
+ * Forms read these live. Clients come from the Clients table; Location,
+ * Equipment Type, and Service Type come from the Picklists table. Edit those
+ * tables in Airtable and the dropdowns update with no code change. */
+const CLIENTS_TABLE = "tblJdzi3ELknonYqu";
+const PICKLIST_TABLE = "tblYeL2caT6Ex6vGu";
+
 /* ---- Contact requests (Ringwood — Contact Requests base) ---- */
 const CONTACT_BASE = "appKR9vFoNtDfqMEU";
 const CONTACT_TABLE = "tblbp0KSiSy54dBbQ";
@@ -545,7 +552,7 @@ async function updateAsset(request, env) {
   if (!id) return json({ ok: false, error: "No asset id." }, 400);
 
   const c = (v) => (v == null ? "" : v.toString().trim());
-  const opts = await getDistinctValues(env);
+  const opts = await getLists(env);
   const fields = {};
   if ("name" in body) fields["Asset Name"] = c(body.name);
   if ("description" in body) fields["Description"] = c(body.description);
@@ -600,42 +607,48 @@ async function setVerified(request, env) {
   }
 }
 
-// Distinct, de-duplicated option lists (seeds + whatever is already used in the
-// data), so dropdowns stay consistent and people reuse values instead of
-// creating "Office" / "office" / "offic" duplicates.
-async function getDistinctValues(env) {
-  const out = { types: {}, locations: {}, clients: {} };
-  const add = (map, v) => {
-    v = (v || "").toString().trim();
-    if (v) {
-      const k = v.toLowerCase();
-      if (!map[k]) map[k] = v;
-    }
-  };
-  ["Office Equipment", "HVAC", "AV", "Beverage", "Refrigeration / Freezer", "Other"].forEach((v) => add(out.types, v));
-  ["Office", "Conference Room", "Kitchen / Break Room", "Reception / Lobby", "Hallway", "Restroom", "Storage / Closet", "Server / IT Room", "Mechanical Room", "Basement", "Rooftop", "Attic", "Exterior / Grounds", "Garage / Parking", "Other"].forEach((v) => add(out.locations, v));
-  ["Bloom", "Moment", "Ridge", "Robin", "Summit", "United"].forEach((v) => add(out.clients, v));
+// Master dropdown lists, read live from Airtable so they're managed there, not
+// in code. Clients come from the Clients table (anything not Churned); Location,
+// Equipment Type, and Service Type come from the Picklists table (Active rows,
+// ordered by Sort Order).
+async function getLists(env) {
+  const out = { clients: [], types: [], locations: [], serviceTypes: [] };
+  if (!env.AIRTABLE_TOKEN) return out;
   try {
-    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}?pageSize=100`, {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${CLIENTS_TABLE}?pageSize=200`, {
       headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
     });
-    const data = await r.json();
-    (data.records || []).forEach((x) => {
-      const f = x.fields || {};
-      add(out.types, f["Category"]);
-      add(out.locations, f["Location"]);
-      add(out.clients, f["Client"]);
-    });
+    const d = await r.json();
+    out.clients = (d.records || [])
+      .filter((x) => (x.fields["Status"] || "") !== "Churned")
+      .map((x) => x.fields["Client Name"])
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
   } catch {
-    /* seeds are still returned */
+    /* leave clients empty */
   }
-  const vals = (m) => Object.keys(m).sort().map((k) => m[k]);
-  return { types: vals(out.types), locations: vals(out.locations), clients: vals(out.clients) };
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${PICKLIST_TABLE}?pageSize=500`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    const d = await r.json();
+    const rows = (d.records || [])
+      .filter((x) => x.fields["Active"])
+      .map((x) => ({ value: x.fields["Value"], list: x.fields["List"], sort: x.fields["Sort Order"] || 0 }))
+      .filter((x) => x.value && x.list)
+      .sort((a, b) => a.sort - b.sort);
+    const pick = (name) => rows.filter((x) => x.list === name).map((x) => x.value);
+    out.types = pick("Equipment Type");
+    out.locations = pick("Location");
+    out.serviceTypes = pick("Service Type");
+  } catch {
+    /* leave picklists empty */
+  }
+  return out;
 }
 
 async function optionsHandler(env) {
-  if (!env.AIRTABLE_TOKEN) return Response.json({ types: [], locations: [], clients: [] });
-  return Response.json(await getDistinctValues(env));
+  return Response.json(await getLists(env));
 }
 
 // Map a typed value to an existing one when it matches case-insensitively, so

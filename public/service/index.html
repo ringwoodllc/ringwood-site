@@ -152,6 +152,20 @@
   var allAssets = [];
   var SERVICE_TYPES = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
 
+  // Service Type list, read live from the Picklists master table (falls back to
+  // the hardcoded options above if the request fails).
+  var serviceTypeSel = document.getElementById("serviceType");
+  fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
+    if (o && o.serviceTypes && o.serviceTypes.length){
+      SERVICE_TYPES = o.serviceTypes;
+      var keep = serviceTypeSel.value;
+      var html = "<option value=''>Select…</option>";
+      o.serviceTypes.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
+      serviceTypeSel.innerHTML = html;
+      if (keep) serviceTypeSel.value = keep;
+    }
+  }).catch(function(){ /* keep fallback */ });
+
   function renderAssets(){
     var f = (assetFilter.value || "").toLowerCase();
     var cl = clientFilter.value;

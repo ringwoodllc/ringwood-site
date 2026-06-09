@@ -108,7 +108,7 @@
   var assetSel=document.getElementById("assetSel"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter");
   var allAssets=[], curAsset=null, curId="";
 
-  fetch("/api/options").then(function(r){return r.json();}).then(function(o){ if(o) OPTIONS=o; }).catch(function(){});
+  fetch("/api/options").then(function(r){return r.json();}).then(function(o){ if(o){ OPTIONS=o; if(o.serviceTypes&&o.serviceTypes.length) SERVICE_TYPES=o.serviceTypes; } }).catch(function(){});
 
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
     allAssets = Array.isArray(list)?list:[];
