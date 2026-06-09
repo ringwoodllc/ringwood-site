@@ -31,7 +31,9 @@ const F_SVC_PHOTOS = "fldVmzwXmbQZWcumX";
  * Equipment Type, and Service Type come from the Picklists table. Edit those
  * tables in Airtable and the dropdowns update with no code change. */
 const CLIENTS_TABLE = "tblJdzi3ELknonYqu";
-const PICKLIST_TABLE = "tblYeL2caT6Ex6vGu";
+const EQUIP_TABLE = "tblKqe86FmRNGGFW8";
+const LOCATION_TABLE = "tblxT1f4jbYdtfVUG";
+const SERVICETYPE_TABLE = "tblMiHikOG4ce3XUJ";
 
 /* ---- Contact requests (Ringwood — Contact Requests base) ---- */
 const CONTACT_BASE = "appKR9vFoNtDfqMEU";
@@ -54,7 +56,6 @@ const F_DESCRIPTION = "fldJeZTGffRe03kkD";
 const F_ANSWERS = "fldgi7AeOfXqlJbIe";
 const F_STATUS = "fldKeJybW6vIwPBEU";
 const F_PHOTO = "fldi8ElO0ZKVFKhDT";
-const F_TICKET_CLIENT = "fldPjf0JBbs7rd2yW";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -193,9 +194,9 @@ async function handleCreateAsset(request, env, ctx) {
   if (manufacturer) fields["Make"] = manufacturer;
   if (model) fields["Model"] = model;
   if (serial) fields["Serial"] = serial;
-  if (equipmentType) fields["Category"] = equipmentType;
-  if (location) fields["Location"] = location;
-  if (client) fields["Client"] = client;
+  if (equipmentType) fields["Equipment Type"] = [equipmentType];
+  if (location) fields["Location"] = [location];
+  if (client) fields["Client"] = [client];
   if (notes) fields["Notes / Spec"] = notes;
 
   // 1) Create the record immediately so the user gets a fast confirmation.
@@ -252,7 +253,7 @@ async function processAssetMedia(recordId, body, manual, env) {
   if (!manual.manufacturer && read.manufacturer) patch["Make"] = read.manufacturer;
   if (!manual.model && read.model) patch["Model"] = read.model;
   if (!manual.serial && read.serial) patch["Serial"] = read.serial;
-  if (!manual.equipmentType && read.equipmentType) patch["Category"] = read.equipmentType;
+  if (!manual.equipmentType && read.equipmentType) patch["Equipment Type"] = [read.equipmentType];
   // Always take the agent's clean name automatically (e.g. "HP Color LaserJet
   // Pro M255dw Printer"), no confirmation step. A later human edit can override it.
   if (read.assetName) patch["Asset Name"] = read.assetName;
@@ -429,7 +430,7 @@ async function getAssetFull(url, env) {
         .map((x) => ({
           id: x.id,
           date: x.fields["Date"] || "",
-          type: x.fields["Service Type"] || "",
+          type: x.fields["Service Type Name"] || "",
           technician: x.fields["Technician"] || "",
           notes: x.fields["Action"] || "",
           cost: x.fields["Cost"] != null ? x.fields["Cost"] : "",
@@ -447,9 +448,9 @@ async function getAssetFull(url, env) {
       manufacturer: f["Make"] || "",
       model: f["Model"] || "",
       serial: f["Serial"] || "",
-      equipmentType: f["Category"] || "",
-      client: f["Client"] || "",
-      location: f["Location"] || "",
+      equipmentType: f["Equipment Type Name"] || "",
+      client: f["Client Name"] || "",
+      location: f["Location Name"] || "",
       status: f["Verification"] || "Pending",
       aiReading: f["Nameplate Reading (AI)"] || "",
       overallPhoto: photoUrl(f["Overall Photo"]),
@@ -537,7 +538,7 @@ async function analyzeAsset(request, env) {
   if (read.manufacturer) patch["Make"] = read.manufacturer;
   if (read.model) patch["Model"] = read.model;
   if (read.serial) patch["Serial"] = read.serial;
-  if (read.equipmentType) patch["Category"] = read.equipmentType;
+  if (read.equipmentType) patch["Equipment Type"] = [read.equipmentType];
   patch["Nameplate Reading (AI)"] = buildReadingNote(read);
 
   try {
@@ -576,9 +577,9 @@ async function updateAsset(request, env) {
   if ("manufacturer" in body) fields["Make"] = c(body.manufacturer);
   if ("model" in body) fields["Model"] = c(body.model);
   if ("serial" in body) fields["Serial"] = c(body.serial);
-  if ("equipmentType" in body) fields["Category"] = canon(c(body.equipmentType), opts.types);
-  if ("client" in body) fields["Client"] = canon(c(body.client), opts.clients);
-  if ("location" in body) fields["Location"] = canon(c(body.location), opts.locations);
+  if ("equipmentType" in body) { const v = canon(c(body.equipmentType), opts.types); fields["Equipment Type"] = v ? [v] : []; }
+  if ("client" in body) { const v = canon(c(body.client), opts.clients); fields["Client"] = v ? [v] : []; }
+  if ("location" in body) { const v = canon(c(body.location), opts.locations); fields["Location"] = v ? [v] : []; }
   fields["Verification"] = "Verified";
 
   try {
@@ -632,15 +633,17 @@ async function getLists(env) {
   const out = { clients: [], types: [], locations: [], serviceTypes: [] };
   if (!env.AIRTABLE_TOKEN) return out;
   const headers = { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` };
-  const get = (table, qs) =>
-    fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?${qs}`, { headers })
+  const get = (table) =>
+    fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?pageSize=200`, { headers })
       .then((r) => r.json())
       .catch(() => null);
 
-  // Both reads run in parallel so the response is as fast as the slower one.
-  const [cd, pd] = await Promise.all([
-    get(CLIENTS_TABLE, "pageSize=200"),
-    get(PICKLIST_TABLE, "pageSize=500"),
+  // All masters read in parallel so the response is as fast as the slowest one.
+  const [cd, ed, ld, sd] = await Promise.all([
+    get(CLIENTS_TABLE),
+    get(EQUIP_TABLE),
+    get(LOCATION_TABLE),
+    get(SERVICETYPE_TABLE),
   ]);
 
   if (cd && cd.records) {
@@ -650,17 +653,19 @@ async function getLists(env) {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
   }
-  if (pd && pd.records) {
-    const rows = pd.records
-      .filter((x) => x.fields["Active"])
-      .map((x) => ({ value: x.fields["Value"], list: x.fields["List"], sort: x.fields["Sort Order"] || 0 }))
-      .filter((x) => x.value && x.list)
-      .sort((a, b) => a.sort - b.sort);
-    const pick = (name) => rows.filter((x) => x.list === name).map((x) => x.value);
-    out.types = pick("Equipment Type");
-    out.locations = pick("Location");
-    out.serviceTypes = pick("Service Type");
-  }
+  // Active rows from a master table, ordered by Sort Order, as a list of names.
+  const names = (d) =>
+    d && d.records
+      ? d.records
+          .filter((x) => x.fields["Active"])
+          .map((x) => ({ n: x.fields["Name"], s: x.fields["Sort Order"] || 0 }))
+          .filter((x) => x.n)
+          .sort((a, b) => a.s - b.s)
+          .map((x) => x.n)
+      : [];
+  out.types = names(ed);
+  out.locations = names(ld);
+  out.serviceTypes = names(sd);
   return out;
 }
 
@@ -719,9 +724,9 @@ async function createPicklistValue(request, env) {
   }
   const list = (body.list || "").toString().trim();
   const value = (body.value || "").toString().trim();
-  if (!["Equipment Type", "Location", "Service Type"].includes(list)) {
-    return json({ ok: false, error: "Unknown list." }, 400);
-  }
+  const tableByList = { "Equipment Type": EQUIP_TABLE, Location: LOCATION_TABLE, "Service Type": SERVICETYPE_TABLE };
+  const table = tableByList[list];
+  if (!table) return json({ ok: false, error: "Unknown list." }, 400);
   if (!value) return json({ ok: false, error: "Please enter a value." }, 400);
 
   try {
@@ -734,10 +739,10 @@ async function createPicklistValue(request, env) {
   }
 
   try {
-    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${PICKLIST_TABLE}`, {
+    const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}`, {
       method: "POST",
       headers: airtableHeaders(env),
-      body: JSON.stringify({ fields: { Value: value, List: list, Active: true, "Sort Order": 500 }, typecast: true }),
+      body: JSON.stringify({ fields: { Name: value, Active: true, "Sort Order": 500 }, typecast: true }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -774,7 +779,7 @@ async function listAssets(env) {
       .map((x) => ({
         id: x.id,
         name: x.fields["Asset Name"] || x.fields.Description || x.fields.Model || "Asset",
-        client: x.fields.Client || "",
+        client: x.fields["Client Name"] || "",
       }));
     return Response.json(list);
   } catch {
@@ -797,7 +802,7 @@ async function listServices(url, env) {
       .map((x) => ({
         id: x.id,
         date: x.fields["Date"] || "",
-        type: x.fields["Service Type"] || "",
+        type: x.fields["Service Type Name"] || "",
         technician: x.fields["Technician"] || "",
         notes: x.fields["Action"] || "",
         cost: x.fields["Cost"] != null ? x.fields["Cost"] : "",
@@ -837,10 +842,10 @@ async function createService(request, env, ctx) {
 
   const fields = { Entry: label, Asset: [assetId], "Logged At": new Date().toISOString() };
   if (serviceDate) fields["Date"] = serviceDate;
-  if (serviceType) fields["Service Type"] = serviceType;
+  if (serviceType) fields["Service Type"] = [serviceType];
   if (technician) fields["Technician"] = technician;
   if (notes) fields["Action"] = notes;
-  if (client) fields["Client"] = client;
+  if (client) fields["Client"] = [client];
   if (cost != null && !isNaN(cost)) fields["Cost"] = cost;
 
   let recordId;
@@ -888,7 +893,7 @@ async function getService(url, env) {
       ok: true,
       id,
       date: f["Date"] || "",
-      type: f["Service Type"] || "",
+      type: f["Service Type Name"] || "",
       technician: f["Technician"] || "",
       notes: f["Action"] || "",
       cost: f["Cost"] != null ? f["Cost"] : "",
@@ -911,7 +916,7 @@ async function updateService(request, env) {
   const c = (v) => (v == null ? "" : v.toString().trim());
   const fields = {};
   if ("date" in body) fields["Date"] = c(body.date);
-  if ("type" in body) fields["Service Type"] = c(body.type);
+  if ("type" in body) { const v = c(body.type); fields["Service Type"] = v ? [v] : []; }
   if ("technician" in body) fields["Technician"] = c(body.technician);
   if ("notes" in body) fields["Action"] = c(body.notes);
   if ("cost" in body) {
@@ -1019,7 +1024,7 @@ async function createTicket(request, env) {
     fields[F_DESCRIPTION] = body.note || "";
     fields[F_ANSWERS] = "Ref: " + ref + "\nLocation: " + location;
     fields[F_STATUS] = "Open";
-    if (client) fields[F_TICKET_CLIENT] = client;
+    if (client) fields["Client"] = [client];
 
     const createRes = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}`, {
       method: "POST",
@@ -1095,7 +1100,7 @@ async function listTickets(url, env) {
         id: x.id,
         title: f[F_TICKET] || "Ticket",
         category: f[F_CATEGORY] || "",
-        client: f[F_TICKET_CLIENT] || "",
+        client: f["Client Name"] || "",
         status: ticketGroup(f[F_STATUS] || ""),
         description: f[F_DESCRIPTION] || "",
         ref: refM ? refM[1] : "",
@@ -1129,7 +1134,7 @@ async function updateTicket(request, env) {
   if ("status" in body) fields[F_STATUS] = body.status;
   if ("category" in body) fields[F_CATEGORY] = body.category;
   if ("description" in body) fields[F_DESCRIPTION] = body.description;
-  if ("client" in body) fields[F_TICKET_CLIENT] = body.client;
+  if ("client" in body) fields["Client"] = body.client ? [body.client] : [];
   try {
     const res = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}/${id}`, {
       method: "PATCH",
