@@ -229,8 +229,9 @@ async function processAssetMedia(recordId, body, manual, env) {
   if (!manual.model && read.model) patch["Model"] = read.model;
   if (!manual.serial && read.serial) patch["Serial"] = read.serial;
   if (!manual.equipmentType && read.equipmentType) patch["Category"] = read.equipmentType;
-  // If the user did not type a description, the saved name is weak, so use the agent's name.
-  if (!manual.description && read.assetName) patch["Asset Name"] = read.assetName;
+  // Always take the agent's clean name automatically (e.g. "HP Color LaserJet
+  // Pro M255dw Printer"), no confirmation step. A later human edit can override it.
+  if (read.assetName) patch["Asset Name"] = read.assetName;
   patch["Nameplate Reading (AI)"] = buildReadingNote(read);
 
   try {
@@ -611,8 +612,8 @@ async function getDistinctValues(env) {
       if (!map[k]) map[k] = v;
     }
   };
-  ["HVAC", "Water Heater", "Boiler", "Electrical Panel", "Generator", "Coffee Equipment", "Office Equipment", "Refrigeration", "Other"].forEach((v) => add(out.types, v));
-  ["Outside", "Attic", "Roof", "Basement", "Mechanical Room", "Garage", "Office", "Other"].forEach((v) => add(out.locations, v));
+  ["Office Equipment", "HVAC", "AV", "Beverage", "Refrigeration / Freezer", "Other"].forEach((v) => add(out.types, v));
+  ["Office", "Conference Room", "Kitchen / Break Room", "Reception / Lobby", "Hallway", "Restroom", "Storage / Closet", "Server / IT Room", "Mechanical Room", "Basement", "Rooftop", "Attic", "Exterior / Grounds", "Garage / Parking", "Other"].forEach((v) => add(out.locations, v));
   ["Bloom", "Moment", "Ridge", "Robin", "Summit", "United"].forEach((v) => add(out.clients, v));
   try {
     const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}?pageSize=100`, {

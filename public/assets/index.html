@@ -166,8 +166,8 @@
       <label for="equipmentType">Equipment type</label>
       <select id="equipmentType">
         <option value="">Select…</option>
-        <option>HVAC</option><option>Water Heater</option><option>Boiler</option>
-        <option>Electrical Panel</option><option>Generator</option><option>Coffee Equipment</option><option>Other</option>
+        <option>Office Equipment</option><option>HVAC</option><option>AV</option>
+        <option>Beverage</option><option>Refrigeration / Freezer</option><option>Other</option>
       </select>
     </div>
 
@@ -175,9 +175,19 @@
       <label for="location">Location</label>
       <select id="location">
         <option value="">Select…</option>
-        <option>Outside</option><option>Attic</option><option>Roof</option>
-        <option>Basement</option><option>Mechanical Room</option><option>Garage</option><option>Other</option>
+        <optgroup label="Inside">
+          <option>Office</option><option>Conference Room</option><option>Kitchen / Break Room</option>
+          <option>Reception / Lobby</option><option>Hallway</option><option>Restroom</option>
+          <option>Storage / Closet</option><option>Server / IT Room</option><option>Mechanical Room</option>
+          <option>Basement</option>
+        </optgroup>
+        <optgroup label="Outside">
+          <option>Rooftop</option><option>Attic</option><option>Exterior / Grounds</option>
+          <option>Garage / Parking</option>
+        </optgroup>
+        <option value="__other">Other (type below)</option>
       </select>
+      <input id="locationOther" type="text" autocomplete="off" placeholder="Where is it?" style="display:none;margin-top:8px" />
     </div>
 
     <div class="field">
@@ -255,6 +265,12 @@
     clientOther.style.display = clientSel.value === "__other" ? "block" : "none";
   });
 
+  var locationSel = document.getElementById("location");
+  var locationOther = document.getElementById("locationOther");
+  locationSel.addEventListener("change", function(){
+    locationOther.style.display = locationSel.value === "__other" ? "block" : "none";
+  });
+
   var form = document.getElementById("assetForm");
   var submitBtn = document.getElementById("submitBtn");
   var msg = document.getElementById("msg");
@@ -306,6 +322,7 @@
   form.addEventListener("submit", function(e){
     e.preventDefault();
     var client = clientSel.value === "__other" ? clientOther.value : clientSel.value;
+    var location = locationSel.value === "__other" ? locationOther.value : locationSel.value;
     var payload = {
       description: document.getElementById("description").value,
       manufacturer: document.getElementById("manufacturer").value,
@@ -313,7 +330,7 @@
       serial: document.getElementById("serial").value,
       equipmentType: document.getElementById("equipmentType").value,
       client: client,
-      location: document.getElementById("location").value,
+      location: location,
       notes: document.getElementById("notes").value,
       overallPhoto: photos.overall,
       nameplatePhoto: photos.nameplate,

@@ -88,7 +88,8 @@
   </div>
 
   <form id="serviceForm">
-    <div class="field">
+    <div id="assetBanner" style="display:none"></div>
+    <div class="field" id="pickerField">
       <label for="clientFilter">Client</label>
       <select id="clientFilter" style="margin-bottom:10px"><option value="">All clients</option></select>
       <label for="assetFilter">Asset</label>
@@ -167,8 +168,31 @@
     clients.sort().forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; clientFilter.appendChild(o); });
     renderAssets();
     var pre = new URLSearchParams(location.search).get("asset");
-    if (pre){ assetSel.value = pre; if (assetSel.value === pre) loadHistory(); }
+    if (pre){ assetSel.value = pre; if (assetSel.value === pre){ loadHistory(); lockToAsset(pre); } }
   }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load assets</option>"; });
+
+  // Came from an asset page: lock to that asset and show its details, so the
+  // tech doesn't pick or re-enter it. "Change asset" reopens the picker.
+  function lockToAsset(id){
+    document.getElementById("pickerField").style.display = "none";
+    fetch("/api/asset?id=" + encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(a){
+      if (!a || !a.ok) return;
+      var bits = [];
+      if (a.client) bits.push(escapeHtml(a.client));
+      if (a.equipmentType) bits.push(escapeHtml(a.equipmentType));
+      if (a.model) bits.push("Model " + escapeHtml(a.model));
+      if (a.serial) bits.push("S/N " + escapeHtml(a.serial));
+      if (a.location) bits.push(escapeHtml(a.location));
+      var banner = document.getElementById("assetBanner");
+      banner.style.cssText = "background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:18px";
+      banner.innerHTML =
+        "<div style='font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:6px'>Logging service for</div>" +
+        "<div style='font-family:Spectral,serif;font-size:1.2rem;color:var(--green-deep);font-weight:500'>" + escapeHtml(a.name) + "</div>" +
+        (bits.length ? "<div style='color:var(--muted);font-size:.92rem;margin-top:4px'>" + bits.join(" · ") + "</div>" : "") +
+        "<a href='/' style='display:inline-block;margin-top:10px;font-size:.86rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Change asset</a>";
+      banner.style.display = "block";
+    }).catch(function(){});
+  }
 
   assetFilter.addEventListener("input", function(){ renderAssets(); historyEl.innerHTML = ""; });
   clientFilter.addEventListener("change", function(){ renderAssets(); historyEl.innerHTML = ""; });
