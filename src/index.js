@@ -1475,7 +1475,7 @@ async function createTicket(request, env, ctx, session) {
     );
   }
 
-  return json({ ok: true, ref, title });
+  return json({ ok: true, ref, title, photoCount: pics.length });
 }
 
 // A short, specific ticket title from the description (Claude).
@@ -1554,8 +1554,9 @@ async function listStorage(env, prefix) {
 // in storage (uploads that never got linked) and re-link them.
 async function relinkTicketPhotos(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "tickets?select=id,photo_urls");
+  const rows = await sbSelect(env, "tickets?select=id,ref,photo_urls");
   let fixed = 0, scanned = 0;
+  const fixedRefs = [];
   for (const t of rows || []) {
     if (t.photo_urls && t.photo_urls.length) continue;
     scanned++;
@@ -1566,9 +1567,10 @@ async function relinkTicketPhotos(request, env) {
     if (urls.length) {
       await sbUpdate(env, "tickets", t.id, { photo_urls: urls, photo_url: urls[0] });
       fixed++;
+      fixedRefs.push((t.ref || t.id) + " (" + urls.length + ")");
     }
   }
-  return noStore({ ok: true, scanned, fixed });
+  return noStore({ ok: true, scanned, fixed, fixedRefs });
 }
 
 async function listTickets(url, env, session) {

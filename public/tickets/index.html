@@ -479,6 +479,7 @@ form.addEventListener("submit", function (e) {
         "<div><strong>Work.</strong> " + escapeHtml(categoryEl.value) + "</div>";
       if (locationValue()) rb += "<div><strong>Location.</strong> " + escapeHtml(locationValue()) + "</div>";
       if (noteEl.value.trim()) rb += "<div><strong>Note.</strong> " + escapeHtml(noteEl.value) + "</div>";
+      if (res.photoCount) rb += "<div><strong>Photos.</strong> " + res.photoCount + " attached</div>";
       document.getElementById("recapBody").innerHTML = rb;
       document.getElementById("intro").style.display = "none";
       form.style.display = "none";
