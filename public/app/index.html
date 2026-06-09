@@ -59,7 +59,7 @@
 
   <div class="intro">
     <div class="eyebrow">Field operations</div>
-    <h1>What do you need to do?</h1>
+    <h1 id="greeting">What do you need to do?</h1>
     <p>Pick a task. Everything lives here in one place.</p>
   </div>
 
@@ -111,7 +111,9 @@
   // Master sees the admin tile; a client only sees tools they have access to.
   fetch("/api/whoami").then(function(r){ return r.json(); }).then(function(d){
     if (!d || !d.ok) return;
-    if (d.role === "master"){ document.getElementById("adminTile").style.display = "flex"; return; }
+    var g = document.getElementById("greeting");
+    if (d.role === "client" && d.client){ g.textContent = "Hi, " + d.client; }
+    if (d.role === "master"){ g.textContent = "Welcome back"; document.getElementById("adminTile").style.display = "flex"; return; }
     if (d.role === "client"){
       var perms = d.perms || {};
       var tiles = document.querySelectorAll(".tile[data-area]");
@@ -124,5 +126,6 @@
     }
   }).catch(function(){});
 </script>
+<script src="/whoami-badge.js"></script>
 </body>
 </html>
