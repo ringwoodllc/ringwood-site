@@ -844,6 +844,10 @@ async function handleCreateAsset(request, env, ctx, session) {
   if (etId) row.equipment_type_id = etId;
   if (locId) row.location_id = locId;
   if (clId) row.client_id = clId;
+  // A short nickname: from the typed description, else the equipment type. The
+  // AI fills/refines it in the background if photos were sent.
+  const nickBase = description || equipmentType;
+  if (nickBase) row.nickname = await uniqueNickname(env, nickBase, clId);
 
   const res = await sbInsert(env, "assets", row);
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the asset." }, 502);
@@ -891,6 +895,20 @@ async function genAssetKey(env) {
   return "RW-" + Date.now().toString(36).toUpperCase();
 }
 
+// Turn a short name into a unique nickname for the client: "Ice Machine", then
+// "Ice Machine 2", "Ice Machine 3"... so repeats are easy to tell apart.
+async function uniqueNickname(env, base, clientId) {
+  base = (base || "").toString().trim();
+  if (!base) return "";
+  const scope = clientId ? `&client_id=eq.${clientId}` : "";
+  const rows = await sbSelect(env, `assets?select=nickname&nickname=ilike.${encodeURIComponent(base)}*${scope}`);
+  const taken = new Set((rows || []).map((r) => (r.nickname || "").trim().toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  let n = 2;
+  while (taken.has((base + " " + n).toLowerCase())) n++;
+  return base + " " + n;
+}
+
 // Pull the submitted photos as a flat list. New clients send a `photos` array
 // (overall first, then nameplate, then anything else); older ones may still
 // send the three named slots.
@@ -923,6 +941,12 @@ async function processAssetAI(id, pics, manual, env) {
     if (etId) patch.equipment_type_id = etId;
   }
   patch.nameplate_reading = buildReadingNote(read);
+  // Set the short nickname only if the asset doesn't already have one.
+  const cur = await sbSelect(env, `assets?id=eq.${id}&select=nickname,client_id`);
+  const row0 = cur && cur[0];
+  if (read.shortName && row0 && !(row0.nickname || "").trim()) {
+    patch.nickname = await uniqueNickname(env, read.shortName, row0.client_id);
+  }
   await sbUpdate(env, "assets", id, patch);
 }
 
@@ -933,6 +957,8 @@ const AGENT_PROMPT =
   "and serial label. Identify the equipment and return clean, useful fields.\n\n" +
   "- assetName: a clear, specific name a facilities manager would use. Include the brand, the product line or model, " +
   "and what the thing is. Example: 'HP Color LaserJet Pro M255dw Printer'. Never return vague names like 'Other' or 'Unit'.\n" +
+  "- shortName: the everyday name a person calls this kind of equipment, 1 to 3 words, Title Case, NO brand and NO model. " +
+  "Examples: 'Ice Machine', 'Fridge', 'Freezer', 'Printer', 'Rooftop HVAC Unit', 'Coffee Machine'.\n" +
   "- description: one short sentence in English. Leave out marketing language, certification or regulatory text, and anything not in English.\n" +
   "- manufacturer: the brand.\n" +
   "- model: the model name or number.\n" +
@@ -946,13 +972,14 @@ const AGENT_SCHEMA = {
   type: "object",
   properties: {
     assetName: { type: "string" },
+    shortName: { type: "string" },
     description: { type: "string" },
     manufacturer: { type: "string" },
     model: { type: "string" },
     serial: { type: "string" },
     equipmentType: { type: "string" },
   },
-  required: ["assetName", "description", "manufacturer", "model", "serial", "equipmentType"],
+  required: ["assetName", "shortName", "description", "manufacturer", "model", "serial", "equipmentType"],
   additionalProperties: false,
 };
 
@@ -1094,6 +1121,7 @@ async function getAssetFull(url, env, session) {
     status: a.verification || "Pending",
     aiReading: a.nameplate_reading || "",
     qr: a.qr_tag || "",
+    nickname: a.nickname || "",
     loggedAt: a.logged_at || "",
     photos: assetPhotos(a),
     overallPhoto: a.overall_photo_url || "",
@@ -1171,6 +1199,7 @@ async function updateAsset(request, env, session) {
   const refs = await getRefs(env);
   const patch = { verification: "Verified" };
   if ("name" in body) patch.name = c(body.name);
+  if ("nickname" in body) patch.nickname = c(body.nickname);
   if ("description" in body) patch.description = c(body.description);
   if ("manufacturer" in body) patch.make = c(body.manufacturer);
   if ("model" in body) patch.model = c(body.model);
@@ -1231,19 +1260,20 @@ async function listAssets(env, session) {
   }
   let rows = await sbSelect(
     env,
-    `assets?select=id,name,description,make,model,serial,qr_tag,service_records(count),equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
+    `assets?select=id,name,nickname,description,make,model,serial,qr_tag,service_records(count),equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
   );
   // If the count embed isn't supported, fall back to the plain list.
   if (rows === null) {
     rows = await sbSelect(
       env,
-      `assets?select=id,name,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
+      `assets?select=id,name,nickname,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
     );
   }
   return json(
     (rows || []).map((x) => ({
       id: x.id,
-      name: x.name || x.description || x.model || "Asset",
+      name: x.nickname || x.name || x.description || x.model || "Asset",
+      fullName: x.name || "",
       client: (x.client && x.client.name) || "",
       type: (x.equipment_type && x.equipment_type.name) || "",
       location: (x.location && x.location.name) || "",
@@ -1448,7 +1478,7 @@ async function resolveTicketAsset(env, body, clientId, session) {
     return assetId;
   }
   if (newName) {
-    const row = { name: newName, verification: "Pending", qr_tag: await genAssetKey(env) };
+    const row = { name: newName, nickname: await uniqueNickname(env, newName, clientId), verification: "Pending", qr_tag: await genAssetKey(env) };
     if (clientId) row.client_id = clientId;
     const res = await sbInsert(env, "assets", row);
     if (res.ok && res.data) return res.data.id;
@@ -1485,6 +1515,7 @@ async function detectAndLinkAsset(ticketId, pics, clientId, env) {
   }
   if (!assetId) {
     const row = { name: c(read.assetName) || [make, model].filter(Boolean).join(" ") || "Asset", verification: "AI suggested", qr_tag: await genAssetKey(env), nameplate_reading: buildReadingNote(read) };
+    if (c(read.shortName)) row.nickname = await uniqueNickname(env, c(read.shortName), clientId);
     if (make) row.make = make;
     if (model) row.model = model;
     if (serial) row.serial = serial;
@@ -1569,12 +1600,12 @@ async function getTicketAsset(url, env, session) {
   if (!can(session, "tickets", "view")) return json({ ok: false }, 403);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
-  const rows = await sbSelect(env, `tickets?id=eq.${id}&select=asset_id,asset:assets(id,name),client:clients(name)`);
+  const rows = await sbSelect(env, `tickets?id=eq.${id}&select=asset_id,asset:assets(id,name,nickname),client:clients(name)`);
   const t = rows && rows[0];
   if (!t) return json({ ok: false }, 404);
   const forced = scopeName(session);
   if (forced != null && ((t.client && t.client.name) || "") !== forced) return json({ ok: false }, 404);
-  return noStore({ ok: true, assetId: t.asset_id || "", asset: (t.asset && t.asset.name) || "" });
+  return noStore({ ok: true, assetId: t.asset_id || "", asset: (t.asset && (t.asset.nickname || t.asset.name)) || "" });
 }
 
 // A short, specific ticket title from the description (Claude).
@@ -1691,7 +1722,7 @@ async function listTickets(url, env, session) {
 
   let rows = await sbSelect(
     env,
-    `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name)${filter}&order=created_at.desc`
+    `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name,nickname)${filter}&order=created_at.desc`
   );
   // If the foreign-key embed fails (returns null), fall back to a plain read so
   // tickets still show. Resolve client/category names from the cached refs.
@@ -1708,7 +1739,7 @@ async function listTickets(url, env, session) {
       category: embedded ? ((t.category && t.category.name) || "") : nameById(refs.cats, t.category_id),
       client: embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id),
       assetId: t.asset_id || "",
-      asset: embedded ? ((t.asset && t.asset.name) || "") : "",
+      asset: embedded ? ((t.asset && (t.asset.nickname || t.asset.name)) || "") : "",
       status: t.status || "Open",
       description: t.description || "",
       ref: t.ref || "",

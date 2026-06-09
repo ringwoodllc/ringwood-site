@@ -1,6 +1,5 @@
 -- ============================================================
--- Ringwood — ONE-SHOT SETUP. Run this whole file once in the
--- Supabase SQL Editor. Safe to re-run; it skips what exists.
+-- Ringwood — ONE-SHOT SETUP. Run once in Supabase SQL Editor. Safe to re-run.
 -- ============================================================
 
 -- ===== 1) Core schema =====
@@ -63,6 +62,7 @@ create table if not exists ticket_categories (
 create table if not exists assets (
   id uuid primary key default gen_random_uuid(),
   name text,
+  nickname text,
   description text,
   make text,
   model text,
@@ -85,6 +85,7 @@ create index if not exists assets_type_idx on assets (equipment_type_id);
 -- nameplate, then whatever else). The three legacy columns above still work for
 -- older rows; the app reads photo_urls when it is present.
 alter table assets add column if not exists photo_urls text[];
+alter table assets add column if not exists nickname text;
 
 create table if not exists tickets (
   id uuid primary key default gen_random_uuid(),

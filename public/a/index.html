@@ -260,8 +260,8 @@
       hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>"+rows+"</tbody></table><div class='hint'>Tap a row to edit it.</div>";
     } else { hist="<div class='empty'>No service history yet.</div>"; }
     view.innerHTML =
-      "<div class='titlerow'><h1 class='assetname'>"+esc(a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
-      "<div class='sub'>Ringwood asset record</div>"+
+      "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
+      "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
       "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>"+
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
       "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
@@ -454,7 +454,7 @@
       editPhotos(a)+
       "<div class='btnrow'><button class='btn' id='runBtn' type='button'>✨ Suggest with AI</button></div>"+
       "<div id='editmsg' class='err' style='margin-bottom:10px'></div>"+
-      field("f_name","Name",a.name)+field("f_desc","Description",a.description,true)+
+      field("f_nickname","Nickname (short name shown as the title)",a.nickname)+field("f_name","Full name (brand and model)",a.name)+field("f_desc","Description",a.description,true)+
       field("f_make","Manufacturer",a.manufacturer)+field("f_model","Model",a.model)+field("f_serial","Serial",a.serial)+
       comboField("f_type","Type",a.equipmentType,OPTIONS.types)+
       comboField("f_client","Client",a.client,OPTIONS.clients)+
@@ -493,7 +493,7 @@
 
   function saveEdit(){
     var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
-    var payload={ id:curId, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value, keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
+    var payload={ id:curId, nickname:document.getElementById("f_nickname").value, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value, keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }
     }).catch(function(){ b.disabled=false; b.textContent="Save"; setMsg("Couldn't reach the server."); });
