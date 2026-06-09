@@ -1474,21 +1474,23 @@ async function createTicket(request, env, ctx, session) {
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not save the ticket." }, 502);
   const id = res.data.id;
 
+  // Upload photos synchronously so the ticket truly carries them before we reply
+  // (and we can report exactly how many saved).
   const pics = normalizePics(body);
-  if (pics.length && ctx && ctx.waitUntil) {
-    ctx.waitUntil(
-      (async () => {
-        const urls = [];
-        for (let i = 0; i < pics.length; i++) {
-          const u = await uploadToStorage(env, `tickets/${id}/${i}.jpg`, pics[i].base64, pics[i].contentType);
-          if (u) urls.push(u);
-        }
-        if (urls.length) await sbUpdate(env, "tickets", id, { photo_urls: urls, photo_url: urls[0] });
-      })()
-    );
+  let savedPhotos = 0;
+  if (pics.length) {
+    const urls = [];
+    for (let i = 0; i < pics.length; i++) {
+      const u = await uploadToStorage(env, `tickets/${id}/${i}.jpg`, pics[i].base64, pics[i].contentType);
+      if (u) urls.push(u);
+    }
+    if (urls.length) {
+      await sbUpdate(env, "tickets", id, { photo_urls: urls, photo_url: urls[0] });
+      savedPhotos = urls.length;
+    }
   }
 
-  return json({ ok: true, ref, title, photoCount: pics.length });
+  return json({ ok: true, ref, title, photoCount: pics.length, savedPhotos });
 }
 
 // A short, specific ticket title from the description (Claude).
