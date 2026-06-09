@@ -741,7 +741,7 @@ async function diag(env) {
     out.storage = bucket ? { bucket: "photos", public: !!bucket.public } : { bucket: "missing" };
     // Actually try a write so we see the real reason uploads fail (if they do).
     try {
-      const wr = await fetch(`${env.SUPABASE_URL}/storage/v1/object/photos/diag/test-${Date.now()}.txt`, {
+      const wr = await fetch(`${env.SUPABASE_URL}/storage/v1/object/photos/diag/test.txt`, {
         method: "POST",
         headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "content-type": "text/plain", "x-upsert": "true" },
         body: "ringwood storage test",
