@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="/jsQR.js"></script>
 <style>
   :root{
     --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
@@ -151,6 +152,7 @@
       <div id="newAssetRow" style="display:none;margin-top:10px">
         <input id="newAssetName" type="text" autocomplete="off" placeholder="New asset name (e.g. Lobby TV)" />
       </div>
+      <div id="assetAutoNote" style="font-size:.85rem;color:var(--green-deep);font-weight:600;margin-top:8px"></div>
     </div>
 
     <button class="btn" type="submit" id="submitBtn" disabled>Submit ticket</button>
@@ -320,10 +322,51 @@ function applyPreselect() {
 assetEl.addEventListener("change", function () {
   newAssetRow.style.display = assetEl.value === "__new" ? "block" : "none";
   if (assetEl.value === "__new") newAssetNameEl.focus();
+  document.getElementById("assetAutoNote").textContent = "";
 });
 function assetValue() {
   if (assetEl.value === "__new") { var n = newAssetNameEl.value.trim(); return n ? { newAssetName: n } : {}; }
   return assetEl.value ? { assetId: assetEl.value } : {};
+}
+
+// ---- scan a QR in a ticket photo and auto-link the asset (instant, no wait) ----
+function decodeQR(file) {
+  return new Promise(function (resolve) {
+    if (!window.jsQR) { resolve(null); return; }
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var max = 1100, w = img.width, h = img.height, s = Math.min(1, max / Math.max(w, h));
+      w = Math.round(w * s); h = Math.round(h * s);
+      var c = document.createElement("canvas"); c.width = w; c.height = h;
+      var ctx = c.getContext("2d"); ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      try { var r = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h); resolve(r && r.data ? r.data : null); }
+      catch (e) { resolve(null); }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+function assetFromQR(value) {
+  if (!value) return null;
+  var m = value.match(/[?&]id=([0-9a-f-]{12,})/i) || value.match(/\/a\/([0-9a-f-]{12,})/i);
+  var id = m ? m[1] : value.trim();
+  var byId = ALL_ASSETS.filter(function (a) { return a.id === id; })[0];
+  if (byId) return byId;
+  var byQr = ALL_ASSETS.filter(function (a) { return a.qr && a.qr.toLowerCase() === value.trim().toLowerCase(); })[0];
+  return byQr || null;
+}
+function tryAutoLinkAsset(file) {
+  if (assetEl.value && assetEl.value !== "__new") return; // already chosen
+  decodeQR(file).then(function (val) {
+    if (!val) return;
+    var a = assetFromQR(val);
+    if (!a) return;
+    if (a.client && !CLIENT_LOCK) { for (var i = 0; i < clientEl.options.length; i++) { if (clientEl.options[i].text === a.client) { clientEl.value = a.client; break; } } renderAssetOptions(); }
+    assetEl.value = a.id;
+    document.getElementById("assetAutoNote").textContent = "✓ Linked to asset: " + (a.name || "Asset");
+    refresh();
+  });
 }
 
 // ---- add a client without leaving the form ----
@@ -427,6 +470,7 @@ fileInput.addEventListener("change", function (e) {
   var files = Array.prototype.slice.call(e.target.files || []);
   files.forEach(function (file) {
     processPhoto(file).then(function (res) { photos.push(res); renderThumbs(); refresh(); }).catch(function () {});
+    tryAutoLinkAsset(file); // if it's a QR, link the asset instantly
   });
   e.target.value = "";
 });
@@ -503,6 +547,7 @@ document.getElementById("again").addEventListener("click", function () {
   locationEl.value = ""; categoryEl.value = ""; noteEl.value = "";
   addLocRow.style.display = "none"; newLoc.value = "";
   assetEl.value = ""; newAssetRow.style.display = "none"; newAssetNameEl.value = ""; renderAssetOptions();
+  document.getElementById("assetAutoNote").textContent = "";
   submitBtn.textContent = "Submit ticket";
   document.getElementById("done").style.display = "none";
   document.getElementById("intro").style.display = "block";

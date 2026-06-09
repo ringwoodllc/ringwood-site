@@ -1444,6 +1444,51 @@ async function resolveTicketAsset(env, body, clientId, session) {
   return null;
 }
 
+// Background: read the ticket's photos with the asset agent, find a matching
+// asset (by serial, then make+model) or auto-create one, and link it to the
+// ticket. Only creates an asset when it actually read equipment details, so
+// non-equipment photos don't spawn junk assets.
+async function detectAndLinkAsset(ticketId, pics, clientId, env) {
+  if (!pics.length || !env.ANTHROPIC_API_KEY) return;
+  const images = pics.map((p) => ({ media_type: p.contentType, base64: p.base64 }));
+  let read = null;
+  try {
+    read = await runAgent(images, env);
+  } catch {
+    read = null;
+  }
+  if (!read) return;
+  const c = (v) => (v || "").toString().trim();
+  const serial = c(read.serial), make = c(read.manufacturer), model = c(read.model);
+  if (!serial && !make && !model) return; // no nameplate read -> don't invent an asset
+  const scope = clientId ? `&client_id=eq.${clientId}` : "";
+  let assetId = null;
+  if (serial) {
+    const m = await sbSelect(env, `assets?serial=eq.${encodeURIComponent(serial)}${scope}&select=id&limit=1`);
+    if (m && m[0]) assetId = m[0].id;
+  }
+  if (!assetId && make && model) {
+    const m = await sbSelect(env, `assets?make=eq.${encodeURIComponent(make)}&model=eq.${encodeURIComponent(model)}${scope}&select=id&limit=1`);
+    if (m && m[0]) assetId = m[0].id;
+  }
+  if (!assetId) {
+    const row = { name: c(read.assetName) || [make, model].filter(Boolean).join(" ") || "Asset", verification: "AI suggested", qr_tag: await genAssetKey(env), nameplate_reading: buildReadingNote(read) };
+    if (make) row.make = make;
+    if (model) row.model = model;
+    if (serial) row.serial = serial;
+    if (c(read.description)) row.description = c(read.description);
+    if (clientId) row.client_id = clientId;
+    if (c(read.equipmentType)) {
+      const refs = await getRefs(env);
+      const et = findId(refs.equip, c(read.equipmentType));
+      if (et) row.equipment_type_id = et;
+    }
+    const ins = await sbInsert(env, "assets", row);
+    if (ins.ok && ins.data) assetId = ins.data.id;
+  }
+  if (assetId) await sbUpdate(env, "tickets", ticketId, { asset_id: assetId });
+}
+
 async function createTicket(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Not connected yet." }, 503);
   if (!can(session, "tickets", "edit")) return deny("tickets");
@@ -1494,6 +1539,12 @@ async function createTicket(request, env, ctx, session) {
       await sbUpdate(env, "tickets", id, { photo_urls: urls, photo_url: urls[0] });
       savedPhotos = urls.length;
     }
+  }
+
+  // If the user didn't pick/scan an asset, let the agent identify it from the
+  // photos in the background and link (or auto-create) the matching asset.
+  if (!linkAsset && pics.length && ctx && ctx.waitUntil) {
+    ctx.waitUntil(detectAndLinkAsset(id, pics, clId, env));
   }
 
   return json({ ok: true, ref, title, photoCount: pics.length, savedPhotos });
