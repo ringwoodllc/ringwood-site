@@ -784,6 +784,9 @@ async function handleCreateAsset(request, env, ctx, session) {
   if (model) row.model = model;
   if (serial) row.serial = serial;
   if (notes) row.notes = notes;
+  // Every asset gets a QR key by default (or the one the submitter assigned).
+  const qrTag = clean(body.qrTag);
+  row.qr_tag = qrTag || (await genAssetKey(env));
   const etId = findId(refs.equip, equipmentType);
   const locId = findId(refs.locs, location);
   const clId = findId(refs.clients, client);
@@ -806,6 +809,19 @@ async function handleCreateAsset(request, env, ctx, session) {
 function assetPhotos(a) {
   if (a && Array.isArray(a.photo_urls) && a.photo_urls.length) return a.photo_urls.filter(Boolean);
   return [a && a.overall_photo_url, a && a.nameplate_photo_url, a && a.serial_photo_url].filter(Boolean);
+}
+
+// A unique, human-readable asset key like RW-7K2QM (skips confusable letters).
+async function genAssetKey(env) {
+  const alpha = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let s = "RW-";
+    const r = crypto.getRandomValues(new Uint8Array(5));
+    for (let i = 0; i < 5; i++) s += alpha[r[i] % alpha.length];
+    const exists = await sbSelect(env, `assets?qr_tag=eq.${s}&select=id&limit=1`);
+    if (!exists || !exists.length) return s;
+  }
+  return "RW-" + Date.now().toString(36).toUpperCase();
 }
 
 // Pull the submitted photos as a flat list. New clients send a `photos` array
@@ -987,6 +1003,13 @@ async function getAssetFull(url, env, session) {
   // A client login can only open its own assets.
   const forced = scopeName(session);
   if (forced != null && ((a.client && a.client.name) || "") !== forced) return json({ ok: false }, 404);
+
+  // Backfill a QR key for assets created before keys existed.
+  if (!a.qr_tag) {
+    const key = await genAssetKey(env);
+    const up = await sbUpdate(env, "assets", id, { qr_tag: key });
+    if (up.ok) a.qr_tag = key;
+  }
 
   const sr = await sbSelect(
     env,

@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="/qrcode.js"></script>
+<script src="/jsQR.js"></script>
 <style>
   :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -124,6 +125,9 @@
     <div class="or">— or scan / paste —</div>
     <label for="qrInput">Asset ID, QR code, or link</label>
     <div class="qrrow"><input id="qrInput" type="text" autocomplete="off" placeholder="QR-1, rec…, or a scanned link" /><button class="gobtn" id="goBtn" type="button">View</button></div>
+    <label class="qrchip" for="scanInput" style="margin-top:10px;display:inline-block">Scan a QR code</label>
+    <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
+    <div id="scanMsg" style="font-size:.84rem;color:var(--muted);margin-top:6px"></div>
     <div id="qrSamples" style="margin-top:10px"></div>
   </div>
   <div id="view"></div>
@@ -217,6 +221,16 @@
   searchInput.addEventListener("input", renderList);
   document.getElementById("goBtn").addEventListener("click", function(){ var id=resolveRef(qrInput.value); if(id) load(id); });
   qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=resolveRef(qrInput.value); if(id) load(id); } });
+  document.getElementById("scanInput").addEventListener("change", function(e){
+    var file=e.target.files&&e.target.files[0]; e.target.value="";
+    var sm=document.getElementById("scanMsg"); if(!file) return;
+    sm.style.color="var(--muted)"; sm.textContent="Reading the code…";
+    decodeQRFromImage(file).then(function(val){
+      var id=resolveRef(val);
+      if(id && (/^rec|^[0-9a-f]{8}-/.test(id) || allAssets.some(function(a){return a.id===id;}))){ sm.textContent=""; load(id); }
+      else { sm.style.color="#8a3d1c"; sm.textContent="Scanned "+val+", but no matching asset. Assign it to an asset first."; }
+    }).catch(function(err){ sm.style.color="#8a3d1c"; sm.textContent=(err&&err.message)||"Couldn't read a QR code."; });
+  });
 
   function load(id){
     curId=id; view.innerHTML="<div class='state'>Loading asset…</div>";
@@ -258,20 +272,72 @@
   // Canonical deep link a printed/scanned code opens. Stable host so stickers
   // keep working wherever the page is viewed.
   function assetUrl(id){ return "https://app.ringwood.ai/a/?id="+encodeURIComponent(id); }
-  function qrSvg(text, cell, margin){
-    try{ var qr=qrcode(0,"M"); qr.addData(text); qr.make(); return qr.createSvgTag({cellSize:cell||4, margin:margin==null?4:margin, scalable:true}); }
-    catch(e){ return ""; }
+  // Branded QR: high error-correction so the Ringwood rings can sit in the
+  // center without breaking the scan.
+  function qrSvg(text){
+    try{
+      var qr=qrcode(0,"H"); qr.addData(text); qr.make();
+      var n=qr.getModuleCount(), m=2, size=n+m*2, rects="";
+      for(var r=0;r<n;r++){ for(var c=0;c<n;c++){ if(qr.isDark(r,c)){ rects+="<rect x='"+(c+m)+"' y='"+(r+m)+"' width='1.03' height='1.03'/>"; } } }
+      var cx=size/2, lr=Math.max(2.6, n*0.085), pad=lr+1.1;
+      var overlay=
+        "<rect x='"+(cx-pad)+"' y='"+(cx-pad)+"' width='"+(pad*2)+"' height='"+(pad*2)+"' rx='"+(pad*0.45)+"' fill='#ffffff'/>"+
+        "<g fill='none' stroke='#2f5d50' stroke-width='"+(lr*0.16)+"'>"+
+          "<circle cx='"+cx+"' cy='"+cx+"' r='"+(lr*0.34)+"'/>"+
+          "<circle cx='"+cx+"' cy='"+cx+"' r='"+(lr*0.64)+"'/>"+
+          "<circle cx='"+cx+"' cy='"+cx+"' r='"+(lr*0.94)+"'/>"+
+        "</g>";
+      return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 "+size+" "+size+"' shape-rendering='crispEdges'><rect width='"+size+"' height='"+size+"' fill='#ffffff'/><g fill='#21443a'>"+rects+"</g>"+overlay+"</svg>";
+    }catch(e){ return ""; }
+  }
+  // Read a QR out of a photo (purchased sticker). Uses the native detector when
+  // available, falls back to jsQR.
+  function decodeQRFromImage(file){
+    return new Promise(function(resolve, reject){
+      var img=new Image(), url=URL.createObjectURL(file);
+      img.onload=function(){
+        var max=1100, w=img.width, h=img.height, s=Math.min(1, max/Math.max(w,h));
+        w=Math.round(w*s); h=Math.round(h*s);
+        var c=document.createElement("canvas"); c.width=w; c.height=h;
+        var ctx=c.getContext("2d"); ctx.drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        function fallback(){
+          try{ var d=ctx.getImageData(0,0,w,h); var res=window.jsQR?window.jsQR(d.data,w,h):null; if(res&&res.data) resolve(res.data); else reject(new Error("No QR code found in the photo.")); }
+          catch(e){ reject(e); }
+        }
+        if(window.BarcodeDetector){
+          try{ new BarcodeDetector({formats:["qr_code"]}).detect(c).then(function(codes){ if(codes&&codes.length) resolve(codes[0].rawValue); else fallback(); }, fallback); return; }
+          catch(e){}
+        }
+        fallback();
+      };
+      img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
+      img.src=url;
+    });
   }
   function qrCard(a){
     var url=assetUrl(a.id);
+    // An assigned / store-bought sticker: show its code, not a generated image
+    // (the physical sticker is the QR). Still offer the Ringwood QR to print.
+    if (a.qr && !isOwnKey(a.qr)){
+      return "<div class='qrcard'>"+
+        "<div class='qrinfo'><div class='lbl'>QR code assigned</div>"+
+        "<div style='font-weight:600;color:var(--green-deep);word-break:break-all;font-size:1.05rem'>"+esc(a.qr)+"</div>"+
+        "<div class='qrurl'>Scan this sticker with Asset lookup in the app to open this asset.</div>"+
+        "<div class='qrbtns'><button type='button' id='qrPrint'>Print Ringwood QR</button>"+
+        "<button type='button' id='qrCopy'>Copy link</button></div></div></div>";
+    }
     var tag=a.qr?(" <span class='acl'>("+esc(a.qr)+")</span>"):"";
     return "<div class='qrcard'>"+
-      "<div class='qrimg'>"+qrSvg(url,4,2)+"</div>"+
+      "<div class='qrimg'>"+qrSvg(url)+"</div>"+
       "<div class='qrinfo'><div class='lbl'>QR code"+tag+"</div>"+
       "<div class='qrurl'>"+esc(url)+"</div>"+
       "<div class='qrbtns'><button type='button' id='qrPrint'>Print code</button>"+
       "<button type='button' id='qrCopy'>Copy link</button></div></div></div>";
   }
+  // Our own auto key looks like RW-XXXXX or a /a/?id= link; anything else is a
+  // store-bought code the user assigned.
+  function isOwnKey(v){ v=(v||"").trim(); return /^RW-[0-9A-Z]{4,}$/i.test(v) || v.indexOf("/a/")>=0 || v.indexOf("id=")>=0; }
   function copyText(t, btn){
     var done=function(){ var o=btn.textContent; btn.textContent="Copied"; setTimeout(function(){ btn.textContent=o; },1400); };
     if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done,function(){}); }
@@ -375,11 +441,27 @@
       comboField("f_type","Type",a.equipmentType,OPTIONS.types)+
       comboField("f_client","Client",a.client,OPTIONS.clients)+
       comboField("f_location","Location",a.location,OPTIONS.locations)+
-      "<div class='field'><label>QR tag <span class='hint' style='font-weight:400;color:var(--muted)'>— a label for this asset, or a store-bought sticker's code</span></label><input id='f_qr' type='text' value='"+esc(a.qr||"")+"'/></div>"+
+      "<div class='field'><label>QR tag <span class='hint' style='font-weight:400;color:var(--muted)'>— this asset's code, or a store-bought sticker you scan in</span></label>"+
+        "<input id='f_qr' type='text' value='"+esc(a.qr||"")+"'/>"+
+        "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>"+
+          "<label class='btn ghost' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem' for='f_qrscan'>Scan a code to assign</label>"+
+          "<input type='file' id='f_qrscan' accept='image/*' capture='environment' style='display:none' />"+
+        "</div>"+
+        "<div id='f_qrmsg' style='font-size:.84rem;color:var(--muted);margin-top:6px'></div>"+
+      "</div>"+
       "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>";
     document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
     document.getElementById("saveBtn").addEventListener("click", saveEdit);
     document.getElementById("runBtn").addEventListener("click", runAgentNow);
+    document.getElementById("f_qrscan").addEventListener("change", function(e){
+      var file=e.target.files&&e.target.files[0]; e.target.value="";
+      var qm=document.getElementById("f_qrmsg"); if(!file) return;
+      qm.style.color="var(--muted)"; qm.textContent="Reading the code…";
+      decodeQRFromImage(file).then(function(val){
+        document.getElementById("f_qr").value=val;
+        qm.style.color="var(--green-deep)"; qm.textContent="Assigned: "+val+" — press Save to keep it.";
+      }).catch(function(err){ qm.style.color="#8a3d1c"; qm.textContent=(err&&err.message)||"Couldn't read a QR code from that photo."; });
+    });
     wireEditPhotos();
   }
 
