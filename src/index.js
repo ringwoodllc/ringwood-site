@@ -40,8 +40,9 @@ const CONTACT_BASE = "appKR9vFoNtDfqMEU";
 const CONTACT_TABLE = "tblbp0KSiSy54dBbQ";
 
 /* ---- Ticket app: category master list (System / Method base) ---- */
-const SYS_BASE = "app29fADba9FiQ25h";
-const CAT_TABLE = "tblKLl5Rw8dn7rx1l";
+/* Ticket categories now live in the Database base, alongside everything else. */
+const SYS_BASE = "appEasFOM80bISWV8";
+const CAT_TABLE = "tblGulJ27sjEbJFTA";
 const F_CAT_NAME = "Category";
 const F_CAT_ACTIVE = "Active";
 const F_CAT_SORT = "Sort Order";
