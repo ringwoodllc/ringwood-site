@@ -206,14 +206,22 @@ fetch("/api/categories").then(function (r) { return r.json(); }).then(function (
 // The menu also offers "＋ Add a client" so new clients are created here, not
 // in Airtable.
 var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
-fetch("/api/options").then(function (r) { return r.json(); }).then(function (o) {
-  var clients = (o && o.clients) || [];
-  var html = "<option value=''>" + (clients.length ? "Select…" : "No clients yet") + "</option>";
-  clients.forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
-  clientEl.innerHTML = html + ADD_CLIENT;
-}).catch(function () {
-  clientEl.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT;
-});
+// Load clients, retrying on a failed or empty response (covers the brief
+// post-deploy window where the edge can return a transient 403).
+function loadClients(tries) {
+  tries = tries || 0;
+  fetch("/api/options").then(function (r) { return r.json(); }).then(function (o) {
+    var clients = (o && o.clients) || [];
+    if (!clients.length && tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); return; }
+    var html = "<option value=''>" + (clients.length ? "Select…" : "No clients yet") + "</option>";
+    clients.forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
+    clientEl.innerHTML = html + ADD_CLIENT;
+  }).catch(function () {
+    if (tries < 4) { setTimeout(function () { loadClients(tries + 1); }, 1200); }
+    else { clientEl.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; }
+  });
+}
+loadClients();
 
 // ---- add a client without leaving the form ----
 var addClientRow = document.getElementById("addClientRow");

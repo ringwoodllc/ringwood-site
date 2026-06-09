@@ -279,11 +279,22 @@
     sel.innerHTML = html + addHtml;
     if (keep) sel.value = keep;
   }
-  fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
-    fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
-    fillSelect(equipSel, o.types, null, ADD_EQUIP);
-    fillSelect(locationSel, o.locations, null, ADD_LOC);
-  }).catch(function(){ clientSel.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; });
+  // Load the lists, retrying on a failed or empty response (covers the brief
+  // post-deploy window where the edge can return a transient 403).
+  function loadOptions(tries){
+    tries = tries || 0;
+    fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
+      o = o || {};
+      if ((!o.clients || !o.clients.length) && tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); return; }
+      fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
+      fillSelect(equipSel, o.types, null, ADD_EQUIP);
+      fillSelect(locationSel, o.locations, null, ADD_LOC);
+    }).catch(function(){
+      if (tries < 4){ setTimeout(function(){ loadOptions(tries + 1); }, 1200); }
+      else { clientSel.innerHTML = "<option value=''>Could not load clients</option>" + ADD_CLIENT; }
+    });
+  }
+  loadOptions();
 
   // Reusable "＋ Add" for the Dropdown Lists (type, location). Builds an inline
   // input under the select and writes the new value to the Dropdown Lists table.
