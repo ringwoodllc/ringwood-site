@@ -88,7 +88,7 @@ create table if not exists tickets (
   client_id uuid references clients(id),
   description text,
   location text,
-  status text not null default 'Open',            -- Open | Closed | Archived
+  status text not null default 'Open',            -- Open | Scheduled | In Progress | Complete | Archived
   photo_url text,
   photo_urls text[],
   created_at timestamptz not null default now()

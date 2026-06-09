@@ -58,6 +58,7 @@ export default {
     if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env);
+    if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
 
     // Asset view / lookup page (QR target).
     if (url.pathname.startsWith("/a/") && env.ASSETS) return env.ASSETS.fetch(rewrite(url, "/a/", request));
@@ -1029,7 +1030,13 @@ async function titleFromDescription(description, category, env) {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 60,
-        messages: [{ role: "user", content: "Write a short, specific ticket title (max 8 words, Title Case, no quotes, no period) for this facilities issue.\nCategory: " + category + "\nIssue: " + description }],
+        messages: [{ role: "user", content:
+          "Write a short, action-led title for this facilities ticket so someone scanning a list instantly knows the job. " +
+          "Start with a verb (Repair, Replace, Install, Reattach, Configure, Remove, Patch, Clean, Restore...). " +
+          "Name the specific thing, and where if it is clear. Max 7 words, Title Case, no quotes, no period, no client name, no category label. " +
+          "Describe only what the request says. Do not invent details.\n" +
+          "Example request: 'The vehicle's factory radio/head unit needs to be replaced.' -> 'Replace Vehicle Radio/Head Unit'\n" +
+          "Category: " + category + "\nRequest: " + description }],
         output_config: { format: { type: "json_schema", schema } },
       }),
     });
@@ -1043,6 +1050,31 @@ async function titleFromDescription(description, category, env) {
   } catch {
     return null;
   }
+}
+
+// One-time backfill: regenerate the plain "Category · Client" titles on older
+// tickets into proper action-led titles. Only touches tickets that still have a
+// fallback-looking title and an actual description to work from.
+async function retitleTickets(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  const rows = await sbSelect(env, "tickets?select=id,title,ref,description,category:ticket_categories(name)&order=created_at.desc");
+  let updated = 0, checked = 0;
+  for (const t of rows || []) {
+    const desc = (t.description || "").trim();
+    if (!desc) continue;
+    const title = t.title || "";
+    const looksFallback = !title || title === t.ref || title.indexOf(" · ") >= 0;
+    if (!looksFallback) continue;
+    checked++;
+    const cat = (t.category && t.category.name) || "";
+    const nt = await titleFromDescription(desc, cat, env);
+    if (nt) {
+      await sbUpdate(env, "tickets", t.id, { title: nt });
+      updated++;
+    }
+  }
+  return noStore({ ok: true, checked, updated });
 }
 
 async function listTickets(url, env) {

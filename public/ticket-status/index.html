@@ -51,9 +51,11 @@
   .ticket .t-title{font-weight:600;color:var(--green-deep);font-size:1rem;word-break:break-word}
   .ticket .t-meta{color:var(--muted);font-size:.86rem;margin-top:3px}
   .pill{flex:0 0 auto;font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:999px;margin-top:2px}
-  .pill.Open{background:#e3efe7;color:var(--green-deep)}
-  .pill.Closed{background:#e7e2d6;color:#6b675c}
-  .pill.Archived{background:#f0e0d4;color:#8a5a36}
+  .pill.p-open{background:#e3efe7;color:var(--green-deep)}
+  .pill.p-sched{background:#eadcc4;color:#6b5524}
+  .pill.p-prog{background:#dfe9f4;color:#274a73}
+  .pill.p-done{background:#e7e2d6;color:#6b675c}
+  .pill.p-arch{background:#f0e0d4;color:#8a5a36}
   .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .qbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
   .qbtn:hover{border-color:var(--green)}
@@ -127,6 +129,9 @@
   var CLIENTS = [];
   var LOCATIONS = [];
   var ALL_TICKETS = [];
+
+  var STATUSES = ["Open","Scheduled","In Progress","Complete","Archived"];
+  function statusTok(s){ return ({"Open":"open","Scheduled":"sched","In Progress":"prog","Complete":"done","Closed":"done","Archived":"arch"})[s] || "open"; }
 
   function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
@@ -213,15 +218,15 @@
     listEl.innerHTML = rows.map(function(t){
       var meta = [t.client, t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
       var actions;
-      if (t.status === "Open") actions = qbtn("Close", t.id, "Closed") + qbtn("Archive", t.id, "Archived");
-      else if (t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
-      else actions = qbtn("Reopen", t.id, "Open");
+      if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
+      else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
+      else actions = (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
         (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
         "<div class='actions'>" + actions + "</div>" +
-        "</div><span class='pill " + t.status + "'>" + t.status + "</span></div>";
+        "</div><span class='pill p-" + statusTok(t.status) + "'>" + esc(t.status) + "</span></div>";
     }).join("");
   }
   loadAll();
@@ -241,7 +246,9 @@
     var newPhotos = [];          // {base64, contentType, preview}
     var genTitle = t.title || "";  // title the AI suggests, sent on save
 
-    var statusOpts = ["Open","Closed","Archived"].map(function(s){ return "<option" + (t.status===s?" selected":"") + ">" + s + "</option>"; }).join("");
+    var statusList = STATUSES.slice();
+    if (t.status && statusList.indexOf(t.status) < 0) statusList.unshift(t.status);  // keep any legacy value
+    var statusOpts = statusList.map(function(s){ return "<option" + (t.status===s?" selected":"") + ">" + esc(s) + "</option>"; }).join("");
     var catOpts = "<option value=''>Select…</option>" + CATEGORIES.map(function(c){ return "<option" + (t.category===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
     var clientOpts = "<option value=''>— none —</option>" + CLIENTS.map(function(c){ return "<option" + (t.client===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
     var hasLoc = !t.location || LOCATIONS.indexOf(t.location) >= 0;
