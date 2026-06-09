@@ -64,6 +64,7 @@ export default {
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
+    if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
     if (url.pathname === "/api/admin/user" && request.method === "POST") return adminSaveUser(request, env);
@@ -1534,6 +1535,42 @@ async function retitleTickets(request, env) {
   return noStore({ ok: true, checked, updated });
 }
 
+// List the files saved under a storage prefix (e.g. "tickets/<id>/").
+async function listStorage(env, prefix) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/photos`, {
+      method: "POST",
+      headers: sbHeaders(env),
+      body: JSON.stringify({ prefix, limit: 100, sortBy: { column: "name", order: "asc" } }),
+    });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch {
+    return [];
+  }
+}
+
+// Recovery: for any ticket whose photo_urls is empty, look for photo files left
+// in storage (uploads that never got linked) and re-link them.
+async function relinkTicketPhotos(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const rows = await sbSelect(env, "tickets?select=id,photo_urls");
+  let fixed = 0, scanned = 0;
+  for (const t of rows || []) {
+    if (t.photo_urls && t.photo_urls.length) continue;
+    scanned++;
+    const objs = await listStorage(env, `tickets/${t.id}/`);
+    const urls = (objs || [])
+      .filter((o) => o && o.id && o.name && !o.name.endsWith("/"))
+      .map((o) => `${env.SUPABASE_URL}/storage/v1/object/public/photos/tickets/${t.id}/${o.name}`);
+    if (urls.length) {
+      await sbUpdate(env, "tickets", t.id, { photo_urls: urls, photo_url: urls[0] });
+      fixed++;
+    }
+  }
+  return noStore({ ok: true, scanned, fixed });
+}
+
 async function listTickets(url, env, session) {
   if (!sbReady(env) || !can(session, "tickets", "view")) return json([]);
   // A client login only ever sees its own tickets, regardless of the filter.
@@ -1547,6 +1584,8 @@ async function listTickets(url, env, session) {
     const cid = findId(refs.clients, client);
     filter = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
   }
+  const assetId = url.searchParams.get("assetId") || "";
+  if (assetId) filter += `&asset_id=eq.${assetId}`;
   if (!showArchived) filter += "&status=neq.Archived";
 
   let rows = await sbSelect(

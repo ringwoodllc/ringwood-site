@@ -275,7 +275,7 @@ function loadClients(tries) {
     var clients = (o && o.clients) || [];
     if (o && o.locations) renderLocations(o.locations);
     if (!clients.length && tries < 2) { setTimeout(function () { loadClients(tries + 1); }, 2500); return; }
-    if (clients.length) { renderClients(clients); writeClientsCache(clients); }
+    if (clients.length) { renderClients(clients); writeClientsCache(clients); if (typeof applyPreselect === "function") applyPreselect(); }
   }).catch(function () { if (tries < 2) { setTimeout(function () { loadClients(tries + 1); }, 2500); } });
 }
 loadClients();
@@ -300,9 +300,23 @@ function loadAssets() {
   fetch("/api/assets/list").then(function (r) { return r.json(); }).then(function (list) {
     ALL_ASSETS = Array.isArray(list) ? list : [];
     renderAssetOptions();
+    applyPreselect();
   }).catch(function () {});
 }
 loadAssets();
+// Coming from an asset page ("New ticket"): pre-select that asset (and its client).
+var PRESELECT_ASSET = new URLSearchParams(location.search).get("asset") || "";
+function applyPreselect() {
+  if (!PRESELECT_ASSET) return;
+  var a = ALL_ASSETS.filter(function (x) { return x.id === PRESELECT_ASSET; })[0];
+  if (!a) return;
+  if (a.client && !CLIENT_LOCK) {
+    for (var i = 0; i < clientEl.options.length; i++) { if (clientEl.options[i].text === a.client || clientEl.options[i].value === a.client) { clientEl.value = a.client; break; } }
+  }
+  renderAssetOptions();
+  assetEl.value = PRESELECT_ASSET;
+  refresh();
+}
 assetEl.addEventListener("change", function () {
   newAssetRow.style.display = assetEl.value === "__new" ? "block" : "none";
   if (assetEl.value === "__new") newAssetNameEl.focus();

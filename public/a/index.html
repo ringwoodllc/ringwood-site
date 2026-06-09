@@ -261,12 +261,28 @@
       "<div class='sub'>Ringwood asset record</div>"+
       "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>"+
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
-      "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>"+
-      qrCard(a)+photos+identity+ai+"<h2>Service history</h2>"+hist;
+      "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
+      "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
+      qrCard(a)+photos+identity+ai+
+      "<h2>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
+      "<h2>Service history</h2>"+hist;
+    loadAssetTickets(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
     var pb=document.getElementById("qrPrint"); if(pb) pb.addEventListener("click", function(){ printQR(a); });
     var cb=document.getElementById("qrCopy"); if(cb) cb.addEventListener("click", function(){ copyText(assetUrl(a.id), cb); });
+  }
+
+  function loadAssetTickets(id){
+    fetch("/api/tickets/list?archived=1&assetId="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(rows){
+      var el=document.getElementById("assetTickets"); if(!el) return;
+      rows = Array.isArray(rows)?rows:[];
+      if(!rows.length){ el.innerHTML="<div class='empty'>No tickets for this asset yet.</div>"; return; }
+      el.innerHTML = "<table><thead><tr><th>Ref</th><th>Title</th><th>Status</th><th>Date</th></tr></thead><tbody>"+
+        rows.map(function(t){
+          return "<tr onclick=\"location.href='/status'\"><td>"+esc(t.ref||"—")+"</td><td>"+esc(t.title||"Ticket")+"</td><td>"+esc(t.status||"")+"</td><td>"+esc(t.created?new Date(t.created).toLocaleDateString():"")+"</td></tr>";
+        }).join("")+"</tbody></table><div class='hint'>Tap a row to manage in Ticket status.</div>";
+    }).catch(function(){ var el=document.getElementById("assetTickets"); if(el) el.innerHTML="<div class='empty'>Could not load tickets.</div>"; });
   }
 
   // Canonical deep link a printed/scanned code opens. Stable host so stickers
