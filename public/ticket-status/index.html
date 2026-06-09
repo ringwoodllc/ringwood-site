@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Ringwood · Ticket status</title>
+<meta name="description" content="See and manage tickets by client. Open, close, or archive." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
+    --green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:640px;margin:0 auto;padding:0 22px}
+  h1,h2,h3{font-family:"Spectral",Georgia,serif;font-weight:500;line-height:1.1;letter-spacing:-.01em;color:var(--green-deep)}
+  a{color:inherit}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:18px 0 22px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:12px}
+  .intro h1{font-size:clamp(2rem,7vw,2.7rem)}
+  .intro p{margin-top:10px;color:var(--muted);font-size:1.04rem}
+
+  .field{margin-bottom:16px}
+  label{display:block;font-weight:600;font-size:.96rem;color:var(--green-deep);margin-bottom:7px}
+  input,select,textarea{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:13px 14px;-webkit-appearance:none;appearance:none}
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
+  textarea{min-height:90px;resize:vertical}
+
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 14px}
+  .archbtn{background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:8px 14px;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer}
+  .archbtn.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
+
+  .ticket{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:10px;cursor:pointer;display:flex;gap:12px;align-items:flex-start}
+  .ticket:hover{border-color:var(--green)}
+  .ticket .body{flex:1;min-width:0}
+  .ticket .t-title{font-weight:600;color:var(--green-deep);font-size:1rem;word-break:break-word}
+  .ticket .t-meta{color:var(--muted);font-size:.86rem;margin-top:3px}
+  .pill{flex:0 0 auto;font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:999px;margin-top:2px}
+  .pill.Open{background:#e3efe7;color:var(--green-deep)}
+  .pill.Closed{background:#e7e2d6;color:#6b675c}
+  .pill.Archived{background:#f0e0d4;color:#8a5a36}
+  .empty{color:var(--muted);padding:18px 4px}
+
+  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:15px;border-radius:4px}
+  .btn:hover{background:var(--green-deep)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:20px 18px;margin-bottom:40px}
+  .panel h3{font-size:1.2rem;margin-bottom:4px}
+  .panel .ref{color:var(--muted);font-size:.86rem;margin-bottom:14px}
+  .panel img.photo{width:100%;max-height:240px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-bottom:14px}
+  .row2{display:flex;gap:10px;margin-top:6px}
+  .row2 .btn{padding:13px}
+  .msg{margin-top:12px;font-size:.92rem;color:#8a3d1c}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
+        <g fill="none" stroke="#2f5d50" stroke-width="1.4">
+          <circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/>
+        </g>
+      </svg>
+      Ringwood
+    </div>
+    <a class="back" href="https://ringwood.ai">Home</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Ticket status</div>
+    <h1>Tickets by client</h1>
+    <p>Pick a client to see their tickets. Open one to update it, close it, or archive it.</p>
+  </div>
+
+  <div class="field">
+    <label for="client">Client</label>
+    <select id="client"><option value="">Loading clients…</option></select>
+  </div>
+
+  <div class="toolbar">
+    <div id="count" style="color:var(--muted);font-size:.9rem"></div>
+    <button id="archToggle" class="archbtn" type="button">Show archived</button>
+  </div>
+
+  <div id="list"></div>
+  <div id="editWrap"></div>
+</main>
+
+<script>
+  var clientSel = document.getElementById("client");
+  var listEl = document.getElementById("list");
+  var editWrap = document.getElementById("editWrap");
+  var countEl = document.getElementById("count");
+  var archToggle = document.getElementById("archToggle");
+  var showArchived = false;
+  var CATEGORIES = [];
+
+  function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
+
+  /* ---- resilient client list (cache + retry, like the other pages) ---- */
+  var SEED_CLIENTS = ["Bloom","Moment","Ridge","Robin","Summit","United"];
+  var CACHE_KEY = "rw_lists_v1";
+  function readClientsCache(){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); return (c&&c.data&&c.data.clients&&c.data.clients.length)?c.data.clients:null; }catch(e){ return null; } }
+  function writeClientsCache(clients){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null")||{}; c.t=Date.now(); c.data=c.data||{}; c.data.clients=clients; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); }catch(e){} }
+  function renderClients(clients){
+    var keep = clientSel.value;
+    var html = "<option value=''>" + (clients&&clients.length?"Select a client":"No clients yet") + "</option>";
+    (clients||[]).forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
+    clientSel.innerHTML = html;
+    if(keep) clientSel.value = keep;
+  }
+  renderClients(readClientsCache() || SEED_CLIENTS);
+  function loadClients(tries){
+    tries = tries||0;
+    fetch("/api/options", { cache:"no-store" }).then(function(r){return r.json();}).then(function(o){
+      var clients = (o&&o.clients)||[];
+      if(!clients.length && tries<2){ setTimeout(function(){ loadClients(tries+1); }, 700); return; }
+      if(clients.length){ renderClients(clients); writeClientsCache(clients); }
+    }).catch(function(){ if(tries<2) setTimeout(function(){ loadClients(tries+1); }, 700); });
+  }
+  loadClients();
+
+  fetch("/api/categories", { cache:"no-store" }).then(function(r){return r.json();}).then(function(list){
+    CATEGORIES = (list||[]).map(function(i){ return i.name; });
+  }).catch(function(){});
+
+  /* ---- tickets ---- */
+  function loadTickets(){
+    editWrap.innerHTML = "";
+    var client = clientSel.value;
+    if(!client){ listEl.innerHTML = ""; countEl.textContent = ""; return; }
+    listEl.innerHTML = "<div class='empty'>Loading…</div>";
+    var url = "/api/tickets/list?client=" + encodeURIComponent(client) + (showArchived ? "&archived=1" : "");
+    fetch(url, { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){
+      rows = rows||[];
+      if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets for " + esc(client) + (showArchived?"":" yet") + ".</div>"; countEl.textContent = ""; return; }
+      var open = rows.filter(function(t){return t.status==="Open";}).length;
+      countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s") + " · " + open + " open";
+      listEl.innerHTML = rows.map(function(t){
+        var meta = [t.category, t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
+        return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
+          "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
+          (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
+          (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
+          "</div><span class='pill " + t.status + "'>" + t.status + "</span></div>";
+      }).join("");
+    }).catch(function(){ listEl.innerHTML = "<div class='empty'>Could not load tickets.</div>"; });
+  }
+
+  window.openEdit = function(t){
+    listEl.innerHTML = "";
+    countEl.textContent = "";
+    var statusOpts = ["Open","Closed","Archived"].map(function(s){ return "<option" + (t.status===s?" selected":"") + ">" + s + "</option>"; }).join("");
+    var catOpts = "<option value=''>Select…</option>" + CATEGORIES.map(function(c){ return "<option" + (t.category===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
+    editWrap.innerHTML =
+      "<div class='panel'>" +
+        "<h3>" + esc(t.title) + "</h3>" +
+        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + esc(t.client) + (t.location?(" · " + esc(t.location)):"") + "</div>" +
+        (t.photo ? "<img class='photo' src='" + esc(t.photo) + "' alt='' />" : "") +
+        "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
+        "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
+        "<div class='field'><label>Description</label><textarea id='e_desc'>" + esc(t.description) + "</textarea></div>" +
+        "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
+        "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
+        "<div class='msg' id='e_msg'></div>" +
+      "</div>";
+    window.scrollTo(0,0);
+    document.getElementById("e_back").addEventListener("click", loadTickets);
+    document.getElementById("e_save").addEventListener("click", function(){
+      var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
+      var payload = { id:t.id, status:document.getElementById("e_status").value, category:document.getElementById("e_cat").value, description:document.getElementById("e_desc").value };
+      fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ loadTickets(); }
+          else { b.disabled=false; b.textContent="Save"; document.getElementById("e_msg").textContent=(d&&d.error)||"Save failed."; }
+        }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("e_msg").textContent="Couldn't reach the server."; });
+    });
+  };
+
+  clientSel.addEventListener("change", loadTickets);
+  archToggle.addEventListener("click", function(){
+    showArchived = !showArchived;
+    archToggle.classList.toggle("on", showArchived);
+    archToggle.textContent = showArchived ? "Hide archived" : "Show archived";
+    loadTickets();
+  });
+</script>
+</body>
+</html>

@@ -119,12 +119,23 @@ export default {
     if (url.pathname === "/api/tickets" && request.method === "POST") {
       return createTicket(request, env);
     }
+    if (url.pathname === "/api/tickets/list" && request.method === "GET") {
+      return listTickets(url, env);
+    }
+    if (url.pathname === "/api/tickets/update" && request.method === "POST") {
+      return updateTicket(request, env);
+    }
 
     // Asset view / lookup page (QR target). Serve the /a/ page for any /a/* path
     // (rewriting to the directory, not index.html, to avoid an asset redirect
     // that would strip the id).
     if (url.pathname.startsWith("/a/") && env.ASSETS) {
       return env.ASSETS.fetch(rewrite(url, "/a/", request));
+    }
+
+    // Ticket status page (select a client, manage their tickets).
+    if (url.pathname.startsWith("/t/") && env.ASSETS) {
+      return env.ASSETS.fetch(rewrite(url, "/ticket-status/", request));
     }
 
     // Each app's subdomain serves its form at the root.
@@ -1007,7 +1018,7 @@ async function createTicket(request, env) {
     fields[F_CATEGORY] = category;
     fields[F_DESCRIPTION] = body.note || "";
     fields[F_ANSWERS] = "Ref: " + ref + "\nLocation: " + location;
-    fields[F_STATUS] = "New";
+    fields[F_STATUS] = "Open";
     if (client) fields[F_TICKET_CLIENT] = client;
 
     const createRes = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}`, {
@@ -1050,5 +1061,85 @@ async function createTicket(request, env) {
     return Response.json({ ok: true, ref: ref, photoOk: photoOk });
   } catch (e) {
     return Response.json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}
+
+// Simplify the granular status set to Open / Closed / Archived for the website.
+function ticketGroup(raw) {
+  if (raw === "Closed" || raw === "Resolved") return "Closed";
+  if (raw === "Archived") return "Archived";
+  return "Open";
+}
+
+// Tickets for one client. Archived are hidden unless ?archived=1.
+async function listTickets(url, env) {
+  const client = url.searchParams.get("client") || "";
+  const showArchived = url.searchParams.get("archived") === "1";
+  if (!env.AIRTABLE_TOKEN) return Response.json([]);
+  const photoUrl = (arr) => {
+    if (!Array.isArray(arr) || !arr[0]) return "";
+    const a = arr[0];
+    return a.thumbnails && a.thumbnails.large ? a.thumbnails.large.url : a.url;
+  };
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}?pageSize=200`, {
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+    const data = await r.json();
+    let rows = (data.records || []).map((x) => {
+      const f = x.fields || {};
+      const ans = f[F_ANSWERS] || "";
+      const refM = ans.match(/Ref:\s*([^\s\n]+)/);
+      const locM = ans.match(/Location:\s*([^\n]*)/);
+      return {
+        id: x.id,
+        title: f[F_TICKET] || "Ticket",
+        category: f[F_CATEGORY] || "",
+        client: f[F_TICKET_CLIENT] || "",
+        status: ticketGroup(f[F_STATUS] || ""),
+        description: f[F_DESCRIPTION] || "",
+        ref: refM ? refM[1] : "",
+        location: locM ? locM[1].trim() : "",
+        photo: photoUrl(f[F_PHOTO]),
+        created: x.createdTime || "",
+      };
+    });
+    if (client) rows = rows.filter((t) => (t.client || "").toLowerCase() === client.toLowerCase());
+    if (!showArchived) rows = rows.filter((t) => t.status !== "Archived");
+    rows.sort((a, b) => (a.created < b.created ? 1 : -1));
+    return Response.json(rows);
+  } catch {
+    return Response.json([]);
+  }
+}
+
+// Update a ticket's status (Open / Closed / Archived), category, or description.
+async function updateTicket(request, env) {
+  if (!env.AIRTABLE_TOKEN) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No ticket id." }, 400);
+  const fields = {};
+  if ("status" in body) fields[F_STATUS] = body.status;
+  if ("category" in body) fields[F_CATEGORY] = body.category;
+  if ("description" in body) fields[F_DESCRIPTION] = body.description;
+  try {
+    const res = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}/${id}`, {
+      method: "PATCH",
+      headers: airtableHeaders(env),
+      body: JSON.stringify({ fields, typecast: true }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      return json({ ok: false, error: d?.error?.message || "Save failed." }, 502);
+    }
+    return json({ ok: true });
+  } catch {
+    return json({ ok: false, error: "Could not reach the server." }, 502);
   }
 }
