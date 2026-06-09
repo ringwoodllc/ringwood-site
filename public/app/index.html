@@ -95,7 +95,13 @@
     </a>
   </div>
 
-  <footer>Ringwood &middot; <a href="https://ringwood.ai">ringwood.ai</a></footer>
+  <footer><a href="#" id="signout">Sign out</a> &middot; <a href="https://ringwood.ai">ringwood.ai</a></footer>
 </div>
+<script>
+  document.getElementById("signout").addEventListener("click", function(e){
+    e.preventDefault();
+    fetch("/api/logout", { method: "POST" }).then(function(){ window.location.href = "/login"; }).catch(function(){ window.location.href = "/login"; });
+  });
+</script>
 </body>
 </html>

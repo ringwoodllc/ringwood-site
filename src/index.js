@@ -23,6 +23,20 @@ export default {
     const url = new URL(request.url);
     const sub = url.hostname.split(".")[0];
 
+    // Login endpoints always reachable. The gate is opt-in: it only enforces
+    // when LOGIN_REQUIRED=1 (so you can build/test users first, then lock down).
+    if (url.pathname === "/api/login" && request.method === "POST") return login(request, env);
+    if (url.pathname === "/api/logout" && request.method === "POST") return logout();
+    if (url.pathname === "/api/whoami" && request.method === "GET") return whoami(request, env);
+    if (env.LOGIN_REQUIRED === "1" && env.SUPABASE_ANON_KEY && !isPublic(url, sub)) {
+      const session = await verifySession(getCookie(request, "rw_session"), env);
+      if (!session) {
+        if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Please sign in." }, 401);
+        const next = encodeURIComponent(url.pathname + (url.search || ""));
+        return Response.redirect(`${url.origin}/login?next=${next}`, 302);
+      }
+    }
+
     if (url.pathname === "/api/assets" && request.method === "POST") return handleCreateAsset(request, env, ctx);
     if (url.pathname === "/api/assets/list" && request.method === "GET") return listAssets(env);
     if (url.pathname === "/api/options" && request.method === "GET") return optionsHandler(env);
@@ -59,6 +73,7 @@ export default {
       "/service": "/service/",
       "/lookup": "/a/",
       "/app": "/app/",
+      "/login": "/login/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -81,6 +96,118 @@ function rewrite(url, pathname, request) {
   const u = new URL(url);
   u.pathname = pathname;
   return new Request(u, request);
+}
+
+/* ===================== Auth ===================== */
+
+// Paths that never require sign-in.
+function isPublic(url, sub) {
+  const p = url.pathname;
+  if (p === "/login" || p === "/login/") return true;
+  if (p === "/api/login" || p === "/api/logout" || p === "/api/whoami") return true;
+  if (p === "/api/contact" || p === "/api/diag") return true;
+  if (p === "/manifest.json" || p.startsWith("/icons/")) return true;
+  if (sub === "talk" || sub === "contact") return true; // public contact form
+  if (sub === "ringwood" || sub === "www") return true; // marketing site
+  return false;
+}
+
+function getCookie(request, name) {
+  const c = request.headers.get("cookie") || "";
+  const m = c.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
+  return m ? m[1] : null;
+}
+
+function b64urlBytes(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlStr(str) {
+  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlToStr(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return decodeURIComponent(escape(atob(s)));
+}
+
+// Sessions are signed by the worker (HMAC) with the service key, so they need
+// no extra secret and can be long-lived.
+async function hmacSign(data, secret) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return b64urlBytes(new Uint8Array(sig));
+}
+async function signSession(payload, env) {
+  const body = b64urlStr(JSON.stringify(payload));
+  return `${body}.${await hmacSign(body, env.SUPABASE_SERVICE_KEY)}`;
+}
+async function verifySession(token, env) {
+  if (!token || !env.SUPABASE_SERVICE_KEY) return null;
+  const i = token.lastIndexOf(".");
+  if (i < 1) return null;
+  const body = token.slice(0, i);
+  const sig = token.slice(i + 1);
+  if (sig !== (await hmacSign(body, env.SUPABASE_SERVICE_KEY))) return null;
+  let p;
+  try {
+    p = JSON.parse(b64urlToStr(body));
+  } catch {
+    return null;
+  }
+  if (!p.exp || Date.now() / 1000 > p.exp) return null;
+  return p;
+}
+
+const SESSION_DAYS = 30;
+function sessionCookie(value, maxAge) {
+  return `rw_session=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Domain=.ringwood.ai; Max-Age=${maxAge}`;
+}
+
+async function login(request, env) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY || !env.SUPABASE_SERVICE_KEY) {
+    return json({ ok: false, error: "Login isn't configured yet." }, 503);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const email = (body.email || "").toString().trim().toLowerCase();
+  const password = (body.password || "").toString();
+  if (!email || !password) return json({ ok: false, error: "Enter your email and password." }, 400);
+  let r;
+  try {
+    r = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the login server." }, 502);
+  }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.access_token) {
+    return json({ ok: false, error: d.error_description || d.msg || "Wrong email or password." }, 401);
+  }
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  const session = await signSession({ email, exp }, env);
+  return new Response(JSON.stringify({ ok: true }), {
+    headers: { "content-type": "application/json", "set-cookie": sessionCookie(session, SESSION_DAYS * 86400) },
+  });
+}
+
+function logout() {
+  return new Response(JSON.stringify({ ok: true }), {
+    headers: { "content-type": "application/json", "set-cookie": sessionCookie("", 0) },
+  });
+}
+
+async function whoami(request, env) {
+  const s = await verifySession(getCookie(request, "rw_session"), env);
+  return json({ ok: !!s, email: s ? s.email : null, required: env.LOGIN_REQUIRED === "1" });
 }
 
 /* ===================== Supabase helpers ===================== */
