@@ -90,15 +90,8 @@
     <div class="field">
       <label for="client">Client <span class="req">*</span></label>
       <select id="client">
-        <option value="">Select…</option>
-        <option>Bloom</option><option>Moment</option><option>Ridge</option>
-        <option>Robin</option><option>Summit</option><option>United</option>
-        <option value="__other">Other…</option>
+        <option value="">Loading clients…</option>
       </select>
-    </div>
-    <div class="field hidden" id="clientOtherWrap">
-      <label for="clientOther">Client name <span class="req">*</span></label>
-      <input id="clientOther" type="text" placeholder="Type the client name" />
     </div>
 
     <div class="field">
@@ -152,8 +145,6 @@ var photoType = "image/jpeg";
 var photoReq = {};
 
 var clientEl = document.getElementById("client");
-var clientOtherWrap = document.getElementById("clientOtherWrap");
-var clientOtherEl = document.getElementById("clientOther");
 var fileInput = document.getElementById("file");
 var photoBtn = document.getElementById("photoBtn");
 var photoNote = document.getElementById("photoNote");
@@ -169,7 +160,7 @@ var msg = document.getElementById("msg");
 var form = document.getElementById("ticketForm");
 
 function clientValue() {
-  return clientEl.value === "__other" ? clientOtherEl.value.trim() : clientEl.value;
+  return clientEl.value;
 }
 function needsPhoto() { return !!photoReq[categoryEl.value]; }
 
@@ -203,12 +194,20 @@ fetch("/api/categories").then(function (r) { return r.json(); }).then(function (
   categoryEl.innerHTML = "<option value=''>Could not load</option>";
 });
 
-clientEl.addEventListener("change", function () {
-  if (clientEl.value === "__other") { clientOtherWrap.classList.remove("hidden"); clientOtherEl.focus(); }
-  else { clientOtherWrap.classList.add("hidden"); }
-  refresh();
+// Clients come only from the Clients table (one source), via /api/options.
+fetch("/api/options").then(function (r) { return r.json(); }).then(function (o) {
+  var clients = (o && o.clients) || [];
+  clientEl.innerHTML = "<option value=''>" + (clients.length ? "Select…" : "No clients found") + "</option>";
+  clients.forEach(function (c) {
+    var op = document.createElement("option");
+    op.value = c; op.textContent = c;
+    clientEl.appendChild(op);
+  });
+}).catch(function () {
+  clientEl.innerHTML = "<option value=''>Could not load clients</option>";
 });
-clientOtherEl.addEventListener("input", refresh);
+
+clientEl.addEventListener("change", refresh);
 
 photoBtn.addEventListener("click", function () { fileInput.click(); });
 retake.addEventListener("click", function () { fileInput.click(); });
@@ -287,7 +286,7 @@ form.addEventListener("submit", function (e) {
 document.getElementById("again").addEventListener("click", function () {
   photoBase64 = null;
   fileInput.value = "";
-  clientEl.value = ""; clientOtherEl.value = ""; clientOtherWrap.classList.add("hidden");
+  clientEl.value = "";
   locationEl.value = ""; categoryEl.value = ""; noteEl.value = "";
   preview.classList.add("hidden");
   photoBtn.classList.remove("hidden");

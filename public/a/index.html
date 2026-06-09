@@ -108,12 +108,17 @@
   var assetSel=document.getElementById("assetSel"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter");
   var allAssets=[], curAsset=null, curId="";
 
-  fetch("/api/options").then(function(r){return r.json();}).then(function(o){ if(o){ OPTIONS=o; if(o.serviceTypes&&o.serviceTypes.length) SERVICE_TYPES=o.serviceTypes; } }).catch(function(){});
+  // Client filter comes only from the Clients table (one source), via /api/options.
+  fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+    if(o){
+      OPTIONS=o;
+      if(o.serviceTypes&&o.serviceTypes.length) SERVICE_TYPES=o.serviceTypes;
+      (o.clients||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c; op.textContent=c; clientFilter.appendChild(op); });
+    }
+  }).catch(function(){});
 
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
     allAssets = Array.isArray(list)?list:[];
-    var clients=[]; allAssets.forEach(function(a){ if(a.client && clients.indexOf(a.client)===-1) clients.push(a.client); });
-    clients.sort().forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; clientFilter.appendChild(o); });
     renderAssetOptions("");
     var initial = parseId(new URLSearchParams(location.search).get("id") || location.pathname.replace(/^\/a\//,""));
     if (initial && /^rec/.test(initial)){ assetSel.value=initial; load(initial); }

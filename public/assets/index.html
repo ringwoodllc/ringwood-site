@@ -101,12 +101,8 @@
     <div class="field">
       <label for="client">Who is this for?</label>
       <select id="client">
-        <option value="">Select…</option>
-        <option>Bloom</option><option>Moment</option><option>Ridge</option>
-        <option>Robin</option><option>Summit</option><option>United</option>
-        <option value="__other">Other (type below)</option>
+        <option value="">Loading clients…</option>
       </select>
-      <input id="clientOther" type="text" autocomplete="off" placeholder="Client name" style="display:none;margin-top:8px" />
     </div>
 
     <div class="group-label">Photos</div>
@@ -253,31 +249,28 @@
   wireSlot("serial", "Serial #");
 
   var clientSel = document.getElementById("client");
-  var clientOther = document.getElementById("clientOther");
-  clientSel.addEventListener("change", function(){
-    clientOther.style.display = clientSel.value === "__other" ? "block" : "none";
-  });
-
   var locationSel = document.getElementById("location");
   var equipSel = document.getElementById("equipmentType");
 
-  // Master lists, read live from Airtable. Fall back to the hardcoded options
-  // already in the markup if the request fails.
-  function fillSelect(sel, values, opts){
-    if (!values || !values.length) return;
-    opts = opts || {};
+  // All four lists are read live from Airtable. Equipment type and location
+  // fall back to the hardcoded options if the request fails; clients come only
+  // from the Clients table (one source), so there is no hardcoded fallback.
+  function fillSelect(sel, values, emptyLabel){
+    if (!values || !values.length){
+      if (emptyLabel) sel.innerHTML = "<option value=''>" + emptyLabel + "</option>";
+      return;
+    }
     var keep = sel.value;
     var html = "<option value=''>Select…</option>";
     values.forEach(function(v){ html += "<option>" + v.replace(/</g,"&lt;") + "</option>"; });
-    if (opts.other) html += "<option value='__other'>Other (type below)</option>";
     sel.innerHTML = html;
     if (keep) sel.value = keep;
   }
   fetch("/api/options").then(function(r){ return r.json(); }).then(function(o){
-    fillSelect(clientSel, o.clients, { other: true });
-    fillSelect(equipSel, o.types, {});
-    fillSelect(locationSel, o.locations, {});
-  }).catch(function(){ /* keep the fallback options */ });
+    fillSelect(clientSel, o.clients, "No clients found");
+    fillSelect(equipSel, o.types);
+    fillSelect(locationSel, o.locations);
+  }).catch(function(){ clientSel.innerHTML = "<option value=''>Could not load clients</option>"; });
 
   var form = document.getElementById("assetForm");
   var submitBtn = document.getElementById("submitBtn");
@@ -329,7 +322,7 @@
 
   form.addEventListener("submit", function(e){
     e.preventDefault();
-    var client = clientSel.value === "__other" ? clientOther.value : clientSel.value;
+    var client = clientSel.value;
     var payload = {
       description: document.getElementById("description").value,
       manufacturer: document.getElementById("manufacturer").value,
@@ -360,7 +353,6 @@
           document.getElementById(k + "Preview").style.display = "none";
           document.getElementById(k + "Pick").style.display = "flex";
         });
-        clientOther.style.display = "none";
         showMsg("ok", "Saved — go ahead with the next one.");
         if (data.id) trackCapture(data.id);
       } else {

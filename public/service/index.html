@@ -164,6 +164,9 @@
       serviceTypeSel.innerHTML = html;
       if (keep) serviceTypeSel.value = keep;
     }
+    // Client filter comes only from the Clients table (one source).
+    var cls = (o && o.clients) || [];
+    cls.forEach(function(c){ var op=document.createElement("option"); op.value=c; op.textContent=c; clientFilter.appendChild(op); });
   }).catch(function(){ /* keep fallback */ });
 
   function renderAssets(){
@@ -177,9 +180,6 @@
   fetch("/api/assets/list").then(function(r){ return r.json(); }).then(function(list){
     allAssets = Array.isArray(list) ? list : [];
     if (!allAssets.length){ assetSel.innerHTML = "<option value=''>No assets yet</option>"; return; }
-    var clients = [];
-    allAssets.forEach(function(a){ if (a.client && clients.indexOf(a.client) === -1) clients.push(a.client); });
-    clients.sort().forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; clientFilter.appendChild(o); });
     renderAssets();
     var pre = new URLSearchParams(location.search).get("asset");
     if (pre){ assetSel.value = pre; if (assetSel.value === pre){ loadHistory(); lockToAsset(pre); } }
