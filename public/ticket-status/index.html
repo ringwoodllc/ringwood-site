@@ -132,6 +132,10 @@
   var clientSel = document.getElementById("client");
   var topicSel = document.getElementById("topic");
   var statusSel = document.getElementById("status");
+  // A client login only sees its own tickets, so hide the client filter.
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if (w && w.ok && w.role === "client"){ var f = clientSel.closest(".field"); if (f) f.style.display = "none"; }
+  }).catch(function(){});
   var listEl = document.getElementById("list");
   var editWrap = document.getElementById("editWrap");
   var countEl = document.getElementById("count");

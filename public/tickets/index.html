@@ -166,6 +166,18 @@ var photos = [];
 var photoReq = {};
 
 var clientEl = document.getElementById("client");
+// A client login is always its own client: lock the field to that and hide it.
+var CLIENT_LOCK = null;
+fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+  if (w && w.ok && w.role === "client" && w.client){
+    CLIENT_LOCK = w.client;
+    clientEl.innerHTML = "<option>" + w.client.replace(/</g,"&lt;") + "</option>";
+    clientEl.value = w.client;
+    var f = clientEl.closest(".field"); if (f) f.style.display = "none";
+    var acr = document.getElementById("addClientRow"); if (acr) acr.style.display = "none";
+    if (typeof refresh === "function") refresh();
+  }
+}).catch(function(){});
 var fileInput = document.getElementById("file");
 var photoBtn = document.getElementById("photoBtn");
 var photoNote = document.getElementById("photoNote");
@@ -179,6 +191,7 @@ var msg = document.getElementById("msg");
 var form = document.getElementById("ticketForm");
 
 function clientValue() {
+  if (CLIENT_LOCK) return CLIENT_LOCK;
   return clientEl.value === "__add" ? "" : clientEl.value;
 }
 function locationValue() {
@@ -232,6 +245,7 @@ function writeClientsCache(clients) {
   try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null") || {}; c.t = Date.now(); c.data = c.data || {}; c.data.clients = clients; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch (e) {}
 }
 function renderClients(clients) {
+  if (CLIENT_LOCK) return; // client login: field is locked and hidden
   var html = "<option value=''>" + (clients && clients.length ? "Select…" : "No clients yet") + "</option>";
   (clients || []).forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
   clientEl.innerHTML = html + ADD_CLIENT;

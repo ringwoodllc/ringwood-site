@@ -139,6 +139,10 @@
 
   var assetList=document.getElementById("assetList"), searchInput=document.getElementById("searchInput"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter"), assetCount=document.getElementById("assetCount"), qrSamples=document.getElementById("qrSamples");
   var allAssets=[], curAsset=null, curId="";
+  // A client login only sees its own assets; hide the client filter.
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if (w && w.ok && w.role === "client"){ var f = clientFilter.closest(".field"); if (f) f.style.display = "none"; }
+  }).catch(function(){});
 
   // Lists from /api/options, with a resilient cache: render from the last good
   // values in this browser first, then refresh live (with retries) and update

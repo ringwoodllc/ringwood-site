@@ -156,6 +156,14 @@
   var assetSel = document.getElementById("asset");
   var assetFilter = document.getElementById("assetFilter");
   var clientFilter = document.getElementById("clientFilter");
+  // A client login only works within its own client; hide just the client filter
+  // (its field is shared with the asset picker, so don't hide the whole field).
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if (w && w.ok && w.role === "client"){
+      clientFilter.style.display = "none";
+      var lbl = document.querySelector("label[for='clientFilter']"); if (lbl) lbl.style.display = "none";
+    }
+  }).catch(function(){});
   var allAssets = [];
   var SERVICE_TYPES = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
 

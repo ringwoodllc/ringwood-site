@@ -248,6 +248,18 @@
   var clientSel = document.getElementById("client");
   var locationSel = document.getElementById("location");
   var equipSel = document.getElementById("equipmentType");
+  // A client login is always its own client: lock and hide the picker.
+  var CLIENT_LOCK = null;
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if (w && w.ok && w.role === "client" && w.client){
+      CLIENT_LOCK = w.client;
+      clientSel.innerHTML = "<option>" + w.client.replace(/</g,"&lt;") + "</option>";
+      clientSel.value = w.client;
+      var f = clientSel.closest(".field"); if (f) f.style.display = "none";
+      var gl = f && f.previousElementSibling; if (gl && gl.classList && gl.classList.contains("group-label")) gl.style.display = "none";
+      var acr = document.getElementById("addClientRow"); if (acr) acr.style.display = "none";
+    }
+  }).catch(function(){});
   var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
   var ADD_EQUIP = "<option value='__add'>＋ Add a type…</option>";
   var ADD_LOC = "<option value='__add'>＋ Add a location…</option>";
@@ -284,7 +296,7 @@
   function writeCache(d){ try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), data: d })); } catch(e){} }
 
   function applyLists(o){
-    fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
+    if (!CLIENT_LOCK) fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
     fillSelect(equipSel, o.types, null, ADD_EQUIP);
     fillSelect(locationSel, o.locations, null, ADD_LOC);
   }
@@ -420,7 +432,7 @@
 
   form.addEventListener("submit", function(e){
     e.preventDefault();
-    var client = clientSel.value === "__add" ? "" : clientSel.value;
+    var client = CLIENT_LOCK || (clientSel.value === "__add" ? "" : clientSel.value);
     var payload = {
       description: document.getElementById("description").value,
       manufacturer: document.getElementById("manufacturer").value,
