@@ -97,6 +97,18 @@
   </div>
 
   <form id="assetForm">
+    <div class="group-label">Client</div>
+    <div class="field">
+      <label for="client">Who is this for?</label>
+      <select id="client">
+        <option value="">Select…</option>
+        <option>Bloom</option><option>Moment</option><option>Ridge</option>
+        <option>Robin</option><option>Summit</option><option>United</option>
+        <option value="__other">Other (type below)</option>
+      </select>
+      <input id="clientOther" type="text" autocomplete="off" placeholder="Client name" style="display:none;margin-top:8px" />
+    </div>
+
     <div class="group-label">Photos</div>
     <div class="photos">
       <div class="slot">
@@ -157,17 +169,6 @@
         <option>HVAC</option><option>Water Heater</option><option>Boiler</option>
         <option>Electrical Panel</option><option>Generator</option><option>Coffee Equipment</option><option>Other</option>
       </select>
-    </div>
-
-    <div class="field">
-      <label for="client">Client</label>
-      <select id="client">
-        <option value="">Select…</option>
-        <option>United</option><option>Ridge</option><option>Bloom</option>
-        <option>Summit</option><option>Moment</option><option>Robin</option>
-        <option value="__other">Other (type below)</option>
-      </select>
-      <input id="clientOther" type="text" autocomplete="off" placeholder="Client name" style="display:none;margin-top:8px" />
     </div>
 
     <div class="field">

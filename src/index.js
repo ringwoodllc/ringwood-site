@@ -613,7 +613,7 @@ async function getDistinctValues(env) {
   };
   ["HVAC", "Water Heater", "Boiler", "Electrical Panel", "Generator", "Coffee Equipment", "Office Equipment", "Refrigeration", "Other"].forEach((v) => add(out.types, v));
   ["Outside", "Attic", "Roof", "Basement", "Mechanical Room", "Garage", "Office", "Other"].forEach((v) => add(out.locations, v));
-  ["United", "Ridge", "Bloom", "Summit", "Moment", "Robin"].forEach((v) => add(out.clients, v));
+  ["Bloom", "Moment", "Ridge", "Robin", "Summit", "United"].forEach((v) => add(out.clients, v));
   try {
     const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}?pageSize=100`, {
       headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
