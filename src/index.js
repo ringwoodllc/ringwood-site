@@ -591,10 +591,18 @@ async function ensureBucket(env) {
   if (_bucketDone) return;
   _bucketDone = true;
   try {
+    // Create it if missing...
     await fetch(`${env.SUPABASE_URL}/storage/v1/bucket`, {
       method: "POST",
       headers: sbHeaders(env),
       body: JSON.stringify({ id: "photos", name: "photos", public: true }),
+    });
+    // ...and force it public, in case it already existed as a private bucket
+    // (the usual reason uploaded photos don't display).
+    await fetch(`${env.SUPABASE_URL}/storage/v1/bucket/photos`, {
+      method: "PUT",
+      headers: sbHeaders(env),
+      body: JSON.stringify({ public: true }),
     });
   } catch {
     /* already exists or transient; ignore */
@@ -720,6 +728,16 @@ async function diag(env) {
       master: Array.isArray(users) ? users.filter((u) => u.role === "master").length : 0,
       tokensTable: Array.isArray(toks),
     };
+    // Photo storage: make sure the bucket is public, then report its state.
+    await ensureBucket(env);
+    let bucket = null;
+    try {
+      const br = await fetch(`${env.SUPABASE_URL}/storage/v1/bucket/photos`, { headers: sbHeaders(env) });
+      bucket = br.ok ? await br.json() : null;
+    } catch {
+      bucket = null;
+    }
+    out.storage = bucket ? { bucket: "photos", public: !!bucket.public } : { bucket: "missing" };
   }
   return noStore(out);
 }
