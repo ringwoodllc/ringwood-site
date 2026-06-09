@@ -277,7 +277,7 @@ async function adminCreateToken(request, env) {
   const token = randomToken();
   const expires = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
   const ins2 = await sbInsert(env, "login_tokens", { token, user_email: email, label: clientName, expires_at: expires });
-  if (!ins2.ok) return json({ ok: false, error: "Could not create the link." }, 502);
+  if (!ins2.ok) return json({ ok: false, error: "Could not create the link. If this keeps happening, run login_tokens.sql (or setup_all.sql) in Supabase." }, 502);
   const origin = new URL(request.url).origin;
   return json({ ok: true, token, url: `${origin}/login?token=${token}`, email, client: clientName, expires_at: expires });
 }
