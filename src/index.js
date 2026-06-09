@@ -23,40 +23,42 @@ export default {
     const url = new URL(request.url);
     const sub = url.hostname.split(".")[0];
 
-    // Login endpoints always reachable. The gate is opt-in: it only enforces
-    // when LOGIN_REQUIRED=1 (so you can build/test users first, then lock down).
+    // Login endpoints always reachable. The gate enforces when LOGIN_REQUIRED=1.
     if (url.pathname === "/api/login" && request.method === "POST") return login(request, env);
     if (url.pathname === "/api/logout" && request.method === "POST") return logout();
     if (url.pathname === "/api/whoami" && request.method === "GET") return whoami(request, env);
-    if (env.LOGIN_REQUIRED === "1" && env.SUPABASE_ANON_KEY && !isPublic(url, sub)) {
-      const session = await verifySession(getCookie(request, "rw_session"), env);
-      if (!session) {
-        if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Please sign in." }, 401);
-        const next = encodeURIComponent(url.pathname + (url.search || ""));
-        return Response.redirect(`${url.origin}/login?next=${next}`, 302);
-      }
+    if (url.pathname === "/api/account/password" && request.method === "POST") return changePassword(request, env);
+
+    // One session lookup, reused for the gate and for per-client data scoping.
+    const session = await getSession(request, env);
+    // Bootstrap safety: the gate only enforces once at least one account exists,
+    // so a deploy before the accounts SQL is run can never lock everyone out.
+    if (env.LOGIN_REQUIRED === "1" && !isPublic(url, sub) && !session && (await hasAnyUser(env))) {
+      if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Please sign in." }, 401);
+      const next = encodeURIComponent(url.pathname + (url.search || ""));
+      return Response.redirect(`${url.origin}/login?next=${next}`, 302);
     }
 
-    if (url.pathname === "/api/assets" && request.method === "POST") return handleCreateAsset(request, env, ctx);
-    if (url.pathname === "/api/assets/list" && request.method === "GET") return listAssets(env);
-    if (url.pathname === "/api/options" && request.method === "GET") return optionsHandler(env);
+    if (url.pathname === "/api/assets" && request.method === "POST") return handleCreateAsset(request, env, ctx, session);
+    if (url.pathname === "/api/assets/list" && request.method === "GET") return listAssets(env, session);
+    if (url.pathname === "/api/options" && request.method === "GET") return optionsHandler(env, session);
     if (url.pathname === "/api/diag" && request.method === "GET") return diag(env);
     if (url.pathname === "/api/clients" && request.method === "POST") return createClient(request, env);
     if (url.pathname === "/api/picklist" && request.method === "POST") return createPicklistValue(request, env);
     if (url.pathname === "/api/service/get" && request.method === "GET") return getService(url, env);
     if (url.pathname === "/api/service/update" && request.method === "POST") return updateService(request, env);
     if (url.pathname === "/api/assets/get" && request.method === "GET") return getAsset(url, env);
-    if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env);
+    if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env);
-    if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env);
+    if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
     if (url.pathname === "/api/asset/verify" && request.method === "POST") return setVerified(request, env);
-    if (url.pathname === "/api/service" && request.method === "POST") return createService(request, env, ctx);
+    if (url.pathname === "/api/service" && request.method === "POST") return createService(request, env, ctx, session);
     if (url.pathname === "/api/service/list" && request.method === "GET") return listServices(url, env);
     if (url.pathname === "/api/contact" && request.method === "POST") return createContact(request, env);
     if (url.pathname === "/api/categories" && request.method === "GET") return getCategories(env);
-    if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx);
-    if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env);
-    if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env);
+    if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx, session);
+    if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env, session);
+    if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
 
@@ -134,6 +136,35 @@ function b64urlToStr(s) {
   while (s.length % 4) s += "=";
   return decodeURIComponent(escape(atob(s)));
 }
+function b64urlToBytes(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// Password hashing: PBKDF2-HMAC-SHA256, stored as pbkdf2$<iter>$<salt>$<hash>
+// (base64url). Same scheme the seed SQL was generated with.
+async function pbkdf2(password, saltBytes, iter, lenBytes) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: saltBytes, iterations: iter, hash: "SHA-256" }, key, lenBytes * 8);
+  return new Uint8Array(bits);
+}
+async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const h = await pbkdf2(password, salt, 100000, 32);
+  return "pbkdf2$100000$" + b64urlBytes(salt) + "$" + b64urlBytes(h);
+}
+async function verifyPassword(password, stored) {
+  const parts = (stored || "").split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+  const iter = parseInt(parts[1], 10);
+  const salt = b64urlToBytes(parts[2]);
+  const h = await pbkdf2(password, salt, iter, 32);
+  return b64urlBytes(h) === parts[3];
+}
 
 // Sessions are signed by the worker (HMAC) with the service key, so they need
 // no extra secret and can be long-lived.
@@ -169,9 +200,7 @@ function sessionCookie(value, maxAge) {
 }
 
 async function login(request, env) {
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY || !env.SUPABASE_SERVICE_KEY) {
-    return json({ ok: false, error: "Login isn't configured yet." }, 503);
-  }
+  if (!sbReady(env)) return json({ ok: false, error: "Login isn't configured yet." }, 503);
   let body;
   try {
     body = await request.json();
@@ -181,23 +210,17 @@ async function login(request, env) {
   const email = (body.email || "").toString().trim().toLowerCase();
   const password = (body.password || "").toString();
   if (!email || !password) return json({ ok: false, error: "Enter your email and password." }, 400);
-  let r;
-  try {
-    r = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-  } catch {
-    return json({ ok: false, error: "Couldn't reach the login server." }, 502);
-  }
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok || !d.access_token) {
-    return json({ ok: false, error: d.error_description || d.msg || "Wrong email or password." }, 401);
-  }
+
+  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email,password_hash,role,active,client:clients(name)`);
+  const u = rows && rows[0];
+  const ok = u && u.active !== false && (await verifyPassword(password, u.password_hash));
+  if (!ok) return json({ ok: false, error: "Wrong email or password." }, 401);
+
+  const role = u.role === "master" ? "master" : "client";
+  const client = role === "client" ? (u.client && u.client.name) || "" : null;
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
-  const session = await signSession({ email, exp }, env);
-  return new Response(JSON.stringify({ ok: true }), {
+  const session = await signSession({ email, role, client, exp }, env);
+  return new Response(JSON.stringify({ ok: true, role, client }), {
     headers: { "content-type": "application/json", "set-cookie": sessionCookie(session, SESSION_DAYS * 86400) },
   });
 }
@@ -210,7 +233,58 @@ function logout() {
 
 async function whoami(request, env) {
   const s = await verifySession(getCookie(request, "rw_session"), env);
-  return json({ ok: !!s, email: s ? s.email : null, required: env.LOGIN_REQUIRED === "1" });
+  return json({ ok: !!s, email: s ? s.email : null, role: s ? s.role : null, client: s ? s.client || null : null, required: env.LOGIN_REQUIRED === "1" });
+}
+
+// Change your own password (must be signed in).
+async function changePassword(request, env) {
+  const s = await verifySession(getCookie(request, "rw_session"), env);
+  if (!s) return json({ ok: false, error: "Please sign in." }, 401);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const current = (body.current || "").toString();
+  const next = (body.next || "").toString();
+  if (next.length < 8) return json({ ok: false, error: "New password must be at least 8 characters." }, 400);
+  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(s.email)}&select=id,password_hash`);
+  const u = rows && rows[0];
+  if (!u || !(await verifyPassword(current, u.password_hash))) return json({ ok: false, error: "Current password is wrong." }, 401);
+  const res = await sbUpdate(env, "app_users", u.id, { password_hash: await hashPassword(next) });
+  if (!res.ok) return json({ ok: false, error: "Could not update the password." }, 502);
+  return json({ ok: true });
+}
+
+// The signed-in session, or null. Cheap (one HMAC verify), safe to call always.
+async function getSession(request, env) {
+  return verifySession(getCookie(request, "rw_session"), env);
+}
+// Has anyone created a login yet? Once true, it stays true (cached) so the gate
+// doesn't read the table on every request.
+let _hasUserCache = false;
+async function hasAnyUser(env) {
+  if (_hasUserCache) return true;
+  if (!sbReady(env)) return false;
+  const rows = await sbSelect(env, "app_users?select=email&limit=1");
+  if (rows && rows.length) {
+    _hasUserCache = true;
+    return true;
+  }
+  return false;
+}
+// For a client-scoped session, the client name to force; null = see everything.
+function scopeName(session) {
+  return session && session.role === "client" ? session.client || "__none__" : null;
+}
+// True if this session may touch this record (master/unscoped always may).
+async function ownsRecord(env, session, table, id) {
+  const forced = scopeName(session);
+  if (forced == null) return true;
+  const rows = await sbSelect(env, `${table}?id=eq.${id}&select=client:clients(name)`);
+  const r = rows && rows[0];
+  return !!(r && r.client && r.client.name === forced);
 }
 
 /* ===================== Supabase helpers ===================== */
@@ -346,19 +420,22 @@ function findId(arr, name) {
 
 /* ===================== Lists / options ===================== */
 
-async function getLists(env) {
+async function getLists(env, session) {
   const out = { clients: [], types: [], locations: [], serviceTypes: [] };
   if (!sbReady(env)) return out;
   const refs = await getRefs(env);
   out.clients = refs.clients.filter((c) => (c.status || "") !== "Churned").map((c) => c.name).sort((a, b) => a.localeCompare(b));
+  // A client login only sees its own client in pickers.
+  const forced = scopeName(session);
+  if (forced != null) out.clients = out.clients.filter((n) => n === forced);
   out.types = refs.equip.filter((x) => x.active).map((x) => x.name);
   out.locations = refs.locs.filter((x) => x.active).map((x) => x.name);
   out.serviceTypes = refs.svc.filter((x) => x.active).map((x) => x.name);
   return out;
 }
 
-async function optionsHandler(env) {
-  return noStore(await getLists(env));
+async function optionsHandler(env, session) {
+  return noStore(await getLists(env, session));
 }
 
 async function getCategories(env) {
@@ -438,7 +515,7 @@ async function createPicklistValue(request, env) {
 
 /* ===================== Assets ===================== */
 
-async function handleCreateAsset(request, env, ctx) {
+async function handleCreateAsset(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "The asset tracker isn't connected yet. Add SUPABASE_URL and SUPABASE_SERVICE_KEY in Cloudflare." }, 503);
 
   let body;
@@ -455,7 +532,8 @@ async function handleCreateAsset(request, env, ctx) {
   const serial = clean(body.serial);
   const equipmentType = clean(body.equipmentType);
   const location = clean(body.location);
-  const client = clean(body.client);
+  const forcedClient = scopeName(session);
+  const client = forcedClient != null ? forcedClient : clean(body.client);
   const notes = clean(body.notes);
 
   const label = [description || equipmentType || "Asset", client].filter(Boolean).join(" — ") || "Asset";
@@ -656,7 +734,7 @@ async function getAsset(url, env) {
 }
 
 // Full asset detail + service history, for /a/<id> and QR scans.
-async function getAssetFull(url, env) {
+async function getAssetFull(url, env, session) {
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
   const rows = await sbSelect(
@@ -665,6 +743,9 @@ async function getAssetFull(url, env) {
   );
   const a = rows && rows[0];
   if (!a) return json({ ok: false }, 404);
+  // A client login can only open its own assets.
+  const forced = scopeName(session);
+  if (forced != null && ((a.client && a.client.name) || "") !== forced) return json({ ok: false }, 404);
 
   const sr = await sbSelect(
     env,
@@ -751,7 +832,7 @@ async function analyzeAsset(request, env) {
 }
 
 // Save manual edits; a human edit marks it Verified.
-async function updateAsset(request, env) {
+async function updateAsset(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   let body;
   try {
@@ -761,6 +842,7 @@ async function updateAsset(request, env) {
   }
   const id = (body.id || "").trim();
   if (!id) return json({ ok: false, error: "No asset id." }, 400);
+  if (!(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
   const c = (v) => (v == null ? "" : v.toString().trim());
   const refs = await getRefs(env);
   const patch = { verification: "Verified" };
@@ -770,7 +852,7 @@ async function updateAsset(request, env) {
   if ("model" in body) patch.model = c(body.model);
   if ("serial" in body) patch.serial = c(body.serial);
   if ("equipmentType" in body) patch.equipment_type_id = findId(refs.equip, c(body.equipmentType));
-  if ("client" in body) patch.client_id = findId(refs.clients, c(body.client));
+  if ("client" in body && scopeName(session) == null) patch.client_id = findId(refs.clients, c(body.client));
   if ("location" in body) patch.location_id = findId(refs.locs, c(body.location));
   // Rebuild the photo list when the editor sends one: keep the photos the user
   // didn't delete, then append new uploads. Clear the legacy single-slot columns
@@ -812,11 +894,18 @@ async function setVerified(request, env) {
   return json({ ok: true });
 }
 
-async function listAssets(env) {
+async function listAssets(env, session) {
   if (!sbReady(env)) return json([]);
+  let filter = "";
+  const forced = scopeName(session);
+  if (forced != null) {
+    const refs = await getRefs(env);
+    const cid = findId(refs.clients, forced);
+    filter = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
+  }
   const rows = await sbSelect(
     env,
-    "assets?select=id,name,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)&order=logged_at.desc"
+    `assets?select=id,name,description,make,model,serial,qr_tag,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
   );
   return json(
     (rows || []).map((x) => ({
@@ -854,7 +943,7 @@ async function listServices(url, env) {
   );
 }
 
-async function createService(request, env, ctx) {
+async function createService(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Not connected yet." }, 503);
   let body;
   try {
@@ -865,6 +954,7 @@ async function createService(request, env, ctx) {
   const clean = (v) => (v || "").toString().trim();
   const assetId = clean(body.assetId);
   if (!assetId) return json({ ok: false, error: "Please choose the asset this service is for." }, 400);
+  if (!(await ownsRecord(env, session, "assets", assetId))) return json({ ok: false, error: "Not found." }, 404);
   const serviceDate = clean(body.serviceDate);
   const serviceType = clean(body.serviceType);
   const technician = clean(body.technician);
@@ -981,7 +1071,7 @@ async function createContact(request, env) {
 
 /* ===================== Tickets ===================== */
 
-async function createTicket(request, env, ctx) {
+async function createTicket(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Not connected yet." }, 503);
   let body;
   try {
@@ -991,7 +1081,9 @@ async function createTicket(request, env, ctx) {
   }
   const ref = "RW-" + Math.floor(1000 + Math.random() * 9000);
   const category = body.category || "Other";
-  const client = body.client || "";
+  // A client login can only file against its own client.
+  const forced = scopeName(session);
+  const client = forced != null ? forced : body.client || "";
   const location = body.location || "";
   const note = (body.note || "").trim();
   // Title is auto-generated from the description; fall back to a plain label.
@@ -1086,9 +1178,11 @@ async function retitleTickets(request, env) {
   return noStore({ ok: true, checked, updated });
 }
 
-async function listTickets(url, env) {
+async function listTickets(url, env, session) {
   if (!sbReady(env)) return json([]);
-  const client = url.searchParams.get("client") || "";
+  // A client login only ever sees its own tickets, regardless of the filter.
+  const forced = scopeName(session);
+  const client = forced != null ? forced : url.searchParams.get("client") || "";
   const showArchived = url.searchParams.get("archived") === "1";
   const refs = await getRefs(env);
   let filter = "";
@@ -1128,7 +1222,7 @@ async function listTickets(url, env) {
   );
 }
 
-async function updateTicket(request, env) {
+async function updateTicket(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   let body;
   try {
@@ -1138,6 +1232,7 @@ async function updateTicket(request, env) {
   }
   const id = (body.id || "").trim();
   if (!id) return json({ ok: false, error: "No ticket id." }, 400);
+  if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
   const refs = await getRefs(env);
   const patch = {};
   if ("status" in body) patch.status = body.status;
@@ -1145,7 +1240,7 @@ async function updateTicket(request, env) {
   if ("description" in body) patch.description = body.description;
   if ("location" in body) patch.location = body.location;
   if ("title" in body && body.title) patch.title = body.title;
-  if ("client" in body) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
+  if ("client" in body && scopeName(session) == null) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
   // Only touch the photo columns when the photos actually changed. The editor
   // always sends keepPhotos, so writing them every time would (a) be wasteful
   // and (b) fail an ordinary status/text save if anything about the photo write

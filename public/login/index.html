@@ -17,31 +17,60 @@
   :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px}
-  .card{width:100%;max-width:380px;text-align:center}
-  .badge{display:inline-block;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);font-weight:700;border:1px solid var(--clay);border-radius:999px;padding:4px 12px;margin-bottom:20px}
-  .ring{margin:0 auto 14px}
-  .brand{font-family:"Spectral",serif;font-size:1.5rem;font-weight:600;color:var(--green-deep);margin-bottom:4px}
-  h1{font-family:"Spectral",serif;font-weight:500;font-size:1.5rem;color:var(--green-deep);margin-bottom:6px}
-  .sub{color:var(--muted);font-size:.98rem;margin-bottom:26px}
-  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.1rem;padding:16px;border-radius:6px;transition:background .2s}
+  .card{width:100%;max-width:380px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.3rem;font-weight:600;color:var(--green-deep);justify-content:center;margin-bottom:6px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:1.6rem;color:var(--green-deep);text-align:center;margin-bottom:4px}
+  .sub{text-align:center;color:var(--muted);font-size:.95rem;margin-bottom:22px}
+  form{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:22px 20px}
+  label{display:block;font-weight:600;font-size:.92rem;color:var(--green-deep);margin-bottom:6px}
+  .field{margin-bottom:15px}
+  input{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:13px 14px}
+  input:focus{outline:none;border-color:var(--green)}
+  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:15px;border-radius:5px;transition:background .2s}
   .btn:hover{background:var(--green-deep)}
-  .foot{margin-top:18px;font-size:.85rem;color:var(--muted)}
-  .foot a{color:var(--green-deep)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:14px;font-size:.92rem;color:#8a3d1c;text-align:center;min-height:18px}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="badge">Sample</div>
-  <svg class="ring" width="56" height="56" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.2"><circle cx="13" cy="13" r="2.4"/><circle cx="13" cy="13" r="5.5"/><circle cx="13" cy="13" r="8.5"/><circle cx="13" cy="13" r="11"/></g></svg>
-  <div class="brand">Ringwood</div>
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="2.6"/><circle cx="13" cy="13" r="6"/><circle cx="13" cy="13" r="9.5"/></g></svg>
+    Ringwood
+  </div>
   <h1>Sign in</h1>
-  <p class="sub">Sample access — tap Log in to explore the app.</p>
-  <button class="btn" id="login" type="button">Log in</button>
-  <div class="foot"><a href="https://ringwood.ai">Back to ringwood.ai</a></div>
+  <p class="sub">Use your Ringwood account.</p>
+  <form id="f">
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" inputmode="email" placeholder="you@ringwood.ai" />
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Your password" />
+    </div>
+    <button class="btn" type="submit" id="btn">Sign in</button>
+    <div class="msg" id="msg"></div>
+  </form>
 </div>
 <script>
-  document.getElementById("login").addEventListener("click", function(){
-    window.location.href = "/app";
+  var f = document.getElementById("f"), btn = document.getElementById("btn"), msg = document.getElementById("msg");
+  function nextUrl(){
+    var n = new URLSearchParams(location.search).get("next");
+    if (n && n.charAt(0) === "/" && n.charAt(1) !== "/") return n;
+    return "/app";
+  }
+  f.addEventListener("submit", function(e){
+    e.preventDefault();
+    var email = document.getElementById("email").value.trim();
+    var password = document.getElementById("password").value;
+    if (!email || !password){ msg.textContent = "Enter your email and password."; return; }
+    btn.disabled = true; btn.textContent = "Signing in…"; msg.textContent = "";
+    fetch("/api/login", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ email: email, password: password }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (d && d.ok){ window.location.replace(nextUrl()); }
+        else { btn.disabled = false; btn.textContent = "Sign in"; msg.textContent = (d && d.error) || "Couldn't sign in."; }
+      }).catch(function(){ btn.disabled = false; btn.textContent = "Sign in"; msg.textContent = "Couldn't reach the server."; });
   });
 </script>
 </body>
