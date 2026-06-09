@@ -680,36 +680,23 @@ async function getLists(env) {
   out.types = names(ed);
   out.locations = names(ld);
   out.serviceTypes = names(sd);
-  // Cache only a good result, so a transient rate-limit isn't pinned for 60s.
-  if (out.clients.length || out.types.length || out.locations.length || out.serviceTypes.length) {
+  const got = out.clients.length || out.types.length || out.locations.length || out.serviceTypes.length;
+  if (got) {
     _listsCache = { t: Date.now(), data: out };
+    return out;
   }
+  // Reads came back empty (e.g. rate-limited). Serve the last good data if we
+  // have it, rather than blanking the dropdowns.
+  if (_listsCache) return _listsCache.data;
   return out;
 }
 
 // Safe diagnostic: tells us whether the token is present and what the Airtable
 // reads return, without ever exposing the token itself.
 async function diag(env) {
-  const out = { hasToken: !!env.AIRTABLE_TOKEN, base: ASSET_BASE_ID, reads: {} };
-  const probe = async (label, table) => {
-    try {
-      const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?pageSize=3`, {
-        headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
-      });
-      const d = await r.json().catch(() => ({}));
-      out.reads[label] = {
-        status: r.status,
-        records: d && d.records ? d.records.length : null,
-        error: d && d.error ? d.error.type || d.error : null,
-      };
-    } catch (e) {
-      out.reads[label] = { status: "fetch_failed", error: String(e) };
-    }
-  };
+  const out = { hasToken: !!env.AIRTABLE_TOKEN, base: ASSET_BASE_ID };
   if (env.AIRTABLE_TOKEN) {
-    await probe("clients", CLIENTS_TABLE);
-    await probe("equipmentTypes", EQUIP_TABLE);
-    const lists = await getLists(env);
+    const lists = await getLists(env); // only these 4 reads, so diag matches /api/options
     out.listsCounts = {
       clients: lists.clients.length,
       types: lists.types.length,

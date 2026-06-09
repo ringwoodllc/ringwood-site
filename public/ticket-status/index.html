@@ -134,9 +134,9 @@
     tries = tries||0;
     fetch("/api/options", { cache:"no-store" }).then(function(r){return r.json();}).then(function(o){
       var clients = (o&&o.clients)||[];
-      if(!clients.length && tries<2){ setTimeout(function(){ loadClients(tries+1); }, 700); return; }
+      if(!clients.length && tries<2){ setTimeout(function(){ loadClients(tries+1); }, 2500); return; }
       if(clients.length){ renderClients(clients); writeClientsCache(clients); }
-    }).catch(function(){ if(tries<2) setTimeout(function(){ loadClients(tries+1); }, 700); });
+    }).catch(function(){ if(tries<2) setTimeout(function(){ loadClients(tries+1); }, 2500); });
   }
   loadClients();
 
