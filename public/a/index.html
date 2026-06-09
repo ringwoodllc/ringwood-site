@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="/qrcode.js"></script>
 <style>
   :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -86,6 +87,16 @@
   .state{color:var(--muted);padding:8px 0 30px}
   .err{color:#8a3d1c}
   .agentnote{background:#dfe9f4;color:#274a73;border-radius:4px;padding:10px 12px;font-size:.9rem;margin-bottom:14px}
+  .qrcard{display:flex;gap:16px;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:20px;flex-wrap:wrap}
+  .qrcard .qrimg{flex:0 0 auto;background:#fff;padding:8px;border-radius:6px;border:1px solid var(--line);line-height:0}
+  .qrcard .qrimg svg,.qrcard .qrimg img{width:128px;height:128px;display:block}
+  .qrcard .qrinfo{flex:1;min-width:200px}
+  .qrcard .qrinfo .lbl{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:4px}
+  .qrcard .qrurl{font-size:.8rem;color:var(--muted);word-break:break-all;margin-bottom:10px}
+  .qrcard .qrbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .qrcard .qrbtns button{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:7px 14px;font:inherit;font-size:.84rem;font-weight:600;cursor:pointer}
+  .qrcard .qrbtns button:hover{border-color:var(--green)}
+  @media print{ body * {visibility:hidden} #printArea, #printArea * {visibility:visible} #printArea{position:absolute;left:0;top:0;width:100%;text-align:center} }
 </style>
 </head>
 <body>
@@ -233,9 +244,45 @@
       "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>"+
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
       "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a></div>"+
-      photos+identity+ai+"<h2>Service history</h2>"+hist;
+      qrCard(a)+photos+identity+ai+"<h2>Service history</h2>"+hist;
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
+    var pb=document.getElementById("qrPrint"); if(pb) pb.addEventListener("click", function(){ printQR(a); });
+    var cb=document.getElementById("qrCopy"); if(cb) cb.addEventListener("click", function(){ copyText(assetUrl(a.id), cb); });
+  }
+
+  // Canonical deep link a printed/scanned code opens. Stable host so stickers
+  // keep working wherever the page is viewed.
+  function assetUrl(id){ return "https://app.ringwood.ai/a/?id="+encodeURIComponent(id); }
+  function qrSvg(text, cell, margin){
+    try{ var qr=qrcode(0,"M"); qr.addData(text); qr.make(); return qr.createSvgTag({cellSize:cell||4, margin:margin==null?4:margin, scalable:true}); }
+    catch(e){ return ""; }
+  }
+  function qrCard(a){
+    var url=assetUrl(a.id);
+    var tag=a.qr?(" <span class='acl'>("+esc(a.qr)+")</span>"):"";
+    return "<div class='qrcard'>"+
+      "<div class='qrimg'>"+qrSvg(url,4,2)+"</div>"+
+      "<div class='qrinfo'><div class='lbl'>QR code"+tag+"</div>"+
+      "<div class='qrurl'>"+esc(url)+"</div>"+
+      "<div class='qrbtns'><button type='button' id='qrPrint'>Print code</button>"+
+      "<button type='button' id='qrCopy'>Copy link</button></div></div></div>";
+  }
+  function copyText(t, btn){
+    var done=function(){ var o=btn.textContent; btn.textContent="Copied"; setTimeout(function(){ btn.textContent=o; },1400); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done,function(){}); }
+    else { var i=document.createElement("input"); i.value=t; document.body.appendChild(i); i.select(); try{document.execCommand("copy");}catch(e){} document.body.removeChild(i); done(); }
+  }
+  function printQR(a){
+    var w=window.open("","_blank");
+    if(!w) return;
+    var svg=qrSvg(assetUrl(a.id),6,4);
+    w.document.write("<html><head><title>"+esc(a.name)+" — QR</title><style>body{font-family:-apple-system,Arial,sans-serif;text-align:center;padding:40px;color:#21443a}h2{font-size:18px;margin:0 0 4px}.m{color:#666;font-size:12px;margin-bottom:16px}svg{width:240px;height:240px}.t{margin-top:10px;font-weight:600;font-size:14px}</style></head><body>"+
+      "<h2>"+esc(a.name)+"</h2><div class='m'>"+esc([a.client,a.location].filter(Boolean).join(" · "))+"</div>"+svg+
+      "<div class='t'>"+esc(a.qr||"Ringwood asset")+"</div>"+
+      "</body></html>");
+    w.document.close();
+    setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 350);
   }
 
   function verifyNow(){
@@ -321,6 +368,7 @@
       comboField("f_type","Type",a.equipmentType,OPTIONS.types)+
       comboField("f_client","Client",a.client,OPTIONS.clients)+
       comboField("f_location","Location",a.location,OPTIONS.locations)+
+      "<div class='field'><label>QR tag <span class='hint' style='font-weight:400;color:var(--muted)'>— a label for this asset, or a store-bought sticker's code</span></label><input id='f_qr' type='text' value='"+esc(a.qr||"")+"'/></div>"+
       "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>";
     document.getElementById("cancelBtn").addEventListener("click", function(){ renderRead(curAsset); });
     document.getElementById("saveBtn").addEventListener("click", saveEdit);
@@ -338,7 +386,7 @@
 
   function saveEdit(){
     var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
-    var payload={ id:curId, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
+    var payload={ id:curId, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value, keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }
     }).catch(function(){ b.disabled=false; b.textContent="Save"; setMsg("Couldn't reach the server."); });

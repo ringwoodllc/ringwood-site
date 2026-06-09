@@ -773,6 +773,7 @@ async function getAssetFull(url, env, session) {
     location: (a.location && a.location.name) || "",
     status: a.verification || "Pending",
     aiReading: a.nameplate_reading || "",
+    qr: a.qr_tag || "",
     photos: assetPhotos(a),
     overallPhoto: a.overall_photo_url || "",
     nameplatePhoto: a.nameplate_photo_url || "",
@@ -854,6 +855,7 @@ async function updateAsset(request, env, session) {
   if ("equipmentType" in body) patch.equipment_type_id = findId(refs.equip, c(body.equipmentType));
   if ("client" in body && scopeName(session) == null) patch.client_id = findId(refs.clients, c(body.client));
   if ("location" in body) patch.location_id = findId(refs.locs, c(body.location));
+  if ("qrTag" in body) patch.qr_tag = c(body.qrTag);
   // Rebuild the photo list when the editor sends one: keep the photos the user
   // didn't delete, then append new uploads. Clear the legacy single-slot columns
   // so photos live in one place from now on.

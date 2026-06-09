@@ -1,0 +1,13 @@
+{
+  "appId": "ai.ringwood.app",
+  "appName": "Ringwood",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.ringwood.ai",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "always"
+  },
+  "backgroundColor": "#1f3d2b"
+}
