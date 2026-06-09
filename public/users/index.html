@@ -64,6 +64,7 @@
   <h2>Add a login</h2>
   <div class="panel">
     <div class="field"><label>Email</label><input id="n_email" type="email" inputmode="email" autocomplete="off" placeholder="name@client.com" /></div>
+    <div class="field"><label>Username <span style="font-weight:400;color:var(--muted)">— optional, a simple sign-in name</span></label><input id="n_username" type="text" autocomplete="off" placeholder="e.g. moment" /></div>
     <div class="row3">
       <div class="field"><label>Role</label><select id="n_role"><option value="client">Client</option><option value="master">Master (all clients)</option></select></div>
       <div class="field" id="n_clientwrap"><label>Client</label><select id="n_client"><option value="">Select…</option></select></div>
@@ -134,6 +135,7 @@
       body += "<div class='lead' style='margin:0'>Full access to every client.</div>";
     } else {
       body +=
+        "<div class='field'><label>Username <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='un_"+k+"' type='text' autocomplete='off' value='"+esc(u.username||"")+"' placeholder='e.g. moment' /></div>"+
         "<div class='field'><label>Client</label><select id='c_"+k+"'>"+clientOpts(u.client)+"</select></div>"+
         "<div class='row3'>"+
           "<div class='field'><label>Tickets</label>"+permSel("pt_"+k,u.perms.tickets)+"</div>"+
@@ -159,6 +161,7 @@
     if (sv) sv.addEventListener("click", function(){
       var msg = document.getElementById("m_"+k); msg.className="msg";
       var payload = { email: email, role: "client",
+        username: document.getElementById("un_"+k).value.trim(),
         client: document.getElementById("c_"+k).value,
         active: document.getElementById("ac_"+k).checked,
         perms: { tickets: document.getElementById("pt_"+k).value, assets: document.getElementById("pa_"+k).value, service: document.getElementById("ps_"+k).value } };
@@ -205,6 +208,7 @@
     var b=document.getElementById("n_add"), msg=document.getElementById("n_msg"); msg.className="msg";
     var role=document.getElementById("n_role").value;
     var payload={ email:document.getElementById("n_email").value.trim(), role:role,
+      username:document.getElementById("n_username").value.trim(),
       client:document.getElementById("n_client").value,
       password:document.getElementById("n_pw").value,
       perms:{ tickets:document.getElementById("n_p_tickets").value, assets:document.getElementById("n_p_assets").value, service:document.getElementById("n_p_service").value } };
@@ -214,7 +218,7 @@
     fetch("/api/admin/user",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(d){
         b.disabled=false; b.textContent="Add login";
-        if(d&&d.ok){ msg.className="msg ok"; msg.textContent="Login added."; document.getElementById("n_email").value=""; document.getElementById("n_pw").value=""; loadUsers(); }
+        if(d&&d.ok){ msg.className="msg ok"; msg.textContent="Login added."; document.getElementById("n_email").value=""; document.getElementById("n_username").value=""; document.getElementById("n_pw").value=""; loadUsers(); }
         else { msg.className="msg err"; msg.textContent=(d&&d.error)||"Could not add login."; }
       }).catch(function(){ b.disabled=false; b.textContent="Add login"; msg.className="msg err"; msg.textContent="Couldn't reach the server."; });
   }

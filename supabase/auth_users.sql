@@ -8,6 +8,7 @@
 create table if not exists app_users (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
+  username text unique,                          -- optional, simple sign-in name
   password_hash text not null,
   role text not null default 'client',          -- 'master' | 'client'
   client_id uuid references clients(id),         -- null for master
@@ -16,8 +17,9 @@ create table if not exists app_users (
   created_at timestamptz not null default now()
 );
 alter table app_users enable row level security;   -- worker uses service key; browser never reads this
--- For databases created before per-area permissions:
+-- For databases created before these columns existed:
 alter table app_users add column if not exists perms jsonb not null default '{"tickets":"edit","assets":"edit","service":"edit"}'::jsonb;
+alter table app_users add column if not exists username text unique;
 
 -- Master account (sees all clients).
 insert into app_users (email, password_hash, role, client_id) values

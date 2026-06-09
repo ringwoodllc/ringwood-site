@@ -229,13 +229,15 @@ async function login(request, env) {
     u = urows && urows[0];
     if (!u || u.active === false) return json({ ok: false, error: "This account is not active." }, 401);
   } else {
-    const email = (body.email || "").toString().trim().toLowerCase();
+    // Identifier can be an email or a simple username.
+    const idRaw = (body.identifier || body.username || body.email || "").toString().trim().toLowerCase();
     const password = (body.password || "").toString();
-    if (!email || !password) return json({ ok: false, error: "Enter your email and password." }, 400);
-    const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email,password_hash,role,active,perms,client:clients(name)`);
+    if (!idRaw || !password) return json({ ok: false, error: "Enter your email or username and password." }, 400);
+    const enc = encodeURIComponent(idRaw);
+    const rows = await sbSelect(env, `app_users?or=(email.eq.${enc},username.eq.${enc})&select=email,username,password_hash,role,active,perms,client:clients(name)`);
     u = rows && rows[0];
     if (!u || u.active === false || !(await verifyPassword(password, u.password_hash))) {
-      return json({ ok: false, error: "Wrong email or password." }, 401);
+      return json({ ok: false, error: "Wrong email/username or password." }, 401);
     }
   }
 
@@ -339,11 +341,12 @@ function cleanPerms(p) {
 
 async function adminListUsers(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "app_users?select=email,role,active,perms,client:clients(name)&order=role.desc,email");
+  const rows = await sbSelect(env, "app_users?select=email,username,role,active,perms,client:clients(name)&order=role.desc,email");
   return noStore({
     ok: true,
     users: (rows || []).map((u) => ({
       email: u.email,
+      username: u.username || "",
       role: u.role,
       client: (u.client && u.client.name) || "",
       active: u.active !== false,
@@ -365,6 +368,10 @@ async function adminSaveUser(request, env) {
   if (!email || email.indexOf("@") < 0) return json({ ok: false, error: "Enter a valid email." }, 400);
   const role = body.role === "master" ? "master" : "client";
   const patch = { email, role, perms: cleanPerms(body.perms || {}) };
+  if ("username" in body) {
+    const un = (body.username || "").toString().trim().toLowerCase().replace(/\s+/g, "");
+    patch.username = un || null;
+  }
   if ("active" in body) patch.active = body.active !== false;
   if (role === "client") {
     const clientName = (body.client || "").toString().trim();
@@ -416,7 +423,7 @@ function logout() {
 }
 
 async function whoami(request, env) {
-  const s = await verifySession(getCookie(request, "rw_session"), env);
+  const s = await getSession(request, env);
   return json({ ok: !!s, email: s ? s.email : null, role: s ? s.role : null, client: s ? s.client || null : null, perms: s ? s.perms || null : null, required: env.LOGIN_REQUIRED === "1" });
 }
 
@@ -441,9 +448,35 @@ async function changePassword(request, env) {
   return json({ ok: true });
 }
 
-// The signed-in session, or null. Cheap (one HMAC verify), safe to call always.
+// The signed-in session, or null. Verifies the signed cookie, then loads the
+// account's CURRENT role/client/perms/active so a master's changes (access,
+// client, disable) take effect right away — not on next sign-in. A short cache
+// keeps this from hitting the database on every single request.
+let _sessCache = new Map(); // token -> { t, data }
 async function getSession(request, env) {
-  return verifySession(getCookie(request, "rw_session"), env);
+  const token = getCookie(request, "rw_session");
+  const claims = await verifySession(token, env);
+  if (!claims) return null;
+  const hit = _sessCache.get(token);
+  if (hit && Date.now() - hit.t < 8000) return hit.data;
+  if (!sbReady(env)) return claims; // can't look up; trust the signed claims
+  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(claims.email)}&select=role,active,perms,client:clients(name)`);
+  if (rows === null) return claims; // table missing / transient error: don't lock out
+  const u = rows[0];
+  if (!u || u.active === false) {
+    _sessCache.delete(token);
+    return null; // account deleted or disabled -> session no longer valid
+  }
+  const role = u.role === "master" ? "master" : "client";
+  const data = {
+    email: claims.email,
+    role,
+    client: role === "client" ? (u.client && u.client.name) || "" : null,
+    perms: role === "client" ? u.perms || {} : null,
+  };
+  if (_sessCache.size > 500) _sessCache.clear();
+  _sessCache.set(token, { t: Date.now(), data });
+  return data;
 }
 // Has anyone created a login yet? Once true, it stays true (cached) so the gate
 // doesn't read the table on every request.
