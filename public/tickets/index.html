@@ -131,6 +131,8 @@
     <div class="field">
       <label for="note">Description — anything we should know? <span class="req">*</span></label>
       <input id="note" type="text" placeholder="A line of detail helps us route it faster." />
+      <button type="button" id="suggestBtn" style="margin-top:9px;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:8px 15px;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer">✨ Suggest with AI</button>
+      <div id="suggestMsg" class="photoNote" style="margin-top:7px"></div>
     </div>
 
     <div class="field">
@@ -360,6 +362,24 @@ fileInput.addEventListener("change", function (e) {
 
 noteEl.addEventListener("input", refresh);
 categoryEl.addEventListener("change", refresh);
+
+// ---- AI assist: draft the description + suggest a category from photo/notes ----
+var suggestBtn = document.getElementById("suggestBtn");
+var suggestMsg = document.getElementById("suggestMsg");
+suggestBtn.addEventListener("click", function () {
+  if (!photoBase64 && !noteEl.value.trim()) { suggestMsg.textContent = "Add a photo or a few words first."; return; }
+  suggestBtn.disabled = true; suggestBtn.textContent = "Thinking…"; suggestMsg.textContent = "";
+  fetch("/api/tickets/suggest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: noteEl.value, photoBase64: photoBase64, photoContentType: photoType }) })
+    .then(function (r) { return r.json(); }).then(function (d) {
+      suggestBtn.disabled = false; suggestBtn.textContent = "✨ Suggest with AI";
+      if (d && d.ok) {
+        if (d.description) noteEl.value = d.description;
+        if (d.category) { for (var i = 0; i < categoryEl.options.length; i++) { if (categoryEl.options[i].value === d.category) { categoryEl.value = d.category; break; } } }
+        suggestMsg.textContent = "Drafted by Claude — edit anything that's off.";
+        refresh();
+      } else { suggestMsg.textContent = (d && d.error) || "Couldn't get a suggestion."; }
+    }).catch(function () { suggestBtn.disabled = false; suggestBtn.textContent = "✨ Suggest with AI"; suggestMsg.textContent = "Couldn't reach the assistant."; });
+});
 
 form.addEventListener("submit", function (e) {
   e.preventDefault();

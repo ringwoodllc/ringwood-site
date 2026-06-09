@@ -57,6 +57,7 @@ export default {
     if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx);
     if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env);
+    if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env);
 
     // Asset view / lookup page (QR target).
     if (url.pathname.startsWith("/a/") && env.ASSETS) return env.ASSETS.fetch(rewrite(url, "/a/", request));
@@ -1016,4 +1017,74 @@ async function updateTicket(request, env) {
   const res = await sbUpdate(env, "tickets", id, patch);
   if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
   return json({ ok: true });
+}
+
+// AI assist for tickets: from a photo and/or a short note, write a clear
+// description and pick the best work category.
+async function suggestTicket(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const note = (body.note || "").toString().trim();
+  const hasPhoto = !!(body.photoBase64 && body.photoContentType);
+  if (!note && !hasPhoto) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
+
+  let cats = ["Repair", "Maintenance", "Install / Setup", "Buildout / Project", "Other"];
+  try {
+    const refs = await getRefs(env);
+    const c = refs.cats.filter((x) => x.active).map((x) => x.name);
+    if (c.length) cats = c;
+  } catch {
+    /* use defaults */
+  }
+
+  const prompt =
+    "You are Ringwood's facilities ticket assistant. Someone is reporting something at a workplace that needs attention. " +
+    "From the photo (if any) and their note, write a clear ticket description and choose the best work category.\n\n" +
+    "- description: one or two plain sentences stating what is wrong and, if visible, where. Specific and grounded. No marketing words. If they wrote a note, build on it and keep their intent.\n" +
+    "- category: choose exactly one from this list: " + cats.join(", ") + ".\n\n" +
+    (note ? 'Their note: "' + note + '"\n' : "") +
+    "If a field cannot be determined, use an empty string for it.";
+
+  const content = [];
+  if (hasPhoto) content.push({ type: "image", source: { type: "base64", media_type: body.photoContentType || "image/jpeg", data: body.photoBase64 } });
+  content.push({ type: "text", text: prompt });
+
+  const schema = {
+    type: "object",
+    properties: { description: { type: "string" }, category: { type: "string" } },
+    required: ["description", "category"],
+    additionalProperties: false,
+  };
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 600,
+        messages: [{ role: "user", content }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out;
+    try {
+      out = JSON.parse(block.text);
+    } catch {
+      return json({ ok: false, error: "Couldn't read the suggestion." }, 502);
+    }
+    const match = cats.find((c) => c.toLowerCase() === (out.category || "").toLowerCase());
+    return json({ ok: true, description: out.description || "", category: match || "" });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
 }
