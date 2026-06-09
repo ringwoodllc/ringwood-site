@@ -78,6 +78,9 @@ export default {
     if (url.pathname === "/api/options" && request.method === "GET") {
       return optionsHandler(env);
     }
+    if (url.pathname === "/api/diag" && request.method === "GET") {
+      return diag(env);
+    }
     if (url.pathname === "/api/clients" && request.method === "POST") {
       return createClient(request, env);
     }
@@ -667,6 +670,32 @@ async function getLists(env) {
   out.locations = names(ld);
   out.serviceTypes = names(sd);
   return out;
+}
+
+// Safe diagnostic: tells us whether the token is present and what the Airtable
+// reads return, without ever exposing the token itself.
+async function diag(env) {
+  const out = { hasToken: !!env.AIRTABLE_TOKEN, base: ASSET_BASE_ID, reads: {} };
+  const probe = async (label, table) => {
+    try {
+      const r = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${table}?pageSize=3`, {
+        headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+      });
+      const d = await r.json().catch(() => ({}));
+      out.reads[label] = {
+        status: r.status,
+        records: d && d.records ? d.records.length : null,
+        error: d && d.error ? d.error.type || d.error : null,
+      };
+    } catch (e) {
+      out.reads[label] = { status: "fetch_failed", error: String(e) };
+    }
+  };
+  if (env.AIRTABLE_TOKEN) {
+    await probe("clients", CLIENTS_TABLE);
+    await probe("equipmentTypes", EQUIP_TABLE);
+  }
+  return new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
 
 async function optionsHandler(env) {
