@@ -383,9 +383,11 @@ async function diag(env) {
     // Probe the tickets table two ways: a plain read, and the read with the
     // foreign-key embeds the status page uses. If "plain" has rows but "embed"
     // is null, the relationship embed is the thing failing.
-    const plain = await sbSelect(env, "tickets?select=id&order=created_at.desc");
+    const plain = await sbSelect(env, "tickets?select=id,status&order=created_at.desc");
     const embed = await sbSelect(env, "tickets?select=id,client:clients(name),category:ticket_categories(name)&order=created_at.desc");
-    out.tickets = { plain: Array.isArray(plain) ? plain.length : null, embed: Array.isArray(embed) ? embed.length : null };
+    const byStatus = {};
+    (Array.isArray(plain) ? plain : []).forEach((t) => { const s = t.status || "Open"; byStatus[s] = (byStatus[s] || 0) + 1; });
+    out.tickets = { plain: Array.isArray(plain) ? plain.length : null, embed: Array.isArray(embed) ? embed.length : null, byStatus };
   }
   return noStore(out);
 }
