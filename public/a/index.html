@@ -350,8 +350,7 @@
     w.document.write("<html><head><title>"+esc(a.name)+" — QR</title><style>body{font-family:-apple-system,Arial,sans-serif;text-align:center;padding:40px;color:#21443a}h2{font-size:18px;margin:0 0 4px}.m{color:#666;font-size:12px;margin-bottom:16px}svg{width:240px;height:240px}.t{margin-top:10px;font-weight:600;font-size:14px}</style></head><body>"+
       "<h2>"+esc(a.name)+"</h2><div class='m'>"+esc([a.client,a.location].filter(Boolean).join(" · "))+"</div>"+svg+
       "<div class='t'>"+esc(a.qr||"Ringwood asset")+"</div>"+
-      "<script src="/whoami-badge.js"></script>
-</body></html>");
+      "</body></html>");
     w.document.close();
     setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 350);
   }
