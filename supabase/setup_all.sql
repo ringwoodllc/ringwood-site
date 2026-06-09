@@ -195,9 +195,12 @@ create table if not exists app_users (
   role text not null default 'client',          -- 'master' | 'client'
   client_id uuid references clients(id),         -- null for master
   active boolean not null default true,
+  perms jsonb not null default '{"tickets":"edit","assets":"edit","service":"edit"}'::jsonb,  -- per-area: none|view|edit
   created_at timestamptz not null default now()
 );
 alter table app_users enable row level security;   -- worker uses service key; browser never reads this
+-- For databases created before per-area permissions:
+alter table app_users add column if not exists perms jsonb not null default '{"tickets":"edit","assets":"edit","service":"edit"}'::jsonb;
 
 -- Master account (sees all clients).
 insert into app_users (email, password_hash, role, client_id) values

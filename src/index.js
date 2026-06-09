@@ -48,22 +48,26 @@ export default {
     if (url.pathname === "/api/diag" && request.method === "GET") return diag(env);
     if (url.pathname === "/api/clients" && request.method === "POST") return createClient(request, env);
     if (url.pathname === "/api/picklist" && request.method === "POST") return createPicklistValue(request, env);
-    if (url.pathname === "/api/service/get" && request.method === "GET") return getService(url, env);
+    if (url.pathname === "/api/service/get" && request.method === "GET") return getService(url, env, session);
     if (url.pathname === "/api/service/update" && request.method === "POST") return updateService(request, env, session);
-    if (url.pathname === "/api/assets/get" && request.method === "GET") return getAsset(url, env);
+    if (url.pathname === "/api/assets/get" && request.method === "GET") return getAsset(url, env, session);
     if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
-    if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env);
+    if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
-    if (url.pathname === "/api/asset/verify" && request.method === "POST") return setVerified(request, env);
+    if (url.pathname === "/api/asset/verify" && request.method === "POST") return setVerified(request, env, session);
     if (url.pathname === "/api/service" && request.method === "POST") return createService(request, env, ctx, session);
-    if (url.pathname === "/api/service/list" && request.method === "GET") return listServices(url, env);
+    if (url.pathname === "/api/service/list" && request.method === "GET") return listServices(url, env, session);
     if (url.pathname === "/api/contact" && request.method === "POST") return createContact(request, env);
     if (url.pathname === "/api/categories" && request.method === "GET") return getCategories(env);
     if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx, session);
     if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env, session);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
-    if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env);
+    if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
+    // Master-only user management
+    if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
+    if (url.pathname === "/api/admin/user" && request.method === "POST") return adminSaveUser(request, env);
+    if (url.pathname === "/api/admin/user/password" && request.method === "POST") return adminSetPassword(request, env);
 
     // Asset view / lookup page (QR target).
     if (url.pathname.startsWith("/a/") && env.ASSETS) return env.ASSETS.fetch(rewrite(url, "/a/", request));
@@ -83,6 +87,7 @@ export default {
       "/login": "/login/",
       "/signin": "/signin/",
       "/account": "/account/",
+      "/users": "/users/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -220,14 +225,14 @@ async function login(request, env) {
     if (!t || t.revoked === true || (t.expires_at && new Date(t.expires_at).getTime() < Date.now())) {
       return json({ ok: false, error: "This link is no longer valid. Ask for a new one." }, 401);
     }
-    const urows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(t.user_email)}&select=email,role,active,client:clients(name)`);
+    const urows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(t.user_email)}&select=email,role,active,perms,client:clients(name)`);
     u = urows && urows[0];
     if (!u || u.active === false) return json({ ok: false, error: "This account is not active." }, 401);
   } else {
     const email = (body.email || "").toString().trim().toLowerCase();
     const password = (body.password || "").toString();
     if (!email || !password) return json({ ok: false, error: "Enter your email and password." }, 400);
-    const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email,password_hash,role,active,client:clients(name)`);
+    const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=email,password_hash,role,active,perms,client:clients(name)`);
     u = rows && rows[0];
     if (!u || u.active === false || !(await verifyPassword(password, u.password_hash))) {
       return json({ ok: false, error: "Wrong email or password." }, 401);
@@ -236,8 +241,9 @@ async function login(request, env) {
 
   const role = u.role === "master" ? "master" : "client";
   const client = role === "client" ? (u.client && u.client.name) || "" : null;
+  const perms = role === "client" ? u.perms || {} : null;
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
-  const session = await signSession({ email: u.email, role, client, exp }, env);
+  const session = await signSession({ email: u.email, role, client, perms, exp }, env);
   return new Response(JSON.stringify({ ok: true, role, client }), {
     headers: { "content-type": "application/json", "set-cookie": sessionCookie(session, SESSION_DAYS * 86400) },
   });
@@ -319,6 +325,90 @@ async function adminRevokeToken(request, env) {
   return json({ ok: true });
 }
 
+// ---- master-only: user management ----
+const PERM_AREAS = ["tickets", "assets", "service"];
+const PERM_LEVELS = ["none", "view", "edit"];
+function cleanPerms(p) {
+  const out = {};
+  for (const a of PERM_AREAS) {
+    const v = p && p[a];
+    out[a] = PERM_LEVELS.indexOf(v) >= 0 ? v : "edit";
+  }
+  return out;
+}
+
+async function adminListUsers(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const rows = await sbSelect(env, "app_users?select=email,role,active,perms,client:clients(name)&order=role.desc,email");
+  return noStore({
+    ok: true,
+    users: (rows || []).map((u) => ({
+      email: u.email,
+      role: u.role,
+      client: (u.client && u.client.name) || "",
+      active: u.active !== false,
+      perms: cleanPerms(u.perms || {}),
+    })),
+  });
+}
+
+// Create or update a login: client, role, per-area perms, active. Optional password.
+async function adminSaveUser(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const email = (body.email || "").toString().trim().toLowerCase();
+  if (!email || email.indexOf("@") < 0) return json({ ok: false, error: "Enter a valid email." }, 400);
+  const role = body.role === "master" ? "master" : "client";
+  const patch = { email, role, perms: cleanPerms(body.perms || {}) };
+  if ("active" in body) patch.active = body.active !== false;
+  if (role === "client") {
+    const clientName = (body.client || "").toString().trim();
+    const refs = await getRefs(env);
+    const cid = findId(refs.clients, clientName);
+    if (!cid) return json({ ok: false, error: "Pick a client for this login." }, 400);
+    patch.client_id = cid;
+  } else {
+    patch.client_id = null;
+  }
+
+  const existing = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=id`);
+  if (existing && existing.length) {
+    const res = await sbUpdate(env, "app_users", existing[0].id, patch);
+    if (!res.ok) return json({ ok: false, error: "Could not update the login." }, 502);
+    return json({ ok: true, updated: true });
+  }
+  // New login: set a password if given, otherwise a random one (magic-link only).
+  const pw = (body.password || "").toString();
+  patch.password_hash = await hashPassword(pw.length >= 8 ? pw : randomToken());
+  const ins = await sbInsert(env, "app_users", patch);
+  if (!ins.ok) return json({ ok: false, error: "Could not create the login." }, 502);
+  return json({ ok: true, created: true });
+}
+
+async function adminSetPassword(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const email = (body.email || "").toString().trim().toLowerCase();
+  const pw = (body.password || "").toString();
+  if (!email) return json({ ok: false, error: "No email." }, 400);
+  if (pw.length < 8) return json({ ok: false, error: "Password must be at least 8 characters." }, 400);
+  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(email)}&select=id`);
+  if (!rows || !rows.length) return json({ ok: false, error: "No such login." }, 404);
+  const res = await sbUpdate(env, "app_users", rows[0].id, { password_hash: await hashPassword(pw) });
+  if (!res.ok) return json({ ok: false, error: "Could not set the password." }, 502);
+  return json({ ok: true });
+}
+
 function logout() {
   return new Response(JSON.stringify({ ok: true }), {
     headers: { "content-type": "application/json", "set-cookie": sessionCookie("", 0) },
@@ -327,7 +417,7 @@ function logout() {
 
 async function whoami(request, env) {
   const s = await verifySession(getCookie(request, "rw_session"), env);
-  return json({ ok: !!s, email: s ? s.email : null, role: s ? s.role : null, client: s ? s.client || null : null, required: env.LOGIN_REQUIRED === "1" });
+  return json({ ok: !!s, email: s ? s.email : null, role: s ? s.role : null, client: s ? s.client || null : null, perms: s ? s.perms || null : null, required: env.LOGIN_REQUIRED === "1" });
 }
 
 // Change your own password (must be signed in).
@@ -371,6 +461,18 @@ async function hasAnyUser(env) {
 // For a client-scoped session, the client name to force; null = see everything.
 function scopeName(session) {
   return session && session.role === "client" ? session.client || "__none__" : null;
+}
+// Per-area access. Master (and the un-enforced/open state) always passes.
+// area: "tickets" | "assets" | "service".  level: "view" | "edit".
+function can(session, area, level) {
+  if (!session) return true; // login not enforced yet
+  if (session.role === "master") return true;
+  const p = (session.perms && session.perms[area]) || "none";
+  if (level === "view") return p === "view" || p === "edit";
+  return p === "edit";
+}
+function deny(area) {
+  return json({ ok: false, error: "You don't have access to " + area + "." }, 403);
 }
 // True if this session may touch this record (master/unscoped always may).
 async function ownsRecord(env, session, table, id) {
@@ -620,6 +722,7 @@ async function createPicklistValue(request, env) {
 
 async function handleCreateAsset(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "The asset tracker isn't connected yet. Add SUPABASE_URL and SUPABASE_SERVICE_KEY in Cloudflare." }, 503);
+  if (!can(session, "assets", "edit")) return deny("assets");
 
   let body;
   try {
@@ -819,7 +922,8 @@ async function fetchImageBase64(url) {
 }
 
 // One asset's current values — used by the capture page to refresh after AI.
-async function getAsset(url, env) {
+async function getAsset(url, env, session) {
+  if (!can(session, "assets", "view")) return json({ ok: false }, 403);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
   const rows = await sbSelect(env, `assets?id=eq.${id}&select=verification,description,make,model,serial,nameplate_reading`);
@@ -838,6 +942,7 @@ async function getAsset(url, env) {
 
 // Full asset detail + service history, for /a/<id> and QR scans.
 async function getAssetFull(url, env, session) {
+  if (!can(session, "assets", "view")) return json({ ok: false }, 403);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
   const rows = await sbSelect(
@@ -886,7 +991,8 @@ async function getAssetFull(url, env, session) {
 }
 
 // Re-run the agent on an asset's existing photos.
-async function analyzeAsset(request, env) {
+async function analyzeAsset(request, env, session) {
+  if (!can(session, "assets", "edit")) return deny("assets");
   if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected. Add the ANTHROPIC_API_KEY in Cloudflare." }, 503);
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   let body;
@@ -938,6 +1044,7 @@ async function analyzeAsset(request, env) {
 // Save manual edits; a human edit marks it Verified.
 async function updateAsset(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "assets", "edit")) return deny("assets");
   let body;
   try {
     body = await request.json();
@@ -984,8 +1091,9 @@ async function updateAsset(request, env, session) {
   return json({ ok: true });
 }
 
-async function setVerified(request, env) {
+async function setVerified(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "assets", "edit")) return deny("assets");
   let body;
   try {
     body = await request.json();
@@ -1000,7 +1108,7 @@ async function setVerified(request, env) {
 }
 
 async function listAssets(env, session) {
-  if (!sbReady(env)) return json([]);
+  if (!sbReady(env) || !can(session, "assets", "view")) return json([]);
   let filter = "";
   const forced = scopeName(session);
   if (forced != null) {
@@ -1029,7 +1137,8 @@ async function listAssets(env, session) {
 
 /* ===================== Service records ===================== */
 
-async function listServices(url, env) {
+async function listServices(url, env, session) {
+  if (!can(session, "service", "view")) return json([]);
   const assetId = url.searchParams.get("assetId") || "";
   if (!assetId || !sbReady(env)) return json([]);
   const rows = await sbSelect(
@@ -1050,6 +1159,7 @@ async function listServices(url, env) {
 
 async function createService(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Not connected yet." }, 503);
+  if (!can(session, "service", "edit")) return deny("service");
   let body;
   try {
     body = await request.json();
@@ -1099,7 +1209,8 @@ async function createService(request, env, ctx, session) {
   return json({ ok: true, id });
 }
 
-async function getService(url, env) {
+async function getService(url, env, session) {
+  if (!can(session, "service", "view")) return json({ ok: false }, 403);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
   const rows = await sbSelect(env, `service_records?id=eq.${id}&select=service_date,technician,notes,cost,photo_urls,service_type:service_types(name)`);
@@ -1119,6 +1230,7 @@ async function getService(url, env) {
 
 async function updateService(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "service", "edit")) return deny("service");
   let body;
   try {
     body = await request.json();
@@ -1206,6 +1318,7 @@ async function createContact(request, env) {
 
 async function createTicket(request, env, ctx, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Not connected yet." }, 503);
+  if (!can(session, "tickets", "edit")) return deny("tickets");
   let body;
   try {
     body = await request.json();
@@ -1312,7 +1425,7 @@ async function retitleTickets(request, env) {
 }
 
 async function listTickets(url, env, session) {
-  if (!sbReady(env)) return json([]);
+  if (!sbReady(env) || !can(session, "tickets", "view")) return json([]);
   // A client login only ever sees its own tickets, regardless of the filter.
   const forced = scopeName(session);
   const client = forced != null ? forced : url.searchParams.get("client") || "";
@@ -1357,6 +1470,7 @@ async function listTickets(url, env, session) {
 
 async function updateTicket(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "tickets", "edit")) return deny("tickets");
   let body;
   try {
     body = await request.json();
@@ -1420,7 +1534,8 @@ function normalizePics(body) {
 
 // AI assist for tickets: from photos and/or a short note, write a clear,
 // grounded description and pick the best work category.
-async function suggestTicket(request, env) {
+async function suggestTicket(request, env, session) {
+  if (!can(session, "tickets", "edit")) return deny("tickets");
   if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
   let body;
   try {
