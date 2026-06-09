@@ -12,16 +12,19 @@
  * Nameplate reading uses Claude (Sonnet 4.6) via the ANTHROPIC_API_KEY secret.
  */
 
-/* ---- Asset tracker (Ringwood — Asset Tracker base) ---- */
-const ASSET_BASE_ID = "appLd8AQ0OgQoF0Yy";
-const ASSET_TABLE_ID = "tblflKhylyuJi6esW";
-const F_OVERALL_PHOTO = "fldMMvw4Ddqxi0KKh";
-const F_NAMEPLATE_PHOTO = "fldezoR8bUXkZ6G8F";
-const F_SERIAL_PHOTO = "fld9Xlteo8i2xvBqr";
+/* ---- Assets (Client database base — single system of record) ----
+ * Everything lives in one base now: Assets, Service (Maintenance Log), and
+ * Tickets, so a ticket and a service event can link to the exact asset record.
+ * The capture apps feed this base; field names below match its schema. */
+const ASSET_BASE_ID = "appEasFOM80bISWV8";
+const ASSET_TABLE_ID = "tblPx2oQMqUMVnI7h";
+const F_OVERALL_PHOTO = "fldBD2kBgv82LFXRT";
+const F_NAMEPLATE_PHOTO = "fldoUMBPi3rB6FNb7";
+const F_SERIAL_PHOTO = "fldShtSdGtepVypBm";
 
-/* ---- Service records (same Asset Tracker base) ---- */
-const SERVICE_TABLE = "tbl37nOr8N6tARRZe";
-const F_SVC_PHOTOS = "fldqHr91t3pgpW2DP";
+/* ---- Service events (Maintenance Log, same base) ---- */
+const SERVICE_TABLE = "tblYJok5bmKI3aDrr";
+const F_SVC_PHOTOS = "fldVmzwXmbQZWcumX";
 
 /* ---- Contact requests (Ringwood — Contact Requests base) ---- */
 const CONTACT_BASE = "appKR9vFoNtDfqMEU";
@@ -161,15 +164,15 @@ async function handleCreateAsset(request, env, ctx) {
   const label =
     [description || equipmentType || "Asset", client].filter(Boolean).join(" — ") || "Asset";
 
-  const fields = { Asset: label, Status: "Pending", "Logged At": new Date().toISOString() };
+  const fields = { "Asset Name": label, Verification: "Pending", "Logged At": new Date().toISOString() };
   if (description) fields["Description"] = description;
-  if (manufacturer) fields["Manufacturer"] = manufacturer;
+  if (manufacturer) fields["Make"] = manufacturer;
   if (model) fields["Model"] = model;
-  if (serial) fields["Serial Number"] = serial;
-  if (equipmentType) fields["Equipment Type"] = equipmentType;
+  if (serial) fields["Serial"] = serial;
+  if (equipmentType) fields["Category"] = equipmentType;
   if (location) fields["Location"] = location;
   if (client) fields["Client"] = client;
-  if (notes) fields["Notes"] = notes;
+  if (notes) fields["Notes / Spec"] = notes;
 
   // 1) Create the record immediately so the user gets a fast confirmation.
   let recordId;
@@ -220,14 +223,14 @@ async function processAssetMedia(recordId, body, manual, env) {
   if (!read) return;
 
   // Fill the fields the user left blank; never overwrite an entry they made.
-  const patch = { Status: "AI suggested" };
+  const patch = { Verification: "AI suggested" };
   if (!manual.description && read.description) patch["Description"] = read.description;
-  if (!manual.manufacturer && read.manufacturer) patch["Manufacturer"] = read.manufacturer;
+  if (!manual.manufacturer && read.manufacturer) patch["Make"] = read.manufacturer;
   if (!manual.model && read.model) patch["Model"] = read.model;
-  if (!manual.serial && read.serial) patch["Serial Number"] = read.serial;
-  if (!manual.equipmentType && read.equipmentType) patch["Equipment Type"] = read.equipmentType;
+  if (!manual.serial && read.serial) patch["Serial"] = read.serial;
+  if (!manual.equipmentType && read.equipmentType) patch["Category"] = read.equipmentType;
   // If the user did not type a description, the saved name is weak, so use the agent's name.
-  if (!manual.description && read.assetName) patch["Asset"] = read.assetName;
+  if (!manual.description && read.assetName) patch["Asset Name"] = read.assetName;
   patch["Nameplate Reading (AI)"] = buildReadingNote(read);
 
   try {
@@ -361,11 +364,11 @@ async function getAsset(url, env) {
     const f = data.fields || {};
     return json({
       ok: true,
-      status: f["Status"] || "Pending",
+      status: f["Verification"] || "Pending",
       description: f["Description"] || "",
-      manufacturer: f["Manufacturer"] || "",
+      manufacturer: f["Make"] || "",
       model: f["Model"] || "",
-      serial: f["Serial Number"] || "",
+      serial: f["Serial"] || "",
       aiReading: f["Nameplate Reading (AI)"] || "",
     });
   } catch {
@@ -400,10 +403,10 @@ async function getAssetFull(url, env) {
         .filter((x) => Array.isArray(x.fields.Asset) && x.fields.Asset.indexOf(id) !== -1)
         .map((x) => ({
           id: x.id,
-          date: x.fields["Service Date"] || "",
+          date: x.fields["Date"] || "",
           type: x.fields["Service Type"] || "",
           technician: x.fields["Technician"] || "",
-          notes: x.fields["Notes"] || "",
+          notes: x.fields["Action"] || "",
           cost: x.fields["Cost"] != null ? x.fields["Cost"] : "",
         }))
         .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -414,15 +417,15 @@ async function getAssetFull(url, env) {
     return json({
       ok: true,
       id,
-      name: f["Asset"] || f["Description"] || "Asset",
+      name: f["Asset Name"] || f["Description"] || "Asset",
       description: f["Description"] || "",
-      manufacturer: f["Manufacturer"] || "",
+      manufacturer: f["Make"] || "",
       model: f["Model"] || "",
-      serial: f["Serial Number"] || "",
-      equipmentType: f["Equipment Type"] || "",
+      serial: f["Serial"] || "",
+      equipmentType: f["Category"] || "",
       client: f["Client"] || "",
       location: f["Location"] || "",
-      status: f["Status"] || "Pending",
+      status: f["Verification"] || "Pending",
       aiReading: f["Nameplate Reading (AI)"] || "",
       overallPhoto: photoUrl(f["Overall Photo"]),
       nameplatePhoto: photoUrl(f["Nameplate Photo"]),
@@ -503,13 +506,13 @@ async function analyzeAsset(request, env) {
   }
   if (!read) return json({ ok: false, error: "The agent could not read these photos." }, 502);
 
-  const patch = { Status: "AI suggested" };
-  if (read.assetName) patch["Asset"] = read.assetName;
+  const patch = { Verification: "AI suggested" };
+  if (read.assetName) patch["Asset Name"] = read.assetName;
   if (read.description) patch["Description"] = read.description;
-  if (read.manufacturer) patch["Manufacturer"] = read.manufacturer;
+  if (read.manufacturer) patch["Make"] = read.manufacturer;
   if (read.model) patch["Model"] = read.model;
-  if (read.serial) patch["Serial Number"] = read.serial;
-  if (read.equipmentType) patch["Equipment Type"] = read.equipmentType;
+  if (read.serial) patch["Serial"] = read.serial;
+  if (read.equipmentType) patch["Category"] = read.equipmentType;
   patch["Nameplate Reading (AI)"] = buildReadingNote(read);
 
   try {
@@ -543,15 +546,15 @@ async function updateAsset(request, env) {
   const c = (v) => (v == null ? "" : v.toString().trim());
   const opts = await getDistinctValues(env);
   const fields = {};
-  if ("name" in body) fields["Asset"] = c(body.name);
+  if ("name" in body) fields["Asset Name"] = c(body.name);
   if ("description" in body) fields["Description"] = c(body.description);
-  if ("manufacturer" in body) fields["Manufacturer"] = c(body.manufacturer);
+  if ("manufacturer" in body) fields["Make"] = c(body.manufacturer);
   if ("model" in body) fields["Model"] = c(body.model);
-  if ("serial" in body) fields["Serial Number"] = c(body.serial);
-  if ("equipmentType" in body) fields["Equipment Type"] = canon(c(body.equipmentType), opts.types);
+  if ("serial" in body) fields["Serial"] = c(body.serial);
+  if ("equipmentType" in body) fields["Category"] = canon(c(body.equipmentType), opts.types);
   if ("client" in body) fields["Client"] = canon(c(body.client), opts.clients);
   if ("location" in body) fields["Location"] = canon(c(body.location), opts.locations);
-  fields["Status"] = "Verified";
+  fields["Verification"] = "Verified";
 
   try {
     const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
@@ -584,7 +587,7 @@ async function setVerified(request, env) {
     const res = await fetch(`https://api.airtable.com/v0/${ASSET_BASE_ID}/${ASSET_TABLE_ID}/${id}`, {
       method: "PATCH",
       headers: airtableHeaders(env),
-      body: JSON.stringify({ fields: { Status: "Verified" }, typecast: true }),
+      body: JSON.stringify({ fields: { Verification: "Verified" }, typecast: true }),
     });
     if (!res.ok) {
       const d = await res.json();
@@ -618,7 +621,7 @@ async function getDistinctValues(env) {
     const data = await r.json();
     (data.records || []).forEach((x) => {
       const f = x.fields || {};
-      add(out.types, f["Equipment Type"]);
+      add(out.types, f["Category"]);
       add(out.locations, f["Location"]);
       add(out.clients, f["Client"]);
     });
@@ -658,7 +661,7 @@ async function listAssets(env) {
       .sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1))
       .map((x) => ({
         id: x.id,
-        name: x.fields.Asset || x.fields.Description || x.fields.Model || "Asset",
+        name: x.fields["Asset Name"] || x.fields.Description || x.fields.Model || "Asset",
         client: x.fields.Client || "",
       }));
     return Response.json(list);
@@ -681,10 +684,10 @@ async function listServices(url, env) {
       .filter((x) => Array.isArray(x.fields.Asset) && x.fields.Asset.indexOf(assetId) !== -1)
       .map((x) => ({
         id: x.id,
-        date: x.fields["Service Date"] || "",
+        date: x.fields["Date"] || "",
         type: x.fields["Service Type"] || "",
         technician: x.fields["Technician"] || "",
-        notes: x.fields["Notes"] || "",
+        notes: x.fields["Action"] || "",
         cost: x.fields["Cost"] != null ? x.fields["Cost"] : "",
       }))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -715,15 +718,17 @@ async function createService(request, env, ctx) {
   const technician = clean(body.technician);
   const notes = clean(body.notes);
   const assetName = clean(body.assetName);
+  const client = clean(body.client);
   const cost = body.cost === "" || body.cost == null ? null : Number(body.cost);
 
   const label = [serviceType || "Service", assetName, serviceDate].filter(Boolean).join(" — ") || "Service";
 
-  const fields = { Service: label, Asset: [assetId], "Logged At": new Date().toISOString() };
-  if (serviceDate) fields["Service Date"] = serviceDate;
+  const fields = { Entry: label, Asset: [assetId], "Logged At": new Date().toISOString() };
+  if (serviceDate) fields["Date"] = serviceDate;
   if (serviceType) fields["Service Type"] = serviceType;
   if (technician) fields["Technician"] = technician;
-  if (notes) fields["Notes"] = notes;
+  if (notes) fields["Action"] = notes;
+  if (client) fields["Client"] = client;
   if (cost != null && !isNaN(cost)) fields["Cost"] = cost;
 
   let recordId;
@@ -770,10 +775,10 @@ async function getService(url, env) {
     return json({
       ok: true,
       id,
-      date: f["Service Date"] || "",
+      date: f["Date"] || "",
       type: f["Service Type"] || "",
       technician: f["Technician"] || "",
-      notes: f["Notes"] || "",
+      notes: f["Action"] || "",
       cost: f["Cost"] != null ? f["Cost"] : "",
     });
   } catch {
@@ -793,10 +798,10 @@ async function updateService(request, env) {
   if (!id) return json({ ok: false, error: "No id." }, 400);
   const c = (v) => (v == null ? "" : v.toString().trim());
   const fields = {};
-  if ("date" in body) fields["Service Date"] = c(body.date);
+  if ("date" in body) fields["Date"] = c(body.date);
   if ("type" in body) fields["Service Type"] = c(body.type);
   if ("technician" in body) fields["Technician"] = c(body.technician);
-  if ("notes" in body) fields["Notes"] = c(body.notes);
+  if ("notes" in body) fields["Action"] = c(body.notes);
   if ("cost" in body) {
     const n = body.cost === "" || body.cost == null ? null : Number(body.cost);
     fields["Cost"] = n != null && !isNaN(n) ? n : null;
@@ -890,13 +895,19 @@ async function createTicket(request, env) {
     const body = await request.json();
     const ref = "RW-" + Math.floor(1000 + Math.random() * 9000);
 
+    const category = body.category || "Other";
+    const client = body.client || "";
+    const location = body.location || "";
+    // Descriptive title like the asset titles, e.g. "Repair · United · Conf Room 1".
+    const title = [category, client, location].filter(Boolean).join(" · ") || ref;
+
     const fields = {};
-    fields[F_TICKET] = ref;
-    fields[F_CATEGORY] = body.category || "Other";
+    fields[F_TICKET] = title;
+    fields[F_CATEGORY] = category;
     fields[F_DESCRIPTION] = body.note || "";
-    fields[F_ANSWERS] = "Location: " + (body.location || "");
+    fields[F_ANSWERS] = "Ref: " + ref + "\nLocation: " + location;
     fields[F_STATUS] = "New";
-    if (body.client) fields[F_TICKET_CLIENT] = body.client;
+    if (client) fields[F_TICKET_CLIENT] = client;
 
     const createRes = await fetch(`https://api.airtable.com/v0/${TPL_BASE}/${TICKETS_TABLE}`, {
       method: "POST",
