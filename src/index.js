@@ -61,6 +61,7 @@ export default {
     if (url.pathname === "/api/categories" && request.method === "GET") return getCategories(env);
     if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx, session);
     if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env, session);
+    if (url.pathname === "/api/tickets/asset" && request.method === "GET") return getTicketAsset(url, env, session);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
@@ -1543,11 +1544,26 @@ async function createTicket(request, env, ctx, session) {
 
   // If the user didn't pick/scan an asset, let the agent identify it from the
   // photos in the background and link (or auto-create) the matching asset.
-  if (!linkAsset && pics.length && ctx && ctx.waitUntil) {
+  let detecting = false;
+  if (!linkAsset && pics.length && env.ANTHROPIC_API_KEY && ctx && ctx.waitUntil) {
+    detecting = true;
     ctx.waitUntil(detectAndLinkAsset(id, pics, clId, env));
   }
 
-  return json({ ok: true, ref, title, photoCount: pics.length, savedPhotos });
+  return json({ ok: true, id, ref, title, photoCount: pics.length, savedPhotos, detecting });
+}
+
+// Lightweight: the asset currently linked to a ticket (for the "identifying…" poll).
+async function getTicketAsset(url, env, session) {
+  if (!can(session, "tickets", "view")) return json({ ok: false }, 403);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: false }, 400);
+  const rows = await sbSelect(env, `tickets?id=eq.${id}&select=asset_id,asset:assets(id,name),client:clients(name)`);
+  const t = rows && rows[0];
+  if (!t) return json({ ok: false }, 404);
+  const forced = scopeName(session);
+  if (forced != null && ((t.client && t.client.name) || "") !== forced) return json({ ok: false }, 404);
+  return noStore({ ok: true, assetId: t.asset_id || "", asset: (t.asset && t.asset.name) || "" });
 }
 
 // A short, specific ticket title from the description (Claude).

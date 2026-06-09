@@ -167,6 +167,7 @@
       <div class="cap">What we captured</div>
       <div id="recapBody"></div>
     </div>
+    <div id="detectNote" style="display:none;margin:14px 0;font-size:.95rem;color:var(--green-deep);font-weight:600"></div>
     <button class="again" id="again" type="button">Submit another</button>
   </div>
 </main>
@@ -529,6 +530,7 @@ form.addEventListener("submit", function (e) {
       form.style.display = "none";
       document.getElementById("done").style.display = "block";
       window.scrollTo(0, 0);
+      if (res.detecting && res.id) watchEquipment(res.id);
     } else {
       msg.className = "msg err"; msg.textContent = "Something went wrong. Please try again.";
       submitBtn.disabled = false; submitBtn.textContent = "Submit ticket";
@@ -557,6 +559,26 @@ document.getElementById("again").addEventListener("click", function () {
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// After submit, show "Identifying equipment…" and update once the agent links an asset.
+function watchEquipment(ticketId) {
+  var note = document.getElementById("detectNote");
+  note.style.display = "block";
+  note.textContent = "Identifying equipment…";
+  var tries = 0;
+  var timer = setInterval(function () {
+    tries++;
+    fetch("/api/tickets/asset?id=" + encodeURIComponent(ticketId)).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.ok && d.assetId) {
+        clearInterval(timer);
+        note.innerHTML = "✓ Identified equipment: <a href='/a/?id=" + encodeURIComponent(d.assetId) + "' style='color:var(--green-deep)'>" + escapeHtml(d.asset || "asset") + "</a>";
+      } else if (tries >= 12) {
+        clearInterval(timer);
+        note.style.display = "none";
+      }
+    }).catch(function () { if (tries >= 12) { clearInterval(timer); note.style.display = "none"; } });
+  }, 2500);
 }
 </script>
 <script src="/whoami-badge.js"></script>
