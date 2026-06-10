@@ -530,14 +530,16 @@
         var isEvent = c.kind === "event";
         var col = c.role === "client" ? noteCol : "var(--green-deep)";
         var whoStyle = (isEvent || c.role !== "client") ? "" : (" style='background:" + col + "'");
-        // Master can clean up the log: edit notes, delete anything.
-        var ctrls = "";
+        // "Up top" promotes a note's photos to the ticket's photo set. Master can
+        // also edit notes and delete anything.
+        var hasPhotos = c.photos && c.photos.length;
+        var bits = "";
+        if (!isEvent && hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Up top</button>";
         if (IS_MASTER){
-          ctrls = "<span class='lgctrl'>" +
-            (isEvent ? "" : "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button>") +
-            "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" +
-          "</span>";
+          bits += (isEvent ? "" : "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button>") +
+            "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
         }
+        var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
         var photos = (c.photos && c.photos.length) ?
           "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
         return "<div class='lg " + (isEvent?"event":"note") + "' data-cid='" + esc(c.id) + "'>" +
@@ -559,6 +561,16 @@
       if(!btn) return;
       var cid = btn.getAttribute("data-cid"), act = btn.getAttribute("data-act");
       var row = LOG_ROWS[cid]; if(!row) return;
+      if(act === "promote"){
+        btn.disabled = true; btn.textContent = "Moving…";
+        fetch("/api/tickets/comment/promote", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ commentId:cid }) })
+          .then(function(r){return r.json();}).then(function(d){
+            btn.disabled = false; btn.innerHTML = "&uarr; Up top";
+            if(d&&d.ok){ if(Array.isArray(d.topPhotos)){ existingPhotos = d.topPhotos.slice(); renderThumbs(); } var m=document.getElementById("e_msg"); if(m){ m.style.color="var(--green-deep)"; m.textContent="Moved to the photos up top."; } window.scrollTo(0,0); }
+            else { alert((d&&d.error)||"Couldn't move the photos."); }
+          }).catch(function(){ btn.disabled=false; btn.innerHTML="&uarr; Up top"; alert("Couldn't reach the server."); });
+        return;
+      }
       if(act === "del"){
         if(!confirm("Delete this entry? This can't be undone.")) return;
         fetch("/api/tickets/comment/delete", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ commentId:cid }) })
@@ -621,7 +633,7 @@
       fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
           b.disabled = false; b.textContent = "Add note";
-          if(d&&d.ok){ ta.value = ""; notePhotos = []; renderNoteThumbs(); document.getElementById("e_notetop").checked = false; loadLog(); }
+          if(d&&d.ok){ ta.value = ""; notePhotos = []; renderNoteThumbs(); document.getElementById("e_notetop").checked = false; loadLog(); if(Array.isArray(d.topPhotos)){ existingPhotos = d.topPhotos.slice(); renderThumbs(); } }
           else { msg.textContent = (d&&d.error)||"Couldn't add the note."; }
         }).catch(function(){ b.disabled=false; b.textContent="Add note"; msg.textContent="Couldn't reach the server."; });
     });
@@ -676,7 +688,7 @@
           if (noteText || pendingNotePhotos.length){
             fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:noteText, photos:pendingNotePhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }), alsoTop:alsoTop }) })
               .then(function(r){return r.json();}).then(function(nd){
-                if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); }
+                if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); if(Array.isArray(nd.topPhotos)){ existingPhotos = nd.topPhotos.slice(); renderThumbs(); } }
                 else if(!warn){ warn = "Your note didn't save. Try Add note again."; }
                 finish(warn);
               }).catch(function(){ finish(warn || "Your note didn't save. Try Add note again."); });

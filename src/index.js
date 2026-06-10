@@ -71,6 +71,7 @@ export default {
     if (url.pathname === "/api/tickets/comment" && request.method === "POST") return addTicketComment(request, env, session);
     if (url.pathname === "/api/tickets/comment/update" && request.method === "POST") return updateTicketComment(request, env, session);
     if (url.pathname === "/api/tickets/comment/delete" && request.method === "POST") return deleteTicketComment(request, env, session);
+    if (url.pathname === "/api/tickets/comment/promote" && request.method === "POST") return promoteCommentPhotos(request, env, session);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
@@ -2202,6 +2203,7 @@ async function addTicketComment(request, env, session) {
   const cid = res.data.id;
 
   // Photos attached to the note: stored under the note, shown inline in the log.
+  let topPhotos = null;
   if (pics.length) {
     const urls = [];
     for (let i = 0; i < pics.length; i++) {
@@ -2214,12 +2216,39 @@ async function addTicketComment(request, env, session) {
       if (body.alsoTop) {
         const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls`);
         const existing = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls : [];
-        const merged = existing.concat(urls);
+        const merged = existing.concat(urls.filter((u) => existing.indexOf(u) < 0));
         await sbUpdate(env, "tickets", id, { photo_urls: merged, photo_url: merged[0] });
+        topPhotos = merged;
       }
     }
   }
-  return json({ ok: true });
+  return json({ ok: true, topPhotos });
+}
+
+// Promote a note's photos to the ticket's top photo set (no re-upload needed).
+async function promoteCommentPhotos(request, env, session) {
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "tickets", "edit")) return deny("tickets");
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const cid = (body.commentId || "").trim();
+  if (!cid) return json({ ok: false, error: "Bad request." }, 400);
+  const rows = await sbSelect(env, `ticket_comments?id=eq.${cid}&select=ticket_id,photo_urls`);
+  const c = rows && rows[0];
+  if (!c || !c.ticket_id) return json({ ok: false, error: "Not found." }, 404);
+  if (!(await ownsRecord(env, session, "tickets", c.ticket_id))) return json({ ok: false, error: "Not found." }, 404);
+  const notePhotos = Array.isArray(c.photo_urls) ? c.photo_urls.filter(Boolean) : [];
+  if (!notePhotos.length) return json({ ok: false, error: "This note has no photos." }, 400);
+  const cur = await sbSelect(env, `tickets?id=eq.${c.ticket_id}&select=photo_urls`);
+  const existing = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls : [];
+  const merged = existing.concat(notePhotos.filter((u) => existing.indexOf(u) < 0));
+  const res = await sbUpdate(env, "tickets", c.ticket_id, { photo_urls: merged, photo_url: merged[0] });
+  if (!res.ok) return json({ ok: false, error: "Could not move the photos." }, 502);
+  return json({ ok: true, topPhotos: merged });
 }
 
 // Master-only: edit the text of a note on a ticket.
