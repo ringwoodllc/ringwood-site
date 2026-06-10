@@ -537,7 +537,8 @@
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
         "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
         "<div class='msg' id='e_msg'></div>" +
-        (IS_CLIENT ? "" : "<button class='btn' id='e_del' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);margin-top:16px'>Delete ticket</button>") +
+        (IS_CLIENT ? "" : "<button class='btn' id='e_del' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);margin-top:16px'>Delete ticket</button>" +
+          "<div id='e_rev'></div>") +
       "</div>";
     window.scrollTo(0,0);
 
@@ -709,7 +710,11 @@
           "<div id='revBody' style='display:none'>" + events.map(eventLine).join("") + "</div>" +
         "</div>";
       }
-      logEl.innerHTML = intakeHtml + notesHtml + revHtml;
+      // Comments live in the log (the conversation); the revision history is a
+      // quiet drawer at the very bottom, under Delete ticket.
+      logEl.innerHTML = intakeHtml + notesHtml;
+      var revEl = document.getElementById("e_rev");
+      if (revEl) revEl.innerHTML = revHtml;
       wireIntake();
       var revTog = document.getElementById("revTog");
       if (revTog) revTog.addEventListener("click", function(){
@@ -719,14 +724,14 @@
       });
     }
     // Expand/collapse an event's detail (revision history) when the + is tapped.
-    logEl.addEventListener("click", function(e){
+    function onLgMore(e){
       var mb = e.target.closest ? e.target.closest(".lgmore") : null;
       if(!mb) return;
       var d = document.getElementById("ev_" + mb.getAttribute("data-cid")); if(!d) return;
       var open = d.style.display !== "none";
       d.style.display = open ? "none" : "block";
       mb.textContent = open ? "+" : "−";
-    });
+    }
     // Collapsible "Entered by <client>": starts closed, the + opens it for reference.
     function wireIntake(){
       var tog = document.getElementById("intakeTog"); if(!tog) return;
@@ -744,7 +749,7 @@
         .catch(function(){ logEl.innerHTML = "<div class='empty-log'>Couldn't load the log.</div>"; });
     }
     // Master edit/delete, via delegation so it survives re-renders.
-    logEl.addEventListener("click", function(e){
+    function onLgBtn(e){
       var btn = e.target.closest ? e.target.closest(".lgbtn") : null;
       if(!btn) return;
       var cid = btn.getAttribute("data-cid"), act = btn.getAttribute("data-act");
@@ -785,7 +790,9 @@
             .catch(function(){ save.disabled=false; save.textContent="Save"; alert("Couldn't reach the server."); });
         });
       }
-    });
+    }
+    // Wire the log controls on both the comments list and the revision drawer.
+    [logEl, document.getElementById("e_rev")].forEach(function(el){ if(el){ el.addEventListener("click", onLgMore); el.addEventListener("click", onLgBtn); } });
     loadLog();
     // Photos attached to a new note (before it's posted).
     var notePhotos = [];
