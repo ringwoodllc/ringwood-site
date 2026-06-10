@@ -73,6 +73,7 @@ export default {
     if (url.pathname === "/api/tickets/comment/delete" && request.method === "POST") return deleteTicketComment(request, env, session);
     if (url.pathname === "/api/tickets/comment/promote" && request.method === "POST") return promoteCommentPhotos(request, env, session);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
+    if (url.pathname === "/api/tickets/delete" && request.method === "POST") return deleteTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
@@ -2309,6 +2310,26 @@ async function deleteTicketComment(request, env, session) {
 async function logTicketEvent(env, ticketId, session, text) {
   const a = authorOf(session);
   await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: a.author, role: a.role, kind: "event", body: text });
+}
+
+// Master-only: permanently delete a ticket (its log/comments cascade away).
+async function deleteTicket(request, env, session) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No ticket id." }, 400);
+  try {
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/tickets?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete the ticket." }, 502);
+  } catch {
+    return json({ ok: false, error: "Could not delete the ticket." }, 502);
+  }
+  return json({ ok: true });
 }
 
 async function updateTicket(request, env, session) {

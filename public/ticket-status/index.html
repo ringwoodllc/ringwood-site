@@ -452,6 +452,7 @@
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
         "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
         "<div class='msg' id='e_msg'></div>" +
+        (IS_CLIENT ? "" : "<button class='btn' id='e_del' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);margin-top:16px'>Delete ticket</button>") +
       "</div>";
     window.scrollTo(0,0);
 
@@ -663,6 +664,16 @@
       backToTicketList();
     };
     document.getElementById("e_back").addEventListener("click", window.__ticketBack);
+    var delBtn = document.getElementById("e_del");
+    if (delBtn) delBtn.addEventListener("click", function(){
+      if (!confirm("Delete this ticket and its whole update log? This can't be undone.")) return;
+      var db = this; db.disabled = true; db.textContent = "Deleting…";
+      fetch("/api/tickets/delete", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id }) })
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ ALL_TICKETS = ALL_TICKETS.filter(function(x){ return x.id !== t.id; }); backToTicketList(); }
+          else { db.disabled=false; db.textContent="Delete ticket"; var m=document.getElementById("e_msg"); m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't delete."; }
+        }).catch(function(){ db.disabled=false; db.textContent="Delete ticket"; var m=document.getElementById("e_msg"); m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; });
+    });
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
       var payload = {
