@@ -48,6 +48,18 @@
   .arow .acl{flex:0 0 auto;color:var(--muted);font-size:.78rem;text-align:right;white-space:nowrap}
   .client-chip{flex:0 0 auto;align-self:flex-start;font-size:.78rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:3px 11px;border-radius:999px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
   .assetlist .empty{color:var(--muted);padding:14px 13px;font-size:.92rem}
+  .revsec{border-top:1px solid var(--line);padding-top:14px}
+  .revtog{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .revtog:hover{border-color:var(--green)}
+  #assetRevBody{flex-direction:column;gap:8px;margin-top:10px}
+  .revrow{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:9px 12px}
+  .revrow.agent{background:#eef3ef}
+  .revline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .revico{opacity:.5}
+  .revtext{color:var(--green-deep);font-weight:600;font-size:.9rem}
+  .revtime{color:var(--muted);font-size:.78rem;margin-left:auto;white-space:nowrap}
+  .revmore{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;width:22px;height:22px;line-height:1;font:inherit;font-weight:700;cursor:pointer;padding:0;flex:0 0 auto}
+  .revdetail{margin-top:7px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-size:.86rem;color:var(--muted);white-space:pre-wrap}
   .scanbig{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;cursor:pointer;padding:15px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);background:var(--bg);font-weight:600;margin-bottom:16px}
   .scanbig:hover{border-color:var(--green)}
   .qrchip{display:inline-block;background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font-size:.85rem;font-weight:600;cursor:pointer;margin:0 6px 6px 0}
@@ -367,8 +379,10 @@
       "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
       stats+photos+identity+ai+
       "<h2 id='tickets'>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
-      "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist;
+      "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist+
+      "<div id='assetRev' style='margin-top:18px'></div>";
     loadAssetTickets(curId);
+    loadAssetEvents(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
     var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
@@ -385,6 +399,38 @@
           return "<tr onclick=\"location.href='/status?id="+esc(t.id)+"'\"><td>"+esc(t.ref||"—")+"</td><td>"+esc(t.title||"Ticket")+"</td><td>"+esc(t.status||"")+"</td><td>"+esc(t.created?new Date(t.created).toLocaleDateString():"")+"</td></tr>";
         }).join("")+"</tbody></table><div class='hint'>Tap a row to open the ticket.</div>";
     }).catch(function(){ var el=document.getElementById("assetTickets"); if(el) el.innerHTML="<div class='empty'>Could not load tickets.</div>"; });
+  }
+
+  // Admin-only revision history drawer at the very bottom (empty for clients).
+  function loadAssetEvents(id){
+    fetch("/api/asset/events?id="+encodeURIComponent(id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(rows){
+      var el=document.getElementById("assetRev"); if(!el) return;
+      rows=Array.isArray(rows)?rows:[];
+      if(!rows.length){ el.innerHTML=""; return; }
+      function fmt(s){ try{ var d=new Date(s); return d.toLocaleDateString()+" "+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }catch(e){ return ""; } }
+      var items=rows.map(function(c){
+        var brief=c.body||"", detail="";
+        if(brief.indexOf("\n⋮\n")>=0){ var pp=brief.split("\n⋮\n"); brief=pp[0]; detail=pp.slice(1).join("\n⋮\n"); }
+        var agent=(c.author==="Ringwood AI Agent");
+        return "<div class='revrow"+(agent?" agent":"")+"'>"+
+          "<div class='revline'>"+(agent?"":"<span class='revico'>&#9998;</span>")+"<span class='revtext'>"+esc(brief)+"</span>"+
+            (detail?"<button type='button' class='revmore' data-id='"+esc(c.id)+"'>+</button>":"")+
+            "<span class='revtime'>"+esc(fmt(c.created))+"</span></div>"+
+          (detail?"<div class='revdetail' id='arev_"+esc(c.id)+"' style='display:none'>"+esc(detail)+"</div>":"")+
+        "</div>";
+      }).join("");
+      el.innerHTML="<div class='revsec'><button type='button' class='revtog' id='assetRevTog'><span id='assetRevIco'>＋</span> Revision history ("+rows.length+")</button>"+
+        "<div id='assetRevBody' style='display:none'>"+items+"</div></div>";
+      document.getElementById("assetRevTog").addEventListener("click", function(){
+        var b=document.getElementById("assetRevBody"), ico=document.getElementById("assetRevIco");
+        var open=b.style.display!=="none"; b.style.display=open?"none":"flex"; ico.textContent=open?"＋":"−";
+      });
+      el.addEventListener("click", function(e){
+        var mb=e.target.closest?e.target.closest(".revmore"):null; if(!mb) return;
+        var d=document.getElementById("arev_"+mb.getAttribute("data-id")); if(!d) return;
+        var open=d.style.display!=="none"; d.style.display=open?"none":"block"; mb.textContent=open?"+":"−";
+      });
+    }).catch(function(){ var el=document.getElementById("assetRev"); if(el) el.innerHTML=""; });
   }
 
   // Canonical deep link a printed/scanned code opens. Stable host so stickers

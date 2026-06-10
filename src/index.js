@@ -54,6 +54,7 @@ export default {
     if (url.pathname === "/api/assets/get" && request.method === "GET") return getAsset(url, env, session);
     if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
     if (url.pathname === "/api/asset/resolve" && request.method === "GET") return resolveAssetCode(url, env, session);
+    if (url.pathname === "/api/asset/events" && request.method === "GET") return listAssetEvents(url, env, request);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
     if (url.pathname === "/api/asset/qr/generate" && request.method === "POST") return generateAssetQr(request, env, session);
@@ -1638,6 +1639,10 @@ async function analyzeAsset(request, env, session) {
   }
   const up = await sbUpdate(env, "assets", id, patch);
   if (!up.ok) return json({ ok: false, error: "Could not save the result." }, 502);
+  try {
+    const bits = [read.assetName ? "name" : "", read.make || read.manufacturer ? "manufacturer" : "", read.model ? "model" : "", read.serial ? "serial" : ""].filter(Boolean);
+    await logAssetEvent(env, id, "Ringwood AI Agent", "✨ Read the nameplate from the photos" + (bits.length ? " and filled the " + bits.join(", ") : "") + ".", buildReadingNote(read));
+  } catch { /* best-effort */ }
   return json({ ok: true });
 }
 
@@ -1661,6 +1666,21 @@ async function generateAssetQr(request, env, session) {
 }
 
 // Save manual edits; a human edit marks it Verified.
+// Asset revision history (admin-only): a log of edits and AI agent reads, in the
+// `asset_events` table. `detail` is optional expandable before/after text.
+async function logAssetEvent(env, assetId, author, text, detail) {
+  const body = detail ? (text + "\n⋮\n" + detail) : text;
+  await sbInsert(env, "asset_events", { asset_id: assetId, author: author || "Ringwood", kind: "event", body: body.slice(0, 4000) });
+}
+async function listAssetEvents(url, env, request) {
+  if (!(await requireMaster(request, env))) return json([]);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json([]);
+  const rows = await sbSelect(env, `asset_events?asset_id=eq.${id}&select=id,author,body,created_at&order=created_at.asc`);
+  if (rows === null) return json([]); // table not added yet
+  return noStore((rows || []).map((c) => ({ id: c.id, author: c.author || "Ringwood", body: c.body || "", created: c.created_at || "" })));
+}
+
 async function updateAsset(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   if (!can(session, "assets", "edit")) return deny("assets");
@@ -1675,6 +1695,9 @@ async function updateAsset(request, env, session) {
   if (!(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
   const c = (v) => (v == null ? "" : v.toString().trim());
   const refs = await getRefs(env);
+  // Remember the prior text fields so we can log what changed (revision history).
+  const prevRows = await sbSelect(env, `assets?id=eq.${id}&select=name,nickname,description,make,model,serial,qr_tag,verification`);
+  const prev = (prevRows && prevRows[0]) || {};
   const patch = { verification: "Verified" };
   if ("name" in body) patch.name = c(body.name);
   if ("nickname" in body) patch.nickname = c(body.nickname);
@@ -1708,6 +1731,26 @@ async function updateAsset(request, env, session) {
   }
   const res = await sbUpdate(env, "assets", id, patch);
   if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
+  // Log the edit as one combined revision entry.
+  try {
+    const parts = [], detail = [];
+    const fields = [
+      ["name", "name", "Name"], ["nickname", "nickname", "Nickname"], ["description", "description", "Description"],
+      ["make", "make", "Manufacturer"], ["model", "model", "Model"], ["serial", "serial", "Serial"], ["qr_tag", "qr_tag", "QR code"],
+    ];
+    for (const [col, pcol, lbl] of fields) {
+      if (col in patch) {
+        const nv = (patch[col] || "").toString(), ov = (prev[pcol] || "").toString();
+        if (nv !== ov) { parts.push(lbl.toLowerCase()); detail.push(lbl + ':\nFrom: "' + ov + '"\nTo: "' + nv + '"'); }
+      }
+    }
+    if (patch.photo_urls) parts.push("photos");
+    if (prev.verification !== "Verified") parts.push("marked verified");
+    if (parts.length) {
+      const author = (session && session.role === "client" && session.client) ? session.client : "Ringwood";
+      await logAssetEvent(env, id, author, "Updated " + parts.join(", "), detail.length ? detail.join("\n\n") : undefined);
+    }
+  } catch { /* logging is best-effort */ }
   return json({ ok: true });
 }
 
