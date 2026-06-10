@@ -41,6 +41,11 @@
       for (var i = 0; i < els.length; i++) {
         var el = els[i], t = el.tagName;
         el.setAttribute("data-kb", "1");
+        // Name icon-only "×" buttons (e.g. remove-photo) for screen readers.
+        if (!el.getAttribute("aria-label")) {
+          var txt = (el.textContent || "").trim();
+          if (txt === "×" || txt === "✕") el.setAttribute("aria-label", "Remove");
+        }
         if (t === "A" || t === "BUTTON" || t === "INPUT" || t === "SELECT" || t === "TEXTAREA" || t === "LABEL") continue;
         if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
         if (!el.hasAttribute("role")) el.setAttribute("role", "button");
