@@ -66,13 +66,19 @@ workflows:
         script: |
           set -e
           keychain initialize
-          # Self-cleaning: revoke any leftover distribution certificates. Their
-          # private keys aren't on this runner (each build makes its own), so they
-          # are unusable and only fill Apple's certificate limit. Best-effort and
-          # non-fatal, so it can never break the build.
-          ( app-store-connect certificates list --type IOS_DISTRIBUTION --json 2>/dev/null \
-              | jq -r '.[].id' 2>/dev/null \
-              | while read -r CID; do [ -n "$CID" ] && app-store-connect certificates delete "$CID" 2>/dev/null; done ) || true
+          # Show what distribution certificates exist, then revoke them. Modern
+          # accounts use "Apple Distribution" (DISTRIBUTION); older ones use
+          # "iOS Distribution" (IOS_DISTRIBUTION). Their private keys aren't on this
+          # runner, so they're unusable and only fill Apple's certificate limit.
+          # Best-effort and non-fatal, covering BOTH types.
+          for CT in DISTRIBUTION IOS_DISTRIBUTION; do
+            echo "=== existing $CT certificates ==="
+            ( app-store-connect certificates list --type "$CT" --json 2>/dev/null \
+                | jq -r '.[].id' 2>/dev/null \
+                | while read -r CID; do
+                    [ -n "$CID" ] && echo "Revoking $CT certificate $CID" && app-store-connect certificates delete "$CID" 2>/dev/null;
+                  done ) || true
+          done
           # Proven path that built and signed the IPA: generate a key, then create
           # a fresh distribution certificate from it AND the App Store provisioning
           # profile, and install both.
