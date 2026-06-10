@@ -48,6 +48,8 @@
   .arow .acl{flex:0 0 auto;color:var(--muted);font-size:.78rem;text-align:right;white-space:nowrap}
   .client-chip{flex:0 0 auto;align-self:flex-start;font-size:.78rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:3px 11px;border-radius:999px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
   .assetlist .empty{color:var(--muted);padding:14px 13px;font-size:.92rem}
+  .scanbig{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;cursor:pointer;padding:15px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);background:var(--bg);font-weight:600;margin-bottom:16px}
+  .scanbig:hover{border-color:var(--green)}
   .qrchip{display:inline-block;background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font-size:.85rem;font-weight:600;cursor:pointer;margin:0 6px 6px 0}
   .qrchip:hover{border-color:var(--green)}
   .qrrow{display:flex;gap:8px}
@@ -126,6 +128,13 @@
   <div class="eyebrow">Asset lookup</div>
   <div class="lookup">
     <h1>Find an asset</h1>
+    <label class="scanbig" for="scanInput">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7"/></svg>
+      <span>Scan a QR code</span>
+    </label>
+    <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
+    <div id="scanMsg" style="font-size:.84rem;color:var(--muted);margin:-8px 0 14px"></div>
+    <div id="scanAssign" style="display:none;margin-bottom:14px"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <div class="field" style="flex:1;min-width:140px;margin-bottom:10px"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
       <div class="field" style="flex:1;min-width:140px;margin-bottom:10px"><label for="searchInput">Search</label><input id="searchInput" type="text" autocomplete="off" placeholder="Name, model, serial…" /></div>
@@ -133,13 +142,8 @@
     </div>
     <div id="assetCount" style="color:var(--muted);font-size:.86rem;margin-bottom:8px"></div>
     <div id="assetList" class="assetlist"><div class="empty">Loading assets…</div></div>
-    <div class="or">— or scan / paste —</div>
-    <label for="qrInput">Asset ID, QR code, or link</label>
+    <div class="or">— or paste an ID / link —</div>
     <div class="qrrow"><input id="qrInput" type="text" autocomplete="off" placeholder="QR-1, rec…, or a scanned link" /><button class="gobtn" id="goBtn" type="button">View</button></div>
-    <label class="qrchip" for="scanInput" style="margin-top:10px;display:inline-block">Scan a QR code</label>
-    <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
-    <div id="scanMsg" style="font-size:.84rem;color:var(--muted);margin-top:6px"></div>
-    <div id="scanAssign" style="display:none;margin-top:8px"></div>
   </div>
   <div id="view"></div>
 </main>

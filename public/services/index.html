@@ -224,7 +224,13 @@
         "<div style='"+fld+"'><label>Date</label><input id='s_date' type='date' value='"+esc(s.date)+"'/></div>"+
         "<div style='"+fld+"'><label>Type</label><select id='s_type'>"+typeOpts+"</select></div>"+
         "<div style='"+fld+"'><label>Technician</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
-        "<div style='"+fld+"'><label>Notes</label><textarea id='s_notes' style='min-height:80px'>"+esc(s.notes)+"</textarea></div>"+
+        "<div style='"+fld+"'><label>Notes</label><textarea id='s_notes' style='min-height:80px'>"+esc(s.notes)+"</textarea>"+
+          "<button type='button' id='s_polish' style='margin-top:8px;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:7px 14px;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer'>✨ Clean up with AI</button>"+
+          "<div id='s_polishWrap' style='display:none;margin-top:9px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>"+
+            "<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Suggested cleanup</div>"+
+            "<div id='s_polishText' style='font-size:.94rem;white-space:pre-wrap'></div>"+
+            "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' id='s_polishUse' style='background:var(--green);color:#f6f2e8;border:none;border-radius:5px;padding:8px 15px;font:inherit;font-weight:600;cursor:pointer'>Use this</button><button type='button' id='s_polishKeep' style='background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:5px;padding:8px 15px;font:inherit;font-weight:600;cursor:pointer'>Keep mine</button></div>"+
+          "</div></div>"+
         "<div style='"+fld+"'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
         "<div style='"+fld+"'><label>Photos</label><div id='s_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div><input type='file' id='s_file' accept='image/*' multiple capture='environment'/></div>"+
         "<div style='display:flex;gap:10px;margin-top:6px'><button id='s_save' type='button' style='flex:1;background:var(--green);color:#f6f2e8;border:none;border-radius:5px;padding:13px;font:inherit;font-weight:600;cursor:pointer'>Save</button>"+
@@ -238,6 +244,23 @@
       window.__ra=function(i){ add.splice(i,1); thumbs(); };
       thumbs();
       document.getElementById("s_file").addEventListener("change",function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; Promise.all(fs.map(processPhoto)).then(function(arr){ arr.forEach(function(p){add.push(p);}); thumbs(); }).catch(function(){}); });
+      (function(){
+        var pb=document.getElementById("s_polish"); if(!pb) return;
+        var pw=document.getElementById("s_polishWrap"), pt=document.getElementById("s_polishText"), ne=document.getElementById("s_notes"), em=document.getElementById("s_msg");
+        pb.addEventListener("click",function(){
+          var text=(ne.value||"").trim(); if(em) em.textContent="";
+          if(!text){ ne.focus(); return; }
+          pb.disabled=true; pb.textContent="Cleaning up…";
+          fetch("/api/ai/polish",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:text,kind:"service"})})
+            .then(function(r){return r.json();}).then(function(d){
+              pb.disabled=false; pb.textContent="✨ Clean up with AI";
+              if(d&&d.ok&&d.text){ pt.textContent=d.text; pw.style.display="block"; }
+              else if(em){ em.textContent=(d&&d.error)||"The assistant couldn't respond."; }
+            }).catch(function(){ pb.disabled=false; pb.textContent="✨ Clean up with AI"; if(em) em.textContent="Couldn't reach the assistant."; });
+        });
+        document.getElementById("s_polishUse").addEventListener("click",function(){ ne.value=pt.textContent; pw.style.display="none"; });
+        document.getElementById("s_polishKeep").addEventListener("click",function(){ pw.style.display="none"; });
+      })();
       window.__svcBack=function(){ if(history.state&&history.state.svc) history.back(); else { history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); refreshRecords(); window.scrollTo(0,0); } };
       document.getElementById("s_back").addEventListener("click", window.__svcBack);
       document.getElementById("s_save").addEventListener("click",function(){

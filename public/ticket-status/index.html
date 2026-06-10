@@ -46,13 +46,22 @@
 
   .toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 14px}
   #filters{margin:8px 0 4px}
-  .schips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .chiprow{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:12px}
+  .chiprow .schips{flex:1;margin-bottom:0}
+  .sortmini{flex:0 0 auto;width:auto;min-width:140px}
+  .schips{display:flex;gap:8px;flex-wrap:wrap}
   .schip{display:inline-flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);cursor:pointer}
   .schip:hover{border-color:var(--green)}
   .schip b{background:var(--line);color:var(--muted);border-radius:999px;padding:1px 8px;font-size:.78rem;min-width:20px;text-align:center}
   .schip.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
   .schip.on b{background:rgba(255,255,255,.28);color:#f6f2e8}
   .schip.review.on{background:#9a7b12;border-color:#9a7b12}
+  .schip .cdot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
+  .schip.open .cdot{background:#2f5d50}
+  .schip.review .cdot{background:#9a7b12}
+  .schip.closed .cdot{background:#9a958a}
+  .schip.all .cdot{background:transparent;border:1.5px solid var(--muted)}
+  .schip.on .cdot{background:#f6f2e8;border-color:#f6f2e8}
   .filterbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
   .filterbar .mini{flex:1;min-width:130px;padding:10px 12px;font-size:.92rem}
   .archk{display:flex;align-items:center;gap:7px;font-size:.88rem;color:var(--muted);font-weight:600;white-space:nowrap;cursor:pointer}
@@ -153,14 +162,16 @@
   </div>
 
   <div id="filters">
-    <div id="statChips" class="schips"></div>
-    <div class="filterbar">
-      <select id="client" class="mini"><option value="">All clients</option></select>
-      <select id="sort" class="mini">
+    <div class="chiprow">
+      <div id="statChips" class="schips"></div>
+      <select id="sort" class="mini sortmini">
         <option value="act" selected>Latest activity</option>
         <option value="new">Newest</option>
         <option value="old">Oldest</option>
       </select>
+    </div>
+    <div class="filterbar">
+      <select id="client" class="mini"><option value="">All clients</option></select>
       <label class="archk" id="archkWrap"><input type="checkbox" id="showArch" /> Show archived</label>
     </div>
   </div>
@@ -215,7 +226,7 @@
     chips.push({k:"closed",label:"Closed",n:nClosed});
     chips.push({k:"all",label:"All",n:scoped.length});
     chipsEl.innerHTML = chips.map(function(c){
-      return "<button type='button' class='schip "+c.k+(curStatus===c.k?" on":"")+"' data-st='"+c.k+"'>"+c.label+" <b>"+c.n+"</b></button>";
+      return "<button type='button' class='schip "+c.k+(curStatus===c.k?" on":"")+"' data-st='"+c.k+"'><span class='cdot'></span>"+c.label+" <b>"+c.n+"</b></button>";
     }).join("");
     Array.prototype.slice.call(chipsEl.querySelectorAll(".schip")).forEach(function(btn){
       btn.addEventListener("click", function(){ curStatus = btn.getAttribute("data-st"); render(); });
@@ -494,7 +505,13 @@
             "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px'>" +
               "<label class='qbtn' for='e_notefile' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
               "<input type='file' id='e_notefile' accept='image/*' multiple capture='environment' style='display:none' />" +
+              "<button type='button' class='qbtn' id='e_polish' style='border-color:var(--clay);color:var(--clay)'>✨ Clean up with AI</button>" +
               "<label class='chk' style='font-weight:400;font-size:.9rem;display:flex;align-items:center;gap:7px;margin:0'><input type='checkbox' id='e_notetop' /> Also add these to the main photos at the top</label>" +
+            "</div>" +
+            "<div id='e_polishWrap' style='display:none;margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>" +
+              "<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Suggested cleanup</div>" +
+              "<div id='e_polishText' style='font-size:.95rem;white-space:pre-wrap'></div>" +
+              "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_polishUse'>Use this</button><button type='button' class='qbtn' id='e_polishKeep'>Keep mine</button></div>" +
             "</div>" +
             "<div style='font-size:.84rem;color:var(--muted);margin-top:10px'>Press Save below to post your note and any changes.</div>" +
           "</div>" +
@@ -715,6 +732,25 @@
         arr.forEach(function(p){ notePhotos.push(p); }); renderNoteThumbs();
       }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
     });
+
+    // Clean up the note with AI: preview before it replaces your text.
+    (function(){
+      var pb=document.getElementById("e_polish"); if(!pb) return;
+      var pw=document.getElementById("e_polishWrap"), pt=document.getElementById("e_polishText"), ne=document.getElementById("e_note"), em=document.getElementById("e_msg");
+      pb.addEventListener("click", function(){
+        var text=(ne.value||"").trim(); if(em) em.textContent="";
+        if(!text){ ne.focus(); return; }
+        pb.disabled=true; pb.textContent="Cleaning up…";
+        fetch("/api/ai/polish",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:text,kind:"note"})})
+          .then(function(r){return r.json();}).then(function(d){
+            pb.disabled=false; pb.textContent="✨ Clean up with AI";
+            if(d&&d.ok&&d.text){ pt.textContent=d.text; pw.style.display="block"; }
+            else if(em){ em.textContent=(d&&d.error)||"The assistant couldn't respond."; }
+          }).catch(function(){ pb.disabled=false; pb.textContent="✨ Clean up with AI"; if(em) em.textContent="Couldn't reach the assistant."; });
+      });
+      document.getElementById("e_polishUse").addEventListener("click", function(){ ne.value=pt.textContent; pw.style.display="none"; });
+      document.getElementById("e_polishKeep").addEventListener("click", function(){ pw.style.display="none"; });
+    })();
 
     // Guard against leaving with unsaved photos or a half-typed note.
     window.__ticketBack = function(){
