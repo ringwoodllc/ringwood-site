@@ -714,10 +714,23 @@ function sbHeaders(env, extra) {
   );
 }
 
+// fetch with a timeout, so a slow or hung Supabase/storage call can't block the
+// Worker. On timeout it throws (callers already treat that as a transient error
+// and return null / { ok:false }).
+async function fetchT(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms || 12000);
+  try {
+    return await fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal }));
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // GET rows. `path` is everything after /rest/v1/ , e.g. "clients?select=name".
 async function sbSelect(env, path) {
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
     if (!r.ok) return null;
     return await r.json();
   } catch {
@@ -727,7 +740,7 @@ async function sbSelect(env, path) {
 
 async function sbInsert(env, table, row) {
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}`, {
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${table}`, {
       method: "POST",
       headers: sbHeaders(env, { Prefer: "return=representation" }),
       body: JSON.stringify(row),
@@ -742,7 +755,7 @@ async function sbInsert(env, table, row) {
 
 async function sbUpdate(env, table, id, patch) {
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
       method: "PATCH",
       headers: sbHeaders(env, { Prefer: "return=representation" }),
       body: JSON.stringify(patch),
@@ -790,7 +803,7 @@ async function uploadToStorage(env, path, base64, contentType) {
   if (!base64) return null;
   await ensureBucket(env);
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/storage/v1/object/photos/${path}`, {
+    const r = await fetchT(`${env.SUPABASE_URL}/storage/v1/object/photos/${path}`, {
       method: "POST",
       headers: {
         apikey: env.SUPABASE_SERVICE_KEY,
@@ -799,7 +812,7 @@ async function uploadToStorage(env, path, base64, contentType) {
         "x-upsert": "true",
       },
       body: base64ToBytes(base64),
-    });
+    }, 25000);
     if (!r.ok) return null;
     return `${env.SUPABASE_URL}/storage/v1/object/public/photos/${path}`;
   } catch {
