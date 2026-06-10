@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="/client-color.js"></script>
 <style>
   :root{
     --bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;
@@ -244,7 +245,7 @@
       if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
       else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
       else actions = (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
-      var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip'>" + esc(t.client) + "</span>" : "";
+      var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + clientColor(t.client) + "'>" + esc(t.client) + "</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +

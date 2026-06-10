@@ -25,7 +25,9 @@
     var idHtml = w.role === "master"
       ? "<a href='/account'><span class='rw-master'>" + CROWN + "Master</span></a> &middot; all clients"
       : "Signed in as <a href='/account'>" + esc(w.client || "your account") + "</a>";
-    strip.innerHTML = idHtml + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
+    var canSvc = w.role === "master" || (w.perms && (w.perms.service === "view" || w.perms.service === "edit"));
+    var nav = canSvc ? "<a href='/services'>Service records</a> &middot; " : "";
+    strip.innerHTML = idHtml + " &middot; " + nav + "<a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
     var so = document.getElementById("rwSignout");
     if (so) so.addEventListener("click", function (e) {

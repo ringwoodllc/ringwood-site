@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="/client-color.js"></script>
 <script src="/qrcode.js"></script>
 <script src="/jsQR.js"></script>
 <style>
@@ -216,7 +217,7 @@
       return "<div class='arow' onclick=\"load('"+esc(a.id)+"')\">"+
         "<div><div class='an'>"+esc(a.name)+(a.qr?" <span class='acl'>("+esc(a.qr)+")</span>":"")+"</div>"+
         (meta?"<div class='am'>"+meta+"</div>":"")+svc+"</div>"+
-        (a.client?"<span class='client-chip'>"+esc(a.client)+"</span>":"")+"</div>";
+        (a.client?"<span class='client-chip' style='background:"+clientColor(a.client)+"'>"+esc(a.client)+"</span>":"")+"</div>";
     }).join("");
   }
   function renderSamples(){

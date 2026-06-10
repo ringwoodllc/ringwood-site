@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="/client-color.js"></script>
 <style>
   :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -97,7 +98,7 @@
         "<div class='bd'><div class='top'>"+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
         (s.notes?"<div class='notes'>"+esc(s.notes)+"</div>":"")+"</div>"+
-        "<div class='rcol'>"+(s.client?"<span class='client-chip'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
+        "<div class='rcol'>"+(s.client?"<span class='client-chip' style='background:"+clientColor(s.client)+"'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
       "</div>";
     }).join("");
   }
@@ -130,7 +131,7 @@
       var card="background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:20px 18px;margin-bottom:30px";
       var fld="margin-bottom:14px";
       ew.innerHTML="<div style='"+card+"'>"+
-        "<div style='display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px'><h2 style='font-family:Spectral,serif;font-weight:500;font-size:1.3rem;color:var(--green-deep)'>Service record</h2>"+(rec.client?"<span class='client-chip'>"+esc(rec.client)+"</span>":"")+"</div>"+
+        "<div style='display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px'><h2 style='font-family:Spectral,serif;font-weight:500;font-size:1.3rem;color:var(--green-deep)'>Service record</h2>"+(rec.client?"<span class='client-chip' style='background:"+clientColor(rec.client)+"'>"+esc(rec.client)+"</span>":"")+"</div>"+
         "<div style='color:var(--muted);font-size:.9rem;margin-bottom:16px'>"+esc(rec.asset||"Asset")+(rec.assetId?(" · <a href='/a/?id="+esc(rec.assetId)+"' style='color:var(--green-deep)'>Open asset →</a>"):"")+"</div>"+
         "<div style='"+fld+"'><label>Date</label><input id='s_date' type='date' value='"+esc(s.date)+"'/></div>"+
         "<div style='"+fld+"'><label>Type</label><select id='s_type'>"+typeOpts+"</select></div>"+
