@@ -128,8 +128,12 @@
   .intake-tog:hover{border-color:var(--green)}
   .intake-tog #intakeIco{font-size:1rem;width:14px;display:inline-block;text-align:center}
   .intake-body{margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;font-size:.94rem;color:var(--ink);white-space:pre-wrap}
-  .evico{opacity:.7;margin-right:2px}
-  .lgmore{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;width:22px;height:22px;line-height:1;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;vertical-align:middle;padding:0}
+  .evline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .evline .evico{opacity:.5;font-size:.95rem}
+  .evline .evtext{color:var(--green-deep);font-weight:600;font-size:.9rem}
+  .evline .evtime{color:var(--muted);font-size:.78rem;margin-left:auto;white-space:nowrap}
+  .lg.event{gap:0}
+  .lgmore{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;width:22px;height:22px;line-height:1;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;vertical-align:middle;padding:0;flex:0 0 auto}
   .lgmore:hover{border-color:var(--green)}
   .evdetail{margin-top:7px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-size:.86rem;color:var(--muted);white-space:pre-wrap}
   .addnote textarea{min-height:64px}
@@ -684,6 +688,20 @@
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
         var photos = (c.photos && c.photos.length) ?
           "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
+        // Admin events (status/title/description changes) render as one tidy line:
+        // pencil · what changed · the + for detail · time · Delete.
+        if (isEvent && c.role !== "agent"){
+          return "<div class='lg event' data-cid='" + esc(c.id) + "'>" +
+            "<div class='evline'>" +
+              "<span class='evico'>&#9998;</span>" +
+              "<span class='evtext'>" + esc(brief) + "</span>" +
+              (detail ? "<button type='button' class='lgmore' data-cid='" + esc(c.id) + "'>+</button>" : "") +
+              "<span class='evtime'>" + esc(fmtWhen(c.created)) + "</span>" +
+              (IS_MASTER ? "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" : "") +
+            "</div>" +
+            (detail ? "<div class='evdetail' id='ev_" + esc(c.id) + "' style='display:none'>" + esc(detail) + "</div>" : "") +
+          "</div>";
+        }
         return "<div class='lg " + (isEvent?"event":"note") + (c.role==="agent"?" agent":"") + "' data-cid='" + esc(c.id) + "'>" +
           "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
           "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
