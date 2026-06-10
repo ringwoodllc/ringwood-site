@@ -259,6 +259,18 @@
     var added = a.loggedAt ? new Date(a.loggedAt).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) + " at " + new Date(a.loggedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}) : "";
     var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+row("Logged",added)+"</dl></div>";
     var ai = a.aiReading?"<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>"+esc(a.aiReading)+"</div></div>":"";
+    var svcArr = a.services || [];
+    var lastSvc = svcArr.reduce(function(m,s){ return (s.date && (!m || s.date>m)) ? s.date : m; }, "");
+    var totalCost = svcArr.reduce(function(t,s){ var c=Number(s.cost); return t + (isNaN(c)?0:c); }, 0);
+    var svcLine = svcArr.length
+      ? (svcArr.length + " record" + (svcArr.length===1?"":"s") + (lastSvc?(" · last "+new Date(lastSvc).toLocaleDateString()):"") + (totalCost?(" · "+money(totalCost)+" total"):""))
+      : "No service records yet";
+    var svcSummary =
+      "<div class='card' style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer' onclick=\"var e=document.getElementById('svc'); if(e) e.scrollIntoView({behavior:'smooth'});\">"+
+        "<div><div style='font-weight:600;color:var(--green-deep);display:flex;align-items:center;gap:7px'>🔧 Maintenance</div>"+
+        "<div style='color:var(--muted);font-size:.9rem;margin-top:2px'>"+esc(svcLine)+"</div></div>"+
+        "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"' style='white-space:nowrap' onclick='event.stopPropagation()'>Log a service</a>"+
+      "</div>";
     var hist;
     if(a.services && a.services.length){
       var rows = a.services.map(function(s){
@@ -273,9 +285,9 @@
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
       "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
       "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
-      qrCard(a)+photos+identity+ai+
+      svcSummary+qrCard(a)+photos+identity+ai+
       "<h2>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
-      "<h2>Service history</h2>"+hist;
+      "<h2 id='svc'>Service history</h2>"+hist;
     loadAssetTickets(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
