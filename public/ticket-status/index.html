@@ -390,7 +390,10 @@
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
-        "<div id='e_review' style='margin-bottom:14px'></div>" +
+        "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px'>" +
+          "<div id='e_review'></div>" +
+          "<button class='qbtn' id='e_ai' type='button'>✨ Rewrite with AI</button>" +
+        "</div>" +
         "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
         "<div class='frow'>" +
           "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
@@ -406,7 +409,6 @@
           "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
         "<div class='field'><label>Description</label>" +
           "<textarea id='e_desc' style='min-height:120px'>" + esc(t.description) + "</textarea>" +
-          "<button class='qbtn' id='e_ai' type='button' style='margin-top:8px'>✨ Rewrite with AI</button>" +
         "</div>" +
         "<div class='field'><label>Photos</label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
