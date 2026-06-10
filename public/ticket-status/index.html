@@ -125,7 +125,7 @@
     <p>Open work first, with the most recently updated on top. Switch to Closed, change the sort, or filter by client and topic. Open one to update it, add a note, or move it along.</p>
   </div>
 
-  <div style="display:flex;gap:10px;flex-wrap:wrap">
+  <div id="filters" style="display:flex;gap:10px;flex-wrap:wrap">
     <div class="field" style="flex:1;min-width:150px">
       <label for="status">Status</label>
       <select id="status">
@@ -252,12 +252,31 @@
   var ALL_ASSETS = [];
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){ ALL_ASSETS = Array.isArray(list)?list:[]; }).catch(function(){});
 
+  // Show or hide the list "chrome" (intro + filters + count) so a selected ticket
+  // appears on its own at the top, matching the asset lookup screen.
+  var introEl = document.querySelector(".intro"), filtersEl = document.getElementById("filters"), toolbarEl = document.querySelector(".toolbar");
+  function showChrome(show){
+    var d = show ? "" : "none";
+    if(introEl) introEl.style.display = d;
+    if(filtersEl) filtersEl.style.display = show ? "flex" : "none";
+    if(toolbarEl) toolbarEl.style.display = d;
+  }
+  // Back from a ticket to the list: restore the chrome and clear the deep link.
+  function backToTicketList(){ history.replaceState(null,"","/status"); render(); window.scrollTo(0,0); }
+
   /* ---- tickets ---- */
   function loadAll(){
     editWrap.innerHTML = "";
     listEl.innerHTML = "<div class='empty'>Loading…</div>";
     fetch("/api/tickets/list?archived=1", { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){
       ALL_TICKETS = rows || [];
+      // Deep link: /status?id=<ticketId> opens that ticket straight away.
+      var openId = new URLSearchParams(location.search).get("id");
+      if(openId){
+        var tk = null;
+        for(var i=0;i<ALL_TICKETS.length;i++){ if(ALL_TICKETS[i].id===openId){ tk = ALL_TICKETS[i]; break; } }
+        if(tk){ openEdit(tk); return; }
+      }
       render();
     }).catch(function(){ listEl.innerHTML = "<div class='empty'>Could not load tickets.</div>"; });
   }
@@ -274,6 +293,7 @@
 
   function render(){
     editWrap.innerHTML = "";
+    showChrome(true);
     colorClientSelect();
     var client = clientSel.value, topic = topicSel.value, status = statusSel.value, sort = sortSel.value;
     var rows = ALL_TICKETS.filter(function(t){
@@ -327,6 +347,7 @@
   window.openEdit = function(t){
     listEl.innerHTML = "";
     countEl.textContent = "";
+    showChrome(false);  // show the ticket on its own, at the top
     var existingPhotos = (t.photos && t.photos.length) ? t.photos.slice() : (t.photo ? [t.photo] : []);
     var newPhotos = [];          // {base64, contentType, preview}
     var genTitle = t.title || "";  // title the AI suggests, sent on save
@@ -348,6 +369,7 @@
       "<option value='__new'>＋ New asset…</option>";
 
     editWrap.innerHTML =
+      "<a href='#' class='back' style='display:inline-block;margin:4px 0 14px' onclick='backToTicketList();return false;'>&larr; Back to list</a>" +
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
@@ -555,7 +577,7 @@
         }).catch(function(){ b.disabled=false; b.textContent="Add note"; msg.textContent="Couldn't reach the server."; });
     });
 
-    document.getElementById("e_back").addEventListener("click", render);
+    document.getElementById("e_back").addEventListener("click", backToTicketList);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
       var ecl = document.getElementById("e_client");

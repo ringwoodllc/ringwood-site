@@ -86,6 +86,11 @@
   .btn.ghost:hover{background:var(--bg-2)}
   .btn:disabled{opacity:.6;cursor:default}
   .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 6px}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 22px}
+  .stat{display:inline-flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:.92rem;font-weight:600;color:var(--green-deep);text-decoration:none;cursor:pointer}
+  .stat:hover{border-color:var(--green)}
+  .stat b{background:var(--green);color:#f6f2e8;border-radius:999px;padding:1px 9px;font-size:.82rem;min-width:22px;text-align:center}
+  .stat.zero b{background:var(--line);color:var(--muted)}
   .field{margin-bottom:14px}
   .hint{font-size:.84rem;color:var(--muted);margin:-8px 0 14px}
   .state{color:var(--muted);padding:8px 0 30px}
@@ -271,11 +276,11 @@
     var svcLine = svcArr.length
       ? (svcArr.length + " record" + (svcArr.length===1?"":"s") + (lastSvc?(" · last "+new Date(lastSvc).toLocaleDateString()):"") + (totalCost?(" · "+money(totalCost)+" total"):""))
       : "No service records yet";
-    var svcSummary =
-      "<div class='card' style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer' onclick=\"var e=document.getElementById('svc'); if(e) e.scrollIntoView({behavior:'smooth'});\">"+
-        "<div><div style='font-weight:600;color:var(--green-deep);display:flex;align-items:center;gap:7px'>🔧 Maintenance</div>"+
-        "<div style='color:var(--muted);font-size:.9rem;margin-top:2px'>"+esc(svcLine)+"</div></div>"+
-        "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"' style='white-space:nowrap' onclick='event.stopPropagation()'>Log a service</a>"+
+    // Compact counters instead of a big card. Tickets count fills in once loaded.
+    var stats =
+      "<div class='stats'>"+
+        "<a class='stat' id='stat_tk' href='#tickets' onclick=\"document.getElementById('tickets').scrollIntoView({behavior:'smooth'});return false;\">🎫 Tickets <b id='tkCount'>·</b></a>"+
+        "<a class='stat"+(svcArr.length?"":" zero")+"' href='#svc' onclick=\"document.getElementById('svc').scrollIntoView({behavior:'smooth'});return false;\">🔧 Service <b>"+svcArr.length+"</b></a>"+
       "</div>";
     var hist;
     if(a.services && a.services.length){
@@ -292,8 +297,8 @@
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
       "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
       "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
-      svcSummary+photos+identity+qrCard(a)+ai+
-      "<h2>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
+      stats+photos+identity+qrCard(a)+ai+
+      "<h2 id='tickets'>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
       "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist;
     loadAssetTickets(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
@@ -306,11 +311,12 @@
     fetch("/api/tickets/list?archived=1&assetId="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(rows){
       var el=document.getElementById("assetTickets"); if(!el) return;
       rows = Array.isArray(rows)?rows:[];
+      var tc=document.getElementById("tkCount"); if(tc){ tc.textContent=rows.length; var chip=document.getElementById("stat_tk"); if(chip && !rows.length) chip.classList.add("zero"); }
       if(!rows.length){ el.innerHTML="<div class='empty'>No tickets for this asset yet.</div>"; return; }
       el.innerHTML = "<table><thead><tr><th>Ref</th><th>Title</th><th>Status</th><th>Date</th></tr></thead><tbody>"+
         rows.map(function(t){
-          return "<tr onclick=\"location.href='/status'\"><td>"+esc(t.ref||"—")+"</td><td>"+esc(t.title||"Ticket")+"</td><td>"+esc(t.status||"")+"</td><td>"+esc(t.created?new Date(t.created).toLocaleDateString():"")+"</td></tr>";
-        }).join("")+"</tbody></table><div class='hint'>Tap a row to manage in Ticket status.</div>";
+          return "<tr onclick=\"location.href='/status?id="+esc(t.id)+"'\"><td>"+esc(t.ref||"—")+"</td><td>"+esc(t.title||"Ticket")+"</td><td>"+esc(t.status||"")+"</td><td>"+esc(t.created?new Date(t.created).toLocaleDateString():"")+"</td></tr>";
+        }).join("")+"</tbody></table><div class='hint'>Tap a row to open the ticket.</div>";
     }).catch(function(){ var el=document.getElementById("assetTickets"); if(el) el.innerHTML="<div class='empty'>Could not load tickets.</div>"; });
   }
 
