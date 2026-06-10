@@ -128,6 +128,8 @@
   .intake-tog:hover{border-color:var(--green)}
   .intake-tog #intakeIco{font-size:1rem;width:14px;display:inline-block;text-align:center}
   .intake-body{margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;font-size:.94rem;color:var(--ink);white-space:pre-wrap}
+  .revsec{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+  #revBody{flex-direction:column;gap:8px;margin-top:10px}
   .evline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .evline .evico{opacity:.5;font-size:.95rem}
   .evline .evtext{color:var(--green-deep);font-weight:600;font-size:.9rem}
@@ -667,54 +669,54 @@
             "</div>" +
           "</div>";
       }
-      if(!rows.length){ logEl.innerHTML = intakeHtml + "<div class='empty-log'>No updates yet. Add the first note below.</div>"; wireIntake(); return; }
-      logEl.innerHTML = intakeHtml + rows.map(function(c){
+      // Two streams: human comments (notes), and the admin revision history
+      // (status/title/description changes + the AI agent read), kept separate.
+      var notes = rows.filter(function(c){ return (c.kind||"note") === "note"; });
+      var events = rows.filter(function(c){ return c.kind === "event"; });
+      // A human comment: who, time, text, photos, edit/delete.
+      function noteCard(c){
         LOG_ROWS[c.id] = c;
-        var isEvent = c.kind === "event";
-        // Admin events can carry an expandable detail (brief ⋮ detail).
-        var brief = c.body || "", detail = "";
-        if (isEvent && brief.indexOf("\n⋮\n") >= 0){ var pp = brief.split("\n⋮\n"); brief = pp[0]; detail = pp.slice(1).join("\n⋮\n"); }
         var col = c.role === "client" ? noteCol : "var(--green-deep)";
-        var whoStyle = (isEvent || c.role !== "client") ? "" : (" style='background:" + col + "'");
-        // "Up top" promotes a note's photos to the ticket's photo set. Master can
-        // also edit notes and delete anything.
+        var whoStyle = (c.role !== "client") ? "" : (" style='background:" + col + "'");
         var hasPhotos = c.photos && c.photos.length;
         var bits = "";
-        if (!isEvent && hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Add to main photos</button>";
-        if (IS_MASTER){
-          bits += (isEvent ? "" : "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button>") +
-            "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
-        }
+        if (hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Add to main photos</button>";
+        if (IS_MASTER) bits += "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button><button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
-        var photos = (c.photos && c.photos.length) ?
-          "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
-        // Admin events (status/title/description changes) render as one tidy line:
-        // pencil · what changed · the + for detail · time · Delete.
-        if (isEvent && c.role !== "agent"){
-          return "<div class='lg event' data-cid='" + esc(c.id) + "'>" +
-            "<div class='evline'>" +
-              "<span class='evico'>&#9998;</span>" +
-              "<span class='evtext'>" + esc(brief) + "</span>" +
-              (detail ? "<button type='button' class='lgmore' data-cid='" + esc(c.id) + "'>+</button>" : "") +
-              "<span class='evtime'>" + esc(fmtWhen(c.created)) + "</span>" +
-              (IS_MASTER ? "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" : "") +
-            "</div>" +
-            (detail ? "<div class='evdetail' id='ev_" + esc(c.id) + "' style='display:none'>" + esc(detail) + "</div>" : "") +
-          "</div>";
-        }
-        return "<div class='lg " + (isEvent?"event":"note") + (c.role==="agent"?" agent":"") + "' data-cid='" + esc(c.id) + "'>" +
-          "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
-          "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
-          (c.body ?
-            "<div class='text'>" +
-              (isEvent && c.role !== "agent" ? "<span class='evico'>✎</span> " : "") + esc(brief) +
-              (detail ? " <button type='button' class='lgmore' data-cid='" + esc(c.id) + "'>+</button><div class='evdetail' id='ev_" + esc(c.id) + "' style='display:none'>" + esc(detail) + "</div>" : "") +
-            "</div>"
-          : "") +
-          photos +
+        var photos = hasPhotos ? "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
+        return "<div class='lg note' data-cid='" + esc(c.id) + "'>" +
+          "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span><span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
+          (c.body ? "<div class='text'>" + esc(c.body) + "</div>" : "") + photos + "</div>";
+      }
+      // A revision entry: one tidy line, with the + for before/after detail.
+      function eventLine(c){
+        LOG_ROWS[c.id] = c;
+        var brief = c.body || "", detail = "";
+        if (brief.indexOf("\n⋮\n") >= 0){ var pp = brief.split("\n⋮\n"); brief = pp[0]; detail = pp.slice(1).join("\n⋮\n"); }
+        var moreBtn = detail ? "<button type='button' class='lgmore' data-cid='" + esc(c.id) + "'>+</button>" : "";
+        var del = IS_MASTER ? "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" : "";
+        var detailDiv = detail ? "<div class='evdetail' id='ev_" + esc(c.id) + "' style='display:none'>" + esc(detail) + "</div>" : "";
+        var ico = c.role === "agent" ? "" : "<span class='evico'>&#9998;</span>";
+        return "<div class='lg event" + (c.role==="agent"?" agent":"") + "' data-cid='" + esc(c.id) + "'>" +
+          "<div class='evline'>" + ico + "<span class='evtext'>" + esc(brief) + "</span>" + moreBtn +
+            "<span class='evtime'>" + esc(fmtWhen(c.created)) + "</span>" + del + "</div>" + detailDiv + "</div>";
+      }
+      var notesHtml = notes.length ? notes.map(noteCard).join("") : "<div class='empty-log'>No comments yet. Add the first note below.</div>";
+      var revHtml = "";
+      if (events.length){
+        revHtml = "<div class='revsec'>" +
+          "<button type='button' class='intake-tog' id='revTog'><span id='revIco'>＋</span> Revision history (" + events.length + ")</button>" +
+          "<div id='revBody' style='display:none'>" + events.map(eventLine).join("") + "</div>" +
         "</div>";
-      }).join("");
+      }
+      logEl.innerHTML = intakeHtml + notesHtml + revHtml;
       wireIntake();
+      var revTog = document.getElementById("revTog");
+      if (revTog) revTog.addEventListener("click", function(){
+        var b = document.getElementById("revBody"), ico = document.getElementById("revIco");
+        if(!b) return; var open = b.style.display !== "none";
+        b.style.display = open ? "none" : "flex"; if(ico) ico.textContent = open ? "＋" : "−";
+      });
     }
     // Expand/collapse an event's detail (revision history) when the + is tapped.
     logEl.addEventListener("click", function(e){
