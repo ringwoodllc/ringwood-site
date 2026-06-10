@@ -17,10 +17,12 @@
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
   .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
-  header{padding:24px 0;display:flex;align-items:center;justify-content:space-between}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
   .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
-  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin:8px 0 10px}
+  .intro{margin:18px 0 22px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:12px}
   h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.7rem);color:var(--green-deep)}
   .lead{color:var(--muted);font-size:1rem;margin:10px 0 18px}
   label{display:block;font-weight:600;font-size:.9rem;color:var(--green-deep);margin-bottom:6px}
@@ -44,7 +46,7 @@
 </head>
 <body>
 <header>
-  <div class="wrap" style="display:flex;align-items:center;justify-content:space-between">
+  <div class="wrap bar">
     <div class="brand">
       <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
       Ringwood
@@ -53,9 +55,11 @@
   </div>
 </header>
 <main class="wrap">
-  <div class="eyebrow">Service records</div>
-  <h1>Maintenance</h1>
-  <p class="lead">Every service event, newest first. Filter by client or type. Tap one to open its asset.</p>
+  <div class="intro">
+    <div class="eyebrow">Service records</div>
+    <h1>Maintenance</h1>
+    <p class="lead">Every service event, newest first. Filter by client or type. Tap one to see its details.</p>
+  </div>
   <div class="filters">
     <div class="f" id="clientWrap"><label for="clientSel">Client</label><select id="clientSel"><option value="">All clients</option></select></div>
     <div class="f"><label for="typeSel">Type</label><select id="typeSel"><option value="">All types</option></select></div>
