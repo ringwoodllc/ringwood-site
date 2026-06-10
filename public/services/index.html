@@ -24,7 +24,9 @@
   h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.7rem);color:var(--green-deep)}
   .lead{color:var(--muted);font-size:1rem;margin:10px 0 18px}
   label{display:block;font-weight:600;font-size:.9rem;color:var(--green-deep);margin-bottom:6px}
-  select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  select,input,textarea{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  textarea{resize:vertical}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--green)}
   .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
   .filters .f{flex:1;min-width:150px}
   .total{color:var(--muted);font-size:.92rem;margin-bottom:10px}
@@ -87,8 +89,7 @@
     if(!rows.length){ el.innerHTML="<div class='empty'>No service records"+(ALL.length?" match.":" yet.")+"</div>"; return; }
     el.innerHTML=rows.map(function(s){
       var meta=[fdate(s.date), s.type, s.technician].filter(Boolean).map(esc).join(" · ");
-      var go = s.assetId ? ("location.href='/a/?id="+esc(s.assetId)+"'") : "";
-      return "<div class='rec'"+(go?(" onclick=\""+go+"\""):"")+">"+
+      return "<div class='rec' onclick=\"openRec('"+esc(s.id)+"')\">"+
         "<div class='bd'><div class='top'>"+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
         (s.notes?"<div class='notes'>"+esc(s.notes)+"</div>":"")+"</div>"+
@@ -96,11 +97,65 @@
       "</div>";
     }).join("");
   }
+  document.querySelector("main").insertAdjacentHTML("beforeend","<div id='editWrap'></div>");
   clientSel.addEventListener("change", render);
   typeSel.addEventListener("change", render);
   fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){
     ALL=Array.isArray(rows)?rows:[]; fillFilters(); render();
   }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Could not load service records.</div>"; });
+
+  var SERVICE_TYPES=["Install","Inspection","Maintenance","Repair","Replacement","Other"];
+  var topEls=[document.querySelector(".filters"),document.getElementById("total"),document.getElementById("list")];
+  function showList(show){ topEls.forEach(function(e){ if(e) e.style.display=show?"":"none"; }); }
+  function processPhoto(file){
+    return new Promise(function(res,rej){ var img=new Image(),u=URL.createObjectURL(file);
+      img.onload=function(){ var max=1600,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
+        var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(u);
+        var d=c.toDataURL("image/jpeg",0.82); res({base64:d.split(",")[1],contentType:"image/jpeg",preview:d}); };
+      img.onerror=function(){ URL.revokeObjectURL(u); rej(new Error("bad")); }; img.src=u; });
+  }
+  window.openRec=function(id){
+    var rec=ALL.filter(function(x){return x.id===id;})[0]||{};
+    var ew=document.getElementById("editWrap");
+    showList(false);
+    ew.innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/service/get?id="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(s){
+      if(!s||!s.ok){ showList(true); ew.innerHTML=""; return; }
+      var keep=(s.photos&&s.photos.length)?s.photos.slice():[], add=[];
+      var typeOpts="<option value=''>Select…</option>"+SERVICE_TYPES.map(function(t){return "<option"+(s.type===t?" selected":"")+">"+t+"</option>";}).join("");
+      var card="background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:20px 18px;margin-bottom:30px";
+      var fld="margin-bottom:14px";
+      ew.innerHTML="<div style='"+card+"'>"+
+        "<div style='display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px'><h2 style='font-family:Spectral,serif;font-weight:500;font-size:1.3rem;color:var(--green-deep)'>Service record</h2>"+(rec.client?"<span class='client-chip'>"+esc(rec.client)+"</span>":"")+"</div>"+
+        "<div style='color:var(--muted);font-size:.9rem;margin-bottom:16px'>"+esc(rec.asset||"Asset")+(rec.assetId?(" · <a href='/a/?id="+esc(rec.assetId)+"' style='color:var(--green-deep)'>Open asset →</a>"):"")+"</div>"+
+        "<div style='"+fld+"'><label>Date</label><input id='s_date' type='date' value='"+esc(s.date)+"'/></div>"+
+        "<div style='"+fld+"'><label>Type</label><select id='s_type'>"+typeOpts+"</select></div>"+
+        "<div style='"+fld+"'><label>Technician</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
+        "<div style='"+fld+"'><label>Notes</label><textarea id='s_notes' style='min-height:80px'>"+esc(s.notes)+"</textarea></div>"+
+        "<div style='"+fld+"'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
+        "<div style='"+fld+"'><label>Photos</label><div id='s_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div><input type='file' id='s_file' accept='image/*' multiple capture='environment'/></div>"+
+        "<div style='display:flex;gap:10px;margin-top:6px'><button id='s_save' type='button' style='flex:1;background:var(--green);color:#f6f2e8;border:none;border-radius:5px;padding:13px;font:inherit;font-weight:600;cursor:pointer'>Save</button>"+
+        "<button id='s_back' type='button' style='flex:1;background:transparent;color:var(--green-deep);border:1px solid var(--line);border-radius:5px;padding:13px;font:inherit;font-weight:600;cursor:pointer'>Back</button></div>"+
+        "<div id='s_msg' style='color:#8a3d1c;font-size:.88rem;margin-top:10px'></div></div>";
+      window.scrollTo(0,0);
+      var tEl=document.getElementById("s_thumbs");
+      function thumbs(){ tEl.innerHTML=keep.map(function(u,i){return "<span style='position:relative;display:inline-block'><img src='"+esc(u)+"' style='width:78px;height:78px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/><button type='button' onclick='__rk("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;cursor:pointer'>×</button></span>";}).join("")+
+        add.map(function(p,i){return "<span style='position:relative;display:inline-block'><img src='"+p.preview+"' style='width:78px;height:78px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/><button type='button' onclick='__ra("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;cursor:pointer'>×</button></span>";}).join("")||(keep.length?"":"<span style='color:var(--muted);font-size:.9rem'>No photos.</span>"); }
+      window.__rk=function(i){ keep.splice(i,1); thumbs(); };
+      window.__ra=function(i){ add.splice(i,1); thumbs(); };
+      thumbs();
+      document.getElementById("s_file").addEventListener("change",function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; Promise.all(fs.map(processPhoto)).then(function(arr){ arr.forEach(function(p){add.push(p);}); thumbs(); }).catch(function(){}); });
+      document.getElementById("s_back").addEventListener("click",function(){ ew.innerHTML=""; showList(true); });
+      document.getElementById("s_save").addEventListener("click",function(){
+        var b=this; b.disabled=true; b.textContent="Saving…";
+        var payload={ id:id, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value, keepPhotos:keep, addPhotos:add.map(function(p){return {base64:p.base64,contentType:p.contentType};}) };
+        fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ ew.innerHTML=""; showList(true); fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){ ALL=Array.isArray(rows)?rows:[]; fillFilters(); render(); }); }
+          else { b.disabled=false; b.textContent="Save"; document.getElementById("s_msg").textContent=(d&&d.error)||"Save failed."; }
+        }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("s_msg").textContent="Couldn't reach the server."; });
+      });
+    }).catch(function(){ showList(true); ew.innerHTML=""; });
+  };
 </script>
 <script src="/whoami-badge.js"></script>
 </body>
