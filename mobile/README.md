@@ -37,6 +37,12 @@ In Xcode, open `ios/App/App/Info.plist` and add:
 
 Android picks these up automatically; nothing to add.
 
+The web app ships `/native-camera.js`, which detects the native shell and adds a
+"Take photo" button (using the `@capacitor/camera` plugin) beside each photo
+field, feeding the capture back through the normal flow. On the web / PWA it
+does nothing, so the same site works everywhere. After `npm install` the camera
+plugin is included; run `npx cap sync` so the native projects pick it up.
+
 ## App identity
 
 - App ID: `ai.ringwood.app`  (change in `capacitor.config.json` before first build if you want a different bundle id)
