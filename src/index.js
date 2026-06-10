@@ -960,6 +960,7 @@ async function diag(env, request) {
 }
 
 async function createClient(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   let body;
   try {
