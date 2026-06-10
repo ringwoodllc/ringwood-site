@@ -2312,6 +2312,15 @@ async function updateTicket(request, env, session) {
   const id = (body.id || "").trim();
   if (!id) return json({ ok: false, error: "No ticket id." }, 400);
   if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
+  // A client gets a simple experience: add photos and notes, and dismiss
+  // (Archive) or reopen their ticket. Everything else (review/confirm, status
+  // beyond Archive/reopen, title, category, location, assigned tech, asset,
+  // description) is admin-only. Strip those server-side so the API can't be used
+  // to bypass the simpler UI.
+  if (session && session.role === "client") {
+    ["reviewed", "assignedTo", "title", "category", "location", "description", "assetId", "newAssetName"].forEach(function (k) { delete body[k]; });
+    if (body.status && body.status !== "Open" && body.status !== "Archived") delete body.status;
+  }
   const refs = await getRefs(env);
   // Remember the status so we can log a change event.
   let prevStatus = null;

@@ -335,10 +335,17 @@
     listEl.innerHTML = rows.map(function(t){
       var updated = (t.hasNote && t.lastActivity && t.lastActivity > t.created) ? ("Updated " + fmtDate(t.lastActivity)) : "";
       var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, t.assignedTo ? ("👤 "+t.assignedTo) : "", fmtDate(t.created), updated].filter(Boolean).map(esc).join(" · ");
-      var actions = (!t.reviewed ? reviewBtn(t.id) : "");
-      if (t.status === "Archived") actions += qbtn("Reopen", t.id, "Open");
-      else if (t.status === "Complete" || t.status === "Closed") actions += qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
-      else actions += (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
+      // Confirm (review), Start and Complete are admin-only; a client can only Archive (dismiss).
+      var actions = "";
+      if (!IS_CLIENT){
+        if (!t.reviewed) actions += reviewBtn(t.id);
+        if (t.status === "Archived") actions += qbtn("Reopen", t.id, "Open");
+        else if (t.status === "Complete" || t.status === "Closed") actions += qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
+        else actions += (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
+      } else {
+        // Client: dismiss (Archive) only.
+        if (t.status !== "Archived") actions += qbtn("Archive", t.id, "Archived");
+      }
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
       var reviewPill = (!t.reviewed) ? "<span class='pill p-review'>Needs review</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
@@ -395,29 +402,35 @@
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
-        "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px'>" +
-          "<div id='e_review'></div>" +
-          "<button class='qbtn' id='e_ai' type='button'>✨ Rewrite with AI</button>" +
-        "</div>" +
-        "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
-        "<div class='frow'>" +
-          "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
-          "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
-        "</div>" +
-        "<div class='frow'>" +
-          (IS_CLIENT ? "" : "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>") +
-          "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
-          "<div class='field'><label>Assigned to</label><input id='e_assigned' value='" + esc(t.assignedTo||"") + "' placeholder='Name or tech' /></div>" +
-        "</div>" +
-        "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
-          "<select id='e_asset'>" + assetOpts + "</select>" +
-          "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
+        // Admin controls (review, AI rewrite, status, category, client, where,
+        // assigned, asset). A client gets a simple view: read the ticket, add
+        // photos and notes. Status, tech, location and asset are admin-only.
+        (IS_CLIENT ? "" :
+          "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px'>" +
+            "<div id='e_review'></div>" +
+            "<button class='qbtn' id='e_ai' type='button'>✨ Rewrite with AI</button>" +
+          "</div>" +
+          "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
+          "<div class='frow'>" +
+            "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
+            "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
+          "</div>" +
+          "<div class='frow'>" +
+            "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
+            "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
+            "<div class='field'><label>Assigned to</label><input id='e_assigned' value='" + esc(t.assignedTo||"") + "' placeholder='Name or tech' /></div>" +
+          "</div>" +
+          "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
+            "<select id='e_asset'>" + assetOpts + "</select>" +
+            "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>"
+        ) +
         "<div class='field'><label>Description</label>" +
-          "<textarea id='e_desc' style='min-height:120px'>" + esc(t.description) + "</textarea>" +
+          "<textarea id='e_desc' style='min-height:120px'" + (IS_CLIENT ? " readonly" : "") + ">" + esc(t.description) + "</textarea>" +
         "</div>" +
         "<div class='field'><label>Photos</label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
-          "<input type='file' id='e_file' accept='image/*' multiple capture='environment' />" +
+          "<label class='qbtn' for='e_file' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
+          "<input type='file' id='e_file' accept='image/*' multiple capture='environment' style='display:none' />" +
         "</div>" +
         "<div class='logsec'>" +
           "<h4>Update log</h4>" +
@@ -466,7 +479,7 @@
     }
 
     var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
-    assetSelEl.addEventListener("change", function(){ newAssetEl.style.display = assetSelEl.value === "__new" ? "block" : "none"; if(assetSelEl.value==="__new") newAssetEl.focus(); });
+    if (assetSelEl) assetSelEl.addEventListener("change", function(){ newAssetEl.style.display = assetSelEl.value === "__new" ? "block" : "none"; if(assetSelEl.value==="__new") newAssetEl.focus(); });
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
@@ -497,7 +510,8 @@
       }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
     });
 
-    document.getElementById("e_ai").addEventListener("click", function(){
+    var aiBtnEl = document.getElementById("e_ai");
+    if (aiBtnEl) aiBtnEl.addEventListener("click", function(){
       var b = document.getElementById("e_ai"); b.disabled = true; b.textContent = "Thinking…";
       var msg = document.getElementById("e_msg"); msg.textContent = "";
       var payload = {
@@ -648,21 +662,24 @@
     document.getElementById("e_back").addEventListener("click", window.__ticketBack);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
-      var ecl = document.getElementById("e_client");
       var payload = {
         id: t.id,
-        status: document.getElementById("e_status").value,
-        client: ecl ? ecl.value : undefined,
-        category: document.getElementById("e_cat").value,
-        location: document.getElementById("e_loc").value,
-        assignedTo: document.getElementById("e_assigned") ? document.getElementById("e_assigned").value : undefined,
-        description: document.getElementById("e_desc").value,
-        title: document.getElementById("e_title").value || genTitle,
         keepPhotos: existingPhotos,
         addPhotos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
       };
-      if (assetSelEl.value === "__new"){ var nn = newAssetEl.value.trim(); if(nn) payload.newAssetName = nn; }
-      else { payload.assetId = assetSelEl.value; }  // "" clears the link
+      // The admin fields only exist for non-clients; clients just save photos + notes.
+      if (!IS_CLIENT){
+        var ecl = document.getElementById("e_client");
+        payload.status = document.getElementById("e_status").value;
+        payload.client = ecl ? ecl.value : undefined;
+        payload.category = document.getElementById("e_cat").value;
+        payload.location = document.getElementById("e_loc").value;
+        payload.assignedTo = document.getElementById("e_assigned") ? document.getElementById("e_assigned").value : undefined;
+        payload.description = document.getElementById("e_desc").value;
+        payload.title = document.getElementById("e_title").value || genTitle;
+        if (assetSelEl && assetSelEl.value === "__new"){ var nn = newAssetEl.value.trim(); if(nn) payload.newAssetName = nn; }
+        else if (assetSelEl) { payload.assetId = assetSelEl.value; }  // "" clears the link
+      }
       // Save also commits anything typed in the "Add a note" box, so nothing is lost.
       var noteText = (document.getElementById("e_note").value || "").trim();
       var pendingNotePhotos = notePhotos.slice();
