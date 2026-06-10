@@ -59,6 +59,8 @@
   .pill.p-prog{background:#dfe9f4;color:#274a73}
   .pill.p-done{background:#e7e2d6;color:#545047}
   .pill.p-arch{background:#f0e0d4;color:#7a4a26}
+  .pill.p-review{background:#f6eccf;color:#7a5a12}
+  .qbtn.rev{background:var(--green);color:#f6f2e8;border-color:var(--green)}
   .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
   .client-chip{font-size:.8rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:4px 11px;border-radius:999px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
   .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
@@ -72,6 +74,9 @@
   .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
   .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:20px 18px;margin-bottom:40px}
   .panel h3{font-size:1.2rem;margin-bottom:4px}
+  .rev-pill{display:inline-block;font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 10px;border-radius:999px;vertical-align:middle;margin-right:8px}
+  .rev-pill.need{background:#f6eccf;color:#7a5a12}
+  .rev-pill.ok{background:#e3efe7;color:#21443a}
   .panel .ref{color:var(--muted);font-size:.86rem;margin-bottom:14px}
   .panel img.photo{width:100%;max-height:240px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-bottom:14px}
   .row2{display:flex;gap:10px;margin-top:6px}
@@ -133,6 +138,7 @@
       <select id="status">
         <option value="__open" selected>Open</option>
         <option value="__closed">Closed</option>
+        <option value="__review">Needs review</option>
         <option value="__all">All</option>
         <option value="Open">— Open only</option>
         <option value="Scheduled">— Scheduled</option>
@@ -303,6 +309,7 @@
       // All, or one exact status.
       var closed = CLOSED.indexOf(t.status) >= 0;
       if (status === "__all") { /* show all */ }
+      else if (status === "__review") { if (t.reviewed) return false; }
       else if (status === "__open") { if (closed) return false; }
       else if (status === "__closed") { if (!closed) return false; }
       else if (status === "__active") { if (t.status === "Archived") return false; }
@@ -322,18 +329,19 @@
     countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s");
     listEl.innerHTML = rows.map(function(t){
       var updated = (t.hasNote && t.lastActivity && t.lastActivity > t.created) ? ("Updated " + fmtDate(t.lastActivity)) : "";
-      var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, fmtDate(t.created), updated].filter(Boolean).map(esc).join(" · ");
-      var actions;
-      if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
-      else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
-      else actions = (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
+      var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, t.assignedTo ? ("👤 "+t.assignedTo) : "", fmtDate(t.created), updated].filter(Boolean).map(esc).join(" · ");
+      var actions = (!t.reviewed ? reviewBtn(t.id) : "");
+      if (t.status === "Archived") actions += qbtn("Reopen", t.id, "Open");
+      else if (t.status === "Complete" || t.status === "Closed") actions += qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
+      else actions += (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
+      var reviewPill = (!t.reviewed) ? "<span class='pill p-review'>Needs review</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
         (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
         "<div class='actions'>" + actions + "</div>" +
-        "</div><div class='rcol'>" + clientChip + "<span class='pill p-" + statusTok(t.status) + "'>" + esc(t.status) + "</span></div></div>";
+        "</div><div class='rcol'>" + clientChip + "<span class='pill p-" + statusTok(t.status) + "'>" + esc(t.status) + "</span>" + reviewPill + "</div></div>";
     }).join("");
   }
   loadAll();
@@ -341,6 +349,13 @@
   function qbtn(label, id, status){
     return "<button class='qbtn' onclick='event.stopPropagation(); quickStatus(\"" + id + "\",\"" + status + "\")'>" + label + "</button>";
   }
+  function reviewBtn(id){
+    return "<button class='qbtn rev' onclick='event.stopPropagation(); quickReviewed(\"" + id + "\")'>✓ Confirm</button>";
+  }
+  window.quickReviewed = function(id){
+    fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:id, reviewed:true }) })
+      .then(function(r){return r.json();}).then(function(){ loadAll(); }).catch(function(){ loadAll(); });
+  };
   window.quickStatus = function(id, status){
     fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:id, status:status }) })
       .then(function(r){return r.json();}).then(function(){ loadAll(); }).catch(function(){ loadAll(); });
@@ -375,6 +390,7 @@
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
+        "<div id='e_review' style='margin-bottom:14px'></div>" +
         "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
         "<div class='frow'>" +
           "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
@@ -383,6 +399,7 @@
         "<div class='frow'>" +
           (IS_CLIENT ? "" : "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>") +
           "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
+          "<div class='field'><label>Assigned to</label><input id='e_assigned' value='" + esc(t.assignedTo||"") + "' placeholder='Name or tech' /></div>" +
         "</div>" +
         "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
           "<select id='e_asset'>" + assetOpts + "</select>" +
@@ -414,6 +431,24 @@
         "<div class='msg' id='e_msg'></div>" +
       "</div>";
     window.scrollTo(0,0);
+
+    // Human review: a ticket is "Needs review" until a person confirms it.
+    var reviewed = !!t.reviewed;
+    function renderReview(){
+      var el = document.getElementById("e_review"); if(!el) return;
+      if (reviewed){
+        el.innerHTML = "<span class='rev-pill ok'>✓ Reviewed</span><button class='qbtn' id='e_unreview' type='button'>Undo</button>";
+        document.getElementById("e_unreview").addEventListener("click", function(){ setReviewed(false); });
+      } else {
+        el.innerHTML = "<span class='rev-pill need'>Needs review</span><button class='qbtn' id='e_doreview' type='button'>Mark reviewed</button>";
+        document.getElementById("e_doreview").addEventListener("click", function(){ setReviewed(true); });
+      }
+    }
+    function setReviewed(v){
+      fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, reviewed:v }) })
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ reviewed=v; t.reviewed=v; renderReview(); if(typeof loadLog==="function") loadLog(); } });
+    }
+    renderReview();
 
     var eClientEl = document.getElementById("e_client");
     if (eClientEl){
@@ -594,6 +629,7 @@
         client: ecl ? ecl.value : undefined,
         category: document.getElementById("e_cat").value,
         location: document.getElementById("e_loc").value,
+        assignedTo: document.getElementById("e_assigned") ? document.getElementById("e_assigned").value : undefined,
         description: document.getElementById("e_desc").value,
         title: document.getElementById("e_title").value || genTitle,
         keepPhotos: existingPhotos,

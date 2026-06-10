@@ -2109,7 +2109,7 @@ async function listTickets(url, env, session) {
 
   let rows = await sbSelect(
     env,
-    `tickets?select=id,ref,title,description,location,status,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name,nickname)${filter}&order=created_at.desc`
+    `tickets?select=id,ref,title,description,location,status,reviewed,assigned_to,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name,nickname)${filter}&order=created_at.desc`
   );
   // If the foreign-key embed fails (returns null), fall back to a plain read so
   // tickets still show. Resolve client/category names from the cached refs.
@@ -2151,6 +2151,8 @@ async function listTickets(url, env, session) {
         location: t.location || "",
         photo: t.photo_url || "",
         photos: t.photo_urls || (t.photo_url ? [t.photo_url] : []),
+        reviewed: t.reviewed === true,
+        assignedTo: t.assigned_to || "",
         created: created,
         lastActivity: cAct > created ? cAct : created,
         hasNote: !!cAct,
@@ -2291,6 +2293,8 @@ async function updateTicket(request, env, session) {
   if ("description" in body) patch.description = body.description;
   if ("location" in body) patch.location = body.location;
   if ("title" in body && body.title) patch.title = body.title;
+  if ("reviewed" in body) patch.reviewed = !!body.reviewed;
+  if ("assignedTo" in body) patch.assigned_to = (body.assignedTo || "").toString().trim() || null;
   if ("client" in body && scopeName(session) == null) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
   // Link / relink / unlink an asset.
   if ("assetId" in body) {
@@ -2331,6 +2335,12 @@ async function updateTicket(request, env, session) {
     if (!res.ok) return json({ ok: false, error: ("Save failed. " + (res.error || "")).slice(0, 300) }, 502);
     if ("status" in body && prevStatus && body.status && body.status !== prevStatus) {
       await logTicketEvent(env, id, session, "Status changed from " + prevStatus + " to " + body.status);
+    }
+    if ("reviewed" in body && body.reviewed === true) {
+      await logTicketEvent(env, id, session, "Marked reviewed");
+    }
+    if ("assignedTo" in body && (body.assignedTo || "").toString().trim()) {
+      await logTicketEvent(env, id, session, "Assigned to " + body.assignedTo.toString().trim());
     }
   }
   if (photoPatch) {

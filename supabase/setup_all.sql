@@ -110,6 +110,10 @@ create index if not exists tickets_status_idx on tickets (status);
 -- For databases created before multi-photo tickets / asset links:
 alter table tickets add column if not exists photo_urls text[];
 alter table tickets add column if not exists asset_id uuid references assets(id);
+-- Human review: tickets start "needs review" (AI/client wrote them); a person
+-- confirms once they've checked it. Optional free-text assignee.
+alter table tickets add column if not exists reviewed boolean not null default false;
+alter table tickets add column if not exists assigned_to text;
 
 -- Per-ticket update log: typed notes plus automatic events (status changes).
 create table if not exists ticket_comments (
