@@ -69,11 +69,14 @@ workflows:
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
+          # Apply the profile from inside the iOS project so it lands on the App target.
+          cd "$CM_BUILD_DIR/mobile/ios/App"
           xcode-project use-profiles
       - name: Build IPA
         script: |
+          cd "$CM_BUILD_DIR/mobile/ios/App"
           xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/mobile/ios/App/App.xcworkspace" \
+            --workspace "App.xcworkspace" \
             --scheme "App"
     artifacts:
       - build/ios/ipa/*.ipa
