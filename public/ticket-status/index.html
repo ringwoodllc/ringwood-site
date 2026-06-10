@@ -60,7 +60,7 @@
   .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
   .client-chip{font-size:.8rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:4px 11px;border-radius:999px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
   .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-  .qbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
+  .qbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:9px 15px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
   .qbtn:hover{border-color:var(--green)}
   .empty{color:var(--muted);padding:18px 4px}
 
@@ -425,13 +425,13 @@
       var html = existingPhotos.map(function(u, i){
         return "<span style='position:relative;display:inline-block'>" +
           "<img class='zoomable' src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
-          "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
+          "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-8px;width:28px;height:28px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
           "</span>";
       }).join("");
       html += newPhotos.map(function(p, i){
         return "<span style='position:relative;display:inline-block'>" +
           "<img class='zoomable' src='" + p.preview + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
-          "<button type='button' onclick='__rmNewPhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
+          "<button type='button' onclick='__rmNewPhoto(" + i + ")' style='position:absolute;top:-7px;right:-8px;width:28px;height:28px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
           "</span>";
       }).join("");
       thumbsEl.innerHTML = html || "<span style='color:var(--muted);font-size:.9rem'>No photos yet.</span>";
@@ -545,7 +545,7 @@
       noteThumbs.innerHTML = notePhotos.map(function(p, i){
         return "<span style='position:relative;display:inline-block'>" +
           "<img class='zoomable' src='" + p.preview + "' alt='' style='width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
-          "<button type='button' onclick='__rmNotePhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:12px;line-height:1;cursor:pointer'>×</button>" +
+          "<button type='button' onclick='__rmNotePhoto(" + i + ")' style='position:absolute;top:-7px;right:-8px;width:26px;height:26px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:12px;line-height:1;cursor:pointer'>×</button>" +
         "</span>";
       }).join("");
     }
