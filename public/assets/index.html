@@ -445,6 +445,7 @@
       photos: photos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
     };
 
+    var nPhotos = payload.photos.length;
     submitBtn.disabled = true;
     submitBtn.textContent = "Saving…";
     msg.className = "msg";
@@ -458,7 +459,11 @@
         form.reset();
         photos = [];
         renderThumbs();
-        showMsg("ok", "Saved — go ahead with the next one.");
+        if (nPhotos && data.savedPhotos != null && data.savedPhotos < nPhotos) {
+          showMsg("err", "Saved, but only " + data.savedPhotos + " of " + nPhotos + " photos uploaded. Open the asset to add the rest.");
+        } else {
+          showMsg("ok", "Saved — go ahead with the next one.");
+        }
         if (data.id) trackCapture(data.id);
       } else {
         showMsg("err", (data && data.error) || "Something went wrong. Please try again.");

@@ -525,7 +525,11 @@ form.addEventListener("submit", function (e) {
         "<div><strong>Work.</strong> " + escapeHtml(categoryEl.value) + "</div>";
       if (locationValue()) rb += "<div><strong>Location.</strong> " + escapeHtml(locationValue()) + "</div>";
       if (noteEl.value.trim()) rb += "<div><strong>Note.</strong> " + escapeHtml(noteEl.value) + "</div>";
-      if (res.photoCount) rb += "<div><strong>Photos.</strong> " + (res.savedPhotos != null ? res.savedPhotos : res.photoCount) + " saved</div>";
+      if (res.photoCount) {
+        var saved = res.savedPhotos != null ? res.savedPhotos : res.photoCount;
+        rb += "<div><strong>Photos.</strong> " + saved + " of " + res.photoCount + " saved" +
+          (saved < res.photoCount ? " <span style='color:#8a3d1c'>(some didn't upload — reopen the ticket to add them again)</span>" : "") + "</div>";
+      }
       document.getElementById("recapBody").innerHTML = rb;
       document.getElementById("intro").style.display = "none";
       form.style.display = "none";

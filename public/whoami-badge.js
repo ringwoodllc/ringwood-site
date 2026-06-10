@@ -11,6 +11,36 @@
 
   function esc(s) { return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
+  // Accessibility: the CSS reset removed focus rings and many clickable rows are
+  // <div onclick=...> that a keyboard can't reach. Restore visible focus and make
+  // those rows focusable + operable with Enter/Space. Runs on every app page.
+  (function () {
+    var s = document.createElement("style");
+    s.textContent = "a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,[role=button]:focus-visible,[onclick]:focus-visible{outline:2px solid #2f5d50;outline-offset:2px;border-radius:4px}";
+    (document.head || document.documentElement).appendChild(s);
+    function tagRows() {
+      var els = document.querySelectorAll("[onclick]:not([data-kb])");
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i], t = el.tagName;
+        el.setAttribute("data-kb", "1");
+        if (t === "A" || t === "BUTTON" || t === "INPUT" || t === "SELECT" || t === "TEXTAREA" || t === "LABEL") continue;
+        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+        if (!el.hasAttribute("role")) el.setAttribute("role", "button");
+      }
+    }
+    if (document.readyState !== "loading") tagRows();
+    document.addEventListener("DOMContentLoaded", tagRows);
+    try { new MutationObserver(tagRows).observe(document.documentElement, { childList: true, subtree: true }); } catch (e) {}
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      var el = document.activeElement;
+      if (!el || !el.getAttribute) return;
+      var t = el.tagName;
+      if (t === "A" || t === "BUTTON" || t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+      if (el.getAttribute("role") === "button" || el.hasAttribute("onclick")) { e.preventDefault(); el.click(); }
+    });
+  })();
+
   var css =
     ".rw-idstrip{background:var(--bg-2,#efe8d8);border-bottom:1px solid var(--line,rgba(35,40,42,.14));font-size:.8rem;color:var(--muted,#5f5d52);padding:7px 22px;padding-top:calc(7px + env(safe-area-inset-top, 0px));text-align:right;font-family:inherit}" +
     ".rw-idstrip a{color:var(--green-deep,#21443a);text-decoration:none;font-weight:600}" +
