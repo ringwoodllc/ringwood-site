@@ -230,7 +230,7 @@
   function photoOrderLabel(i){ return i===0 ? "Overall" : (i===1 ? "Nameplate" : ("Photo " + (i+1))); }
   function renderThumbs(){
     thumbsEl.innerHTML = photos.map(function(p, i){
-      return "<span class='ph'><img src='" + p.preview + "' alt='' />" +
+      return "<span class='ph'><img class='zoomable' src='" + p.preview + "' alt='' />" +
         "<span class='ord'>" + photoOrderLabel(i) + "</span>" +
         "<button type='button' class='x' onclick='removePhoto(" + i + ")'>×</button></span>";
     }).join("");
@@ -471,6 +471,7 @@
     });
   });
 </script>
+<script src="/lightbox.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

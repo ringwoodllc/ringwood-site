@@ -265,7 +265,7 @@
   function assetPhotoList(a){ if(a.photos && a.photos.length) return a.photos; return [a.overallPhoto,a.nameplatePhoto,a.serialPhoto].filter(Boolean); }
   function renderRead(a){
     var list = assetPhotoList(a);
-    var photos = list.map(function(u){ return "<figure><img src='"+esc(u)+"' alt=''/></figure>"; }).join("");
+    var photos = list.map(function(u){ return "<figure><img class='zoomable' src='"+esc(u)+"' alt=''/></figure>"; }).join("");
     photos = photos?"<div class='photos'>"+photos+"</div>":"";
     var added = a.loggedAt ? new Date(a.loggedAt).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) + " at " + new Date(a.loggedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}) : "";
     var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+row("Logged",added)+"</dl></div>";
@@ -451,11 +451,11 @@
   function renderEditThumbs(){
     var el=document.getElementById("editthumbs"); if(!el) return;
     var html = editKeep.map(function(u,i){
-      return "<span style='position:relative;display:inline-block'><img src='"+esc(u)+"' alt='' style='width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/>"+
+      return "<span style='position:relative;display:inline-block'><img class='zoomable' src='"+esc(u)+"' alt='' style='width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/>"+
         "<button type='button' onclick='__aRmKeep("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
     }).join("");
     html += editNew.map(function(p,i){
-      return "<span style='position:relative;display:inline-block'><img src='"+p.preview+"' alt='' style='width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/>"+
+      return "<span style='position:relative;display:inline-block'><img class='zoomable' src='"+p.preview+"' alt='' style='width:88px;height:88px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/>"+
         "<button type='button' onclick='__aRmNew("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
     }).join("");
     el.innerHTML = html || "<span class='sub' style='color:var(--muted)'>No photos yet. Add an overall shot first, then the nameplate.</span>";
@@ -573,11 +573,11 @@
   function renderSvcThumbs(){
     var el=document.getElementById("svcthumbs"); if(!el) return;
     var html = svcKeep.map(function(u,i){
-      return "<span style='position:relative;display:inline-block'><img src='"+esc(u)+"' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/>"+
+      return "<span style='position:relative;display:inline-block'><img class='zoomable' src='"+esc(u)+"' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line)'/>"+
         "<button type='button' onclick='__svcRmKeep("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
     }).join("");
     html += svcNew.map(function(p,i){
-      return "<span style='position:relative;display:inline-block'><img src='"+p.preview+"' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/>"+
+      return "<span style='position:relative;display:inline-block'><img class='zoomable' src='"+p.preview+"' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--green)'/>"+
         "<button type='button' onclick='__svcRmNew("+i+")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button></span>";
     }).join("");
     el.innerHTML = html || "<span class='sub' style='color:var(--muted)'>No photos yet.</span>";
@@ -592,6 +592,7 @@
     }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent="Couldn't reach the server."; });
   }
 </script>
+<script src="/lightbox.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

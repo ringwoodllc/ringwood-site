@@ -424,13 +424,13 @@
     function renderThumbs(){
       var html = existingPhotos.map(function(u, i){
         return "<span style='position:relative;display:inline-block'>" +
-          "<img src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
+          "<img class='zoomable' src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
           "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
           "</span>";
       }).join("");
       html += newPhotos.map(function(p, i){
         return "<span style='position:relative;display:inline-block'>" +
-          "<img src='" + p.preview + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
+          "<img class='zoomable' src='" + p.preview + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
           "<button type='button' onclick='__rmNewPhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
           "</span>";
       }).join("");
@@ -490,7 +490,7 @@
           "</span>";
         }
         var photos = (c.photos && c.photos.length) ?
-          "<div class='photos'>" + c.photos.map(function(u){ return "<img src='" + esc(u) + "' alt='note photo' onclick=\"window.open('" + esc(u) + "','_blank')\" />"; }).join("") + "</div>" : "";
+          "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
         return "<div class='lg " + (isEvent?"event":"note") + "' data-cid='" + esc(c.id) + "'>" +
           "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
           "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
@@ -544,7 +544,7 @@
     function renderNoteThumbs(){
       noteThumbs.innerHTML = notePhotos.map(function(p, i){
         return "<span style='position:relative;display:inline-block'>" +
-          "<img src='" + p.preview + "' alt='' style='width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
+          "<img class='zoomable' src='" + p.preview + "' alt='' style='width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
           "<button type='button' onclick='__rmNotePhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:12px;line-height:1;cursor:pointer'>×</button>" +
         "</span>";
       }).join("");
@@ -607,6 +607,7 @@
   statusSel.addEventListener("change", render);
   sortSel.addEventListener("change", render);
 </script>
+<script src="/lightbox.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>
