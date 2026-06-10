@@ -578,7 +578,7 @@
       var html = existingPhotos.map(function(u, i){
         return "<span style='position:relative;display:inline-block'>" +
           "<img class='zoomable' src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
-          "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-8px;width:28px;height:28px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>" +
+          (IS_CLIENT ? "" : "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-8px;width:28px;height:28px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>") +
           "</span>";
       }).join("");
       html += newPhotos.map(function(p, i){

@@ -2660,6 +2660,9 @@ async function updateTicket(request, env, session) {
   if (session && session.role === "client") {
     ["reviewed", "assignedTo", "title", "category", "location", "description", "assetId", "newAssetName"].forEach(function (k) { delete body[k]; });
     if (body.status && body.status !== "Open" && body.status !== "Archived") delete body.status;
+    // Clients can add photos but not remove existing ones: ignore keepPhotos so
+    // current photos are always preserved (addPhotos still append).
+    delete body.keepPhotos;
   }
   const refs = await getRefs(env);
   // Remember the prior values so we can log what changed (revision history).
