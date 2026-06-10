@@ -20,6 +20,7 @@ create table if not exists clients (
   status text not null default 'Active',        -- Active | Prospect | Churned
   legal_name text,
   address text,
+  color text,
   primary_contact text,
   email text,
   phone text,
@@ -27,6 +28,7 @@ create table if not exists clients (
   created_at timestamptz not null default now()
 );
 alter table clients add column if not exists address text;
+alter table clients add column if not exists color text;
 
 create table if not exists equipment_types (
   id uuid primary key default gen_random_uuid(),

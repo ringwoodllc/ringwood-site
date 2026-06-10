@@ -40,6 +40,7 @@
   .urole{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:#dfe9f4;color:#274a73;white-space:nowrap}
   .urole.client{background:#e3efe7;color:var(--green-deep)}
   .urole.off{background:#f0e0d4;color:#8a5a36}
+  .cchip{font-size:.74rem;font-weight:700;color:#f6f2e8;padding:3px 10px;border-radius:999px;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
   .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .chk{display:flex;align-items:center;gap:8px;font-size:.92rem;color:var(--ink);margin-top:10px;cursor:pointer}
   .chk input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;padding:0;margin:0;flex:0 0 auto;accent-color:var(--green);border:0;background:none;cursor:pointer}
@@ -152,12 +153,13 @@
     var roleTag = "<span class='urole "+(isMaster?"":"client")+(u.active?"":" off")+"'>"+(u.active?(isMaster?"Master":"Client"):"Disabled")+"</span>";
     var sum = [];
     if(u.username) sum.push("@"+u.username);
-    sum.push(isMaster ? "all clients" : (u.client || "no client set"));
+    if(isMaster) sum.push("all clients"); else if(!u.client) sum.push("no client set");
     if(!u.active) sum.push("disabled");
+    var cchip = (!isMaster && u.client) ? "<span class='cchip' style='background:"+(u.clientColor||"#21443a")+"'>"+esc(u.client)+"</span>" : "";
     var head =
       "<div class='usum' onclick=\"toggleUser('"+k+"')\">"+
         "<div><div class='um'>"+esc(u.email || (u.username?("@"+u.username):"(login)"))+"</div><div class='us'>"+esc(sum.join(" · "))+"</div></div>"+
-        "<div style='display:flex;align-items:center;gap:10px'>"+roleTag+"<span class='caret'>›</span></div>"+
+        "<div style='display:flex;align-items:center;gap:8px'>"+cchip+roleTag+"<span class='caret'>›</span></div>"+
       "</div>";
     var ed =
       "<div class='field'><label>Email <span style='font-weight:400;color:var(--muted)'>— optional</span></label><input id='em_"+k+"' type='email' inputmode='email' autocomplete='off' value='"+esc(u.email||"")+"' placeholder='name@client.com' /></div>"+

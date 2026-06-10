@@ -357,14 +357,16 @@ const SYNTH_DOMAIN = "@id.ringwood.ai";
 // ---- master-only: client setup ----
 async function adminListClients(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "clients?select=id,name,status,address,primary_contact,email,phone,notes&order=name");
+  const rows = await sbSelect(env, "clients?select=id,name,status,address,color,primary_contact,email,phone,notes&order=name");
   return noStore({
     ok: true,
+    palette: CLIENT_PALETTE,
     clients: (rows || []).map((c) => ({
       id: c.id,
       name: c.name || "",
       status: c.status || "Active",
       address: c.address || "",
+      color: c.color || "",
       contact: c.primary_contact || "",
       email: c.email || "",
       phone: c.phone || "",
@@ -387,6 +389,15 @@ async function adminSaveClient(request, env) {
   if (!name) return json({ ok: false, error: "Enter a client name." }, 400);
   const patch = { name, address: c(body.address) || null, primary_contact: c(body.contact) || null, email: c(body.email) || null, phone: c(body.phone) || null };
   if ("status" in body) patch.status = c(body.status) || "Active";
+  if ("color" in body) {
+    const color = c(body.color);
+    if (color) {
+      // A color belongs to one client: reject if another client already has it.
+      const dupe = await sbSelect(env, `clients?select=id&color=eq.${encodeURIComponent(color)}${id ? `&id=neq.${id}` : ""}&limit=1`);
+      if (dupe && dupe.length) return json({ ok: false, error: "That color is already used by another client." }, 400);
+    }
+    patch.color = color || null;
+  }
   let res;
   if (id) res = await sbUpdate(env, "clients", id, patch);
   else res = await sbInsert(env, "clients", Object.assign({ status: "Active" }, patch));
@@ -397,7 +408,7 @@ async function adminSaveClient(request, env) {
 
 async function adminListUsers(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,perms,client:clients(name)&order=role.desc,email");
+  const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,perms,client:clients(name,color)&order=role.desc,email");
   return noStore({
     ok: true,
     users: (rows || []).map((u) => ({
@@ -407,6 +418,7 @@ async function adminListUsers(request, env) {
       username: u.username || "",
       role: u.role,
       client: (u.client && u.client.name) || "",
+      clientColor: (u.client && u.client.color) || (u.client && u.client.name ? hashColor(u.client.name) : ""),
       active: u.active !== false,
       perms: cleanPerms(u.perms || {}),
     })),
@@ -701,7 +713,7 @@ function clearRefsCache() {
 async function getRefs(env) {
   if (_refsCache && Date.now() - _refsCache.t < 30000) return _refsCache.data;
   const [clients, equip, locs, svc, cats] = await Promise.all([
-    sbSelect(env, "clients?select=id,name,status&order=name"),
+    sbSelect(env, "clients?select=id,name,status,color&order=name"),
     sbSelect(env, "equipment_types?select=id,name,active&order=sort_order"),
     sbSelect(env, "locations?select=id,name,active&order=sort_order"),
     sbSelect(env, "service_types?select=id,name,active&order=sort_order"),
@@ -722,6 +734,20 @@ function findId(arr, name) {
   if (!name) return null;
   const hit = (arr || []).find((x) => (x.name || "").toLowerCase() === name.toLowerCase());
   return hit ? hit.id : null;
+}
+
+// Per-client color: the assigned one, else a stable fallback from the name.
+// Keep this palette + hash identical to public/client-color.js.
+const CLIENT_PALETTE = ["#2f5d50", "#a9633a", "#3a5a7a", "#6b4a6e", "#2f6d62", "#8a5a2a", "#556b2f", "#7a3550", "#455a64", "#9a6a1a"];
+function hashColor(name) {
+  const s = (name || "").toLowerCase();
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return s ? CLIENT_PALETTE[h % CLIENT_PALETTE.length] : "#21443a";
+}
+function clientColorFor(refs, name) {
+  const c = (refs.clients || []).find((x) => (x.name || "").toLowerCase() === (name || "").toLowerCase());
+  return (c && c.color) || hashColor(name);
 }
 
 /* ===================== Lists / options ===================== */
@@ -1392,12 +1418,14 @@ async function listAssets(env, session) {
       `assets?select=id,name,nickname,description,make,model,serial,qr_tag,logged_at,equipment_type:equipment_types(name),location:locations(name),client:clients(name)${filter}&order=logged_at.desc`
     );
   }
+  const cref = await getRefs(env);
   return json(
     (rows || []).map((x) => ({
       id: x.id,
       name: x.nickname || x.name || x.description || x.model || "Asset",
       fullName: x.name || "",
       client: (x.client && x.client.name) || "",
+      clientColor: clientColorFor(cref, (x.client && x.client.name) || ""),
       type: (x.equipment_type && x.equipment_type.name) || "",
       location: (x.location && x.location.name) || "",
       model: x.model || "",
@@ -1426,6 +1454,7 @@ async function listAllServices(url, env, session) {
     env,
     `service_records?select=id,service_date,technician,notes,cost,asset_id,asset:assets(id,name,nickname),client:clients(name),service_type:service_types(name)${filter}&order=service_date.desc`
   );
+  const cref = await getRefs(env);
   return json(
     (rows || []).map((s) => ({
       id: s.id,
@@ -1434,6 +1463,7 @@ async function listAllServices(url, env, session) {
       asset: (s.asset && (s.asset.nickname || s.asset.name)) || "",
       assetId: s.asset_id || "",
       client: (s.client && s.client.name) || "",
+      clientColor: clientColorFor(cref, (s.client && s.client.name) || ""),
       technician: s.technician || "",
       notes: s.notes || "",
       cost: s.cost != null ? s.cost : "",
@@ -1948,6 +1978,7 @@ async function listTickets(url, env, session) {
       title: t.title || "Ticket",
       category: embedded ? ((t.category && t.category.name) || "") : nameById(refs.cats, t.category_id),
       client: embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id),
+      clientColor: clientColorFor(refs, embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id)),
       assetId: t.asset_id || "",
       asset: embedded ? ((t.asset && (t.asset.nickname || t.asset.name)) || "") : "",
       status: t.status || "Open",

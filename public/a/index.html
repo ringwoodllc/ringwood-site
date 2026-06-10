@@ -217,7 +217,7 @@
       return "<div class='arow' onclick=\"load('"+esc(a.id)+"')\">"+
         "<div><div class='an'>"+esc(a.name)+(a.qr?" <span class='acl'>("+esc(a.qr)+")</span>":"")+"</div>"+
         (meta?"<div class='am'>"+meta+"</div>":"")+svc+"</div>"+
-        (a.client?"<span class='client-chip' style='background:"+clientColor(a.client)+"'>"+esc(a.client)+"</span>":"")+"</div>";
+        (a.client?"<span class='client-chip' style='background:"+(a.clientColor||clientColor(a.client))+"'>"+esc(a.client)+"</span>":"")+"</div>";
     }).join("");
   }
   function renderSamples(){

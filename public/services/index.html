@@ -98,7 +98,7 @@
         "<div class='bd'><div class='top'>"+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
         (s.notes?"<div class='notes'>"+esc(s.notes)+"</div>":"")+"</div>"+
-        "<div class='rcol'>"+(s.client?"<span class='client-chip' style='background:"+clientColor(s.client)+"'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
+        "<div class='rcol'>"+(s.client?"<span class='client-chip' style='background:"+(s.clientColor||clientColor(s.client))+"'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
       "</div>";
     }).join("");
   }

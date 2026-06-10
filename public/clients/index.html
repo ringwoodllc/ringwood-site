@@ -29,7 +29,14 @@
   h2{font-family:"Spectral",serif;font-weight:500;font-size:1.25rem;color:var(--green-deep);margin:24px 0 10px}
   label{display:block;font-weight:600;font-size:.86rem;color:var(--green-deep);margin-bottom:5px}
   .field{margin-bottom:12px}
-  input{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px}
+  input,select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  select:focus{outline:none;border-color:var(--green)}
+  .swatches{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px}
+  .sw{width:30px;height:30px;border-radius:999px;border:2px solid transparent;cursor:pointer;padding:0}
+  .sw.on{box-shadow:0 0 0 2px var(--bg-2),0 0 0 4px var(--green-deep)}
+  .sw[disabled]{opacity:.25;cursor:not-allowed}
+  .sw.auto{background:var(--bg);border:1px dashed var(--line);color:var(--muted);font-weight:700;font-size:.78rem}
+  .sw.auto.on{border-color:var(--green-deep)}
   input:focus{outline:none;border-color:var(--green)}
   .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:18px 16px;margin-bottom:14px}
   .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.98rem;padding:12px 16px;border-radius:6px}
@@ -73,6 +80,10 @@
       <div class="field"><label>Contact</label><input id="n_contact" type="text" autocomplete="off" placeholder="Who to reach" /></div>
       <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
     </div>
+    <div class="row2">
+      <div class="field" style="flex:0 0 auto"><label>Status</label><select id="n_status"><option>Active</option><option>Prospect</option><option>Churned</option></select></div>
+    </div>
+    <div class="field"><label>Color <span style="font-weight:400;color:var(--muted)">— each color is used by one client</span></label><div id="n_sw"></div></div>
     <button class="btn" id="n_add" type="button">Add client</button>
     <div class="msg" id="n_msg"></div>
   </div>
@@ -86,6 +97,8 @@
   function phoneInput(el){ el.addEventListener("input",function(){ el.value=fmtPhone(el.value); }); }
   phoneInput(document.getElementById("n_phone"));
 
+  var CLIENTS = [], PALETTE = window.CLIENT_PALETTE || [];
+
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/clients"); return; }
     if(d.role!=="master"){ location.replace("/app"); return; }
@@ -93,31 +106,58 @@
     load();
   }).catch(function(){});
 
+  // Swatch picker. selfId lets a client keep its own color (not "taken" by self).
+  function swatchesHtml(prefix, selected, selfId){
+    var taken={}; CLIENTS.forEach(function(c){ if(c.color && c.id!==selfId) taken[c.color]=c.name; });
+    var h="<div class='swatches' data-prefix='"+prefix+"'>";
+    h+="<button type='button' class='sw auto"+(!selected?" on":"")+"' data-c=''>Auto</button>";
+    PALETTE.forEach(function(col){
+      var dis=taken[col]?" disabled title='Used by "+esc(taken[col])+"'":"";
+      h+="<button type='button' class='sw"+(selected===col?" on":"")+"' data-c='"+col+"' style='background:"+col+"'"+dis+"></button>";
+    });
+    h+="</div><input type='hidden' id='"+prefix+"_color' value='"+(selected||"")+"'>";
+    return h;
+  }
+  document.addEventListener("click", function(e){
+    var sw=e.target.closest && e.target.closest(".sw");
+    if(!sw || sw.disabled) return;
+    var box=sw.parentNode, prefix=box.getAttribute("data-prefix");
+    Array.prototype.forEach.call(box.querySelectorAll(".sw"), function(x){ x.classList.remove("on"); });
+    sw.classList.add("on");
+    document.getElementById(prefix+"_color").value = sw.getAttribute("data-c") || "";
+  });
+
   function load(){
     fetch("/api/admin/clients").then(function(r){return r.json();}).then(function(d){
-      var el=document.getElementById("list"), cs=(d&&d.clients)||[];
-      if(!cs.length){ el.innerHTML="<div class='lead'>No clients yet.</div>"; return; }
-      el.innerHTML=cs.map(renderClient).join("");
-      cs.forEach(wire);
+      if(d&&d.palette) PALETTE=d.palette;
+      CLIENTS=(d&&d.clients)||[];
+      document.getElementById("n_sw").innerHTML = swatchesHtml("n", "", null);
+      var el=document.getElementById("list");
+      if(!CLIENTS.length){ el.innerHTML="<div class='lead'>No clients yet.</div>"; return; }
+      el.innerHTML=CLIENTS.map(renderClient).join("");
+      CLIENTS.forEach(wire);
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='lead'>Could not load.</div>"; });
   }
   function ukey(s){ return btoa(s).replace(/[^A-Za-z0-9]/g,""); }
   function renderClient(c){
     var k=ukey(c.id);
-    var sum=[c.contact,c.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
+    var sum=[c.status&&c.status!=="Active"?c.status:"",c.contact,c.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
+    var statusSel="<select id='st_"+k+"'>"+["Active","Prospect","Churned"].map(function(s){return "<option"+(c.status===s?" selected":"")+">"+s+"</option>";}).join("")+"</select>";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
-        "<div><span class='chip' style='background:"+clientColor(c.name)+"'>"+esc(c.name)+"</span><div class='cs'>"+esc(sum)+"</div></div>"+
+        "<div><span class='chip' style='background:"+(c.color||clientColor(c.name))+"'>"+esc(c.name)+"</span><div class='cs'>"+esc(sum)+"</div></div>"+
         "<span class='caret'>›</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
         "<div class='field'><label>Client name</label><input id='nm_"+k+"' value='"+esc(c.name)+"'/></div>"+
         "<div class='field'><label>Address</label><input id='ad_"+k+"' value='"+esc(c.address)+"'/></div>"+
         "<div class='row2'><div class='field'><label>Contact</label><input id='ct_"+k+"' value='"+esc(c.contact)+"'/></div>"+
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(c.phone)+"'/></div></div>"+
+        "<div class='row2'><div class='field' style='flex:0 0 auto'><label>Status</label>"+statusSel+"</div></div>"+
+        "<div class='field'><label>Color</label>"+swatchesHtml("c"+k, c.color, c.id)+"</div>"+
         "<div style='margin-top:6px'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button></div>"+
         "<div class='msg' id='m_"+k+"'></div></div></div>";
   }
-  window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="none"&&b.style.display!==""; b.style.display=(b.style.display==="block")?"none":"block"; it.classList.toggle("open", b.style.display==="block"); };
+  window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); b.style.display=(b.style.display==="block")?"none":"block"; it.classList.toggle("open", b.style.display==="block"); };
   function wire(c){
     var k=ukey(c.id);
     phoneInput(document.getElementById("ph_"+k));
@@ -126,7 +166,7 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a client name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id,name:name,address:document.getElementById("ad_"+k).value,contact:document.getElementById("ct_"+k).value,phone:document.getElementById("ph_"+k).value})})
+      fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id,name:name,address:document.getElementById("ad_"+k).value,contact:document.getElementById("ct_"+k).value,phone:document.getElementById("ph_"+k).value,status:document.getElementById("st_"+k).value,color:document.getElementById("c"+k+"_color").value})})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); }
           else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
@@ -138,9 +178,9 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a client name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name,address:document.getElementById("n_address").value,contact:document.getElementById("n_contact").value,phone:document.getElementById("n_phone").value})})
+    fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name,address:document.getElementById("n_address").value,contact:document.getElementById("n_contact").value,phone:document.getElementById("n_phone").value,status:document.getElementById("n_status").value,color:document.getElementById("n_color").value})})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add client";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Client added."; ["n_name","n_address","n_contact","n_phone"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Client added."; ["n_name","n_address","n_contact","n_phone"].forEach(function(i){document.getElementById(i).value="";}); document.getElementById("n_status").value="Active"; load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add client"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }

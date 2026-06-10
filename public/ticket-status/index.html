@@ -245,7 +245,7 @@
       if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
       else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
       else actions = (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
-      var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + clientColor(t.client) + "'>" + esc(t.client) + "</span>" : "";
+      var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
