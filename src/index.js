@@ -2488,10 +2488,10 @@ async function listTicketComments(url, env, session) {
   if (!(await ownsRecord(env, session, "tickets", id))) return json([]);
   let rows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=id,author,role,kind,body,photo_urls,created_at&order=created_at.asc`);
   rows = rows || [];
-  // Clients only see the note stream — admin actions, AI agent reads, and the raw
-  // intake stay internal.
+  // Clients see the note stream plus their own original submission. Admin actions
+  // and AI agent reads stay internal.
   if (session && session.role === "client") {
-    rows = rows.filter((c) => (c.kind || "note") === "note");
+    rows = rows.filter((c) => (c.kind || "note") === "note" || c.kind === "intake");
   }
   return json(
     rows.map((c) => ({ id: c.id, author: c.author, role: c.role, kind: c.kind || "note", body: c.body || "", photos: c.photo_urls || [], created: c.created_at || "" }))

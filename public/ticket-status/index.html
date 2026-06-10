@@ -628,9 +628,10 @@
         var who = intake[0].author || "Customer";
         var when = fmtWhen(intake[0].created);
         var body = intake.map(function(c){ return c.body; }).filter(Boolean).join("\n\n");
+        var intakeLabel = IS_CLIENT ? "Your original submission" : ("Original submission by " + esc(who));
         intakeHtml =
           "<div class='intake'>" +
-            "<button type='button' class='intake-tog' id='intakeTog'><span id='intakeIco'>＋</span> Original submission by " + esc(who) + "</button>" +
+            "<button type='button' class='intake-tog' id='intakeTog'><span id='intakeIco'>＋</span> " + intakeLabel + "</button>" +
             "<div class='intake-body' id='intakeBody' style='display:none'>" + esc(body) +
               (when ? "<div style='color:var(--muted);font-size:.8rem;margin-top:8px'>Submitted " + esc(when) + "</div>" : "") +
             "</div>" +
