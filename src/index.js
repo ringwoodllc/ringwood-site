@@ -2158,10 +2158,17 @@ async function autoEnrichTicket(ticketId, opts, env) {
     if (opts.note) {
       await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: opts.clientName || "Customer", role: "client", kind: "intake", body: opts.note.slice(0, 4000) });
     }
-    // Leave a short agent reading in the log too.
-    const lines = ["✨ Ringwood AI Agent read this report" + (pics.length ? " and the photos" : "") + " and drafted the ticket for review."];
-    if (assetName) lines.push("Linked equipment: " + assetName + ".");
-    await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: "Ringwood AI Agent", role: "agent", kind: "event", body: lines.join("\n").slice(0, 4000) });
+    // Leave a short agent reading in the log too (brief line + expandable detail).
+    var did = [];
+    if (patch.title) did.push("title");
+    if (patch.description) did.push("description");
+    if (patch.category_id) did.push("category");
+    var brief = "Read the report" + (pics.length ? " and photos" : "") + (did.length ? " and updated the " + did.join(", ") + "." : " and drafted the ticket.");
+    var detail = [];
+    if (patch.title) detail.push('Title: "' + patch.title + '"');
+    if (assetName) detail.push("Linked equipment: " + assetName);
+    var agentBody = "✨ " + brief + (detail.length ? "\n⋮\n" + detail.join("\n") : "");
+    await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: "Ringwood AI Agent", role: "agent", kind: "event", body: agentBody.slice(0, 4000) });
   } catch {
     /* background best-effort; never blocks the submit */
   }
@@ -2479,9 +2486,15 @@ async function listTicketComments(url, env, session) {
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json([]);
   if (!(await ownsRecord(env, session, "tickets", id))) return json([]);
-  const rows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=id,author,role,kind,body,photo_urls,created_at&order=created_at.asc`);
+  let rows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=id,author,role,kind,body,photo_urls,created_at&order=created_at.asc`);
+  rows = rows || [];
+  // Clients only see the note stream — admin actions, AI agent reads, and the raw
+  // intake stay internal.
+  if (session && session.role === "client") {
+    rows = rows.filter((c) => (c.kind || "note") === "note");
+  }
   return json(
-    (rows || []).map((c) => ({ id: c.id, author: c.author, role: c.role, kind: c.kind || "note", body: c.body || "", photos: c.photo_urls || [], created: c.created_at || "" }))
+    rows.map((c) => ({ id: c.id, author: c.author, role: c.role, kind: c.kind || "note", body: c.body || "", photos: c.photo_urls || [], created: c.created_at || "" }))
   );
 }
 
@@ -2597,9 +2610,13 @@ async function deleteTicketComment(request, env, session) {
 }
 
 // Record an automatic event on a ticket (e.g., a status change).
-async function logTicketEvent(env, ticketId, session, text) {
+// Log an admin action on a ticket (status change, edit, AI rewrite). `detail`
+// is optional expandable text (before/after), separated so the UI can hide it
+// behind a "+". These entries are admin-only (hidden from client logins).
+async function logTicketEvent(env, ticketId, session, text, detail) {
   const a = authorOf(session);
-  await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: a.author, role: a.role, kind: "event", body: text });
+  const body = detail ? (text + "\n⋮\n" + detail) : text;
+  await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: a.author, role: a.role, kind: "event", body: body.slice(0, 4000) });
 }
 
 // Master-only: permanently delete a ticket (its log/comments cascade away).
@@ -2644,11 +2661,11 @@ async function updateTicket(request, env, session) {
     if (body.status && body.status !== "Open" && body.status !== "Archived") delete body.status;
   }
   const refs = await getRefs(env);
-  // Remember the status so we can log a change event.
-  let prevStatus = null;
-  if ("status" in body) {
-    const curT = await sbSelect(env, `tickets?id=eq.${id}&select=status`);
-    prevStatus = curT && curT[0] ? curT[0].status : null;
+  // Remember the prior values so we can log what changed (revision history).
+  let prevStatus = null, prevTitle = null, prevDesc = null;
+  if ("status" in body || "title" in body || "description" in body) {
+    const curT = await sbSelect(env, `tickets?id=eq.${id}&select=status,title,description`);
+    if (curT && curT[0]) { prevStatus = curT[0].status; prevTitle = curT[0].title; prevDesc = curT[0].description; }
   }
   const patch = {};
   if ("status" in body) patch.status = body.status;
@@ -2702,6 +2719,12 @@ async function updateTicket(request, env, session) {
     if (!res.ok) return json({ ok: false, error: ("Save failed. " + (res.error || "")).slice(0, 300) }, 502);
     if ("status" in body && prevStatus && body.status && body.status !== prevStatus) {
       await logTicketEvent(env, id, session, "Status changed from " + prevStatus + " to " + body.status);
+    }
+    if ("title" in body && body.title && prevTitle != null && body.title !== prevTitle) {
+      await logTicketEvent(env, id, session, "Title updated", 'From: "' + (prevTitle || "") + '"\nTo: "' + body.title + '"');
+    }
+    if ("description" in body && prevDesc != null && (body.description || "") !== (prevDesc || "")) {
+      await logTicketEvent(env, id, session, "Description updated", "Previous:\n" + (prevDesc || "(empty)"));
     }
     if ("reviewed" in body && body.reviewed === true) {
       await logTicketEvent(env, id, session, "Marked reviewed");
@@ -2797,7 +2820,8 @@ async function suggestTicket(request, env, session) {
   const pics = normalizePics(body);
   const urlPics = Array.isArray(body.photoUrls) ? body.photoUrls.filter(Boolean) : [];
   if (!note && !asset && !pics.length && !urlPics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
-  const out = await suggestTicketFields({ note, asset, pics, urlPics, env });
+  const title = (body.title || "").toString().trim();
+  const out = await suggestTicketFields({ note, asset, pics, urlPics, title, env });
   if (!out) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
   return json({ ok: true, description: out.description || "", category: out.category || "", title: out.title || "" });
 }
@@ -2805,9 +2829,10 @@ async function suggestTicket(request, env, session) {
 // The shared AI pass behind "Rewrite with AI" and the automatic enrichment on
 // submit. Reads the note, the named/linked equipment, and any photos, and
 // returns a clean { title, description, category }. Returns null on failure.
-async function suggestTicketFields({ note, asset, pics, urlPics, env }) {
+async function suggestTicketFields({ note, asset, pics, urlPics, title, env }) {
   note = (note || "").toString().trim();
   asset = (asset || "").toString().trim();
+  title = (title || "").toString().trim();
   pics = pics || [];
   urlPics = (urlPics || []).filter(Boolean);
   if (!env.ANTHROPIC_API_KEY) return null;
@@ -2830,6 +2855,7 @@ async function suggestTicketFields({ note, asset, pics, urlPics, env }) {
     "- category: choose exactly one from this list: " + cats.join(", ") + ".\n" +
     "- title: a short, specific title (max 8 words, Title Case, no quotes, no period). Name the actual thing and what is happening, not the category. Prefer 'Label Maker Won't Turn On' over 'Repair'.\n\n" +
     (asset ? "This ticket is about a specific piece of equipment: \"" + asset + "\". Use that exact name in the title and description (e.g. \"" + asset + " Won't Turn On\").\n" : "") +
+    (title ? 'A title is already written: "' + title + '". If it already names the actual thing and the problem, KEEP it and only fix spelling, grammar, and casing. Do not replace a specific title with a different or more generic one.\n' : "") +
     "Important: describe only what the photos, note, and the named equipment actually show or say. Do NOT invent brands, model numbers, measurements, dimensions, names, or any detail you cannot verify. If something is unclear, keep it general or leave it out.\n" +
     (note ? 'Their note: "' + note + '"\n' : "") +
     "If a field cannot be determined, use an empty string for it.";

@@ -128,6 +128,10 @@
   .intake-tog:hover{border-color:var(--green)}
   .intake-tog #intakeIco{font-size:1rem;width:14px;display:inline-block;text-align:center}
   .intake-body{margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;font-size:.94rem;color:var(--ink);white-space:pre-wrap}
+  .evico{opacity:.7;margin-right:2px}
+  .lgmore{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;width:22px;height:22px;line-height:1;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;vertical-align:middle;padding:0}
+  .lgmore:hover{border-color:var(--green)}
+  .evdetail{margin-top:7px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-size:.86rem;color:var(--muted);white-space:pre-wrap}
   .addnote textarea{min-height:64px}
   .addnote .btn{width:auto;padding:10px 20px;font-size:.96rem}
   .chk input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;accent-color:var(--green);padding:0}
@@ -585,6 +589,7 @@
       var msg = document.getElementById("e_msg"); msg.textContent = "";
       var payload = {
         note: document.getElementById("e_desc").value,
+        title: (document.getElementById("e_title") ? document.getElementById("e_title").value : ""),
         asset: (function(){ var s=document.getElementById("e_asset"); if(!s) return ""; var v=s.value; if(!v||v==="__new"||v==="") return ""; var o=s.options[s.selectedIndex]; return o?o.text:""; })(),
         photos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }),
         photoUrls: existingPhotos
@@ -615,17 +620,23 @@
       var intakeHtml = "";
       if (intake.length){
         var who = intake[0].author || "Customer";
+        var when = fmtWhen(intake[0].created);
         var body = intake.map(function(c){ return c.body; }).filter(Boolean).join("\n\n");
         intakeHtml =
           "<div class='intake'>" +
-            "<button type='button' class='intake-tog' id='intakeTog'><span id='intakeIco'>＋</span> Entered by " + esc(who) + "</button>" +
-            "<div class='intake-body' id='intakeBody' style='display:none'>" + esc(body) + "</div>" +
+            "<button type='button' class='intake-tog' id='intakeTog'><span id='intakeIco'>＋</span> Original submission by " + esc(who) + "</button>" +
+            "<div class='intake-body' id='intakeBody' style='display:none'>" + esc(body) +
+              (when ? "<div style='color:var(--muted);font-size:.8rem;margin-top:8px'>Submitted " + esc(when) + "</div>" : "") +
+            "</div>" +
           "</div>";
       }
       if(!rows.length){ logEl.innerHTML = intakeHtml + "<div class='empty-log'>No updates yet. Add the first note below.</div>"; wireIntake(); return; }
       logEl.innerHTML = intakeHtml + rows.map(function(c){
         LOG_ROWS[c.id] = c;
         var isEvent = c.kind === "event";
+        // Admin events can carry an expandable detail (brief ⋮ detail).
+        var brief = c.body || "", detail = "";
+        if (isEvent && brief.indexOf("\n⋮\n") >= 0){ var pp = brief.split("\n⋮\n"); brief = pp[0]; detail = pp.slice(1).join("\n⋮\n"); }
         var col = c.role === "client" ? noteCol : "var(--green-deep)";
         var whoStyle = (isEvent || c.role !== "client") ? "" : (" style='background:" + col + "'");
         // "Up top" promotes a note's photos to the ticket's photo set. Master can
@@ -643,12 +654,26 @@
         return "<div class='lg " + (isEvent?"event":"note") + (c.role==="agent"?" agent":"") + "' data-cid='" + esc(c.id) + "'>" +
           "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
           "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
-          (c.body ? "<div class='text'>" + esc(c.body) + "</div>" : "") +
+          (c.body ?
+            "<div class='text'>" +
+              (isEvent && c.role !== "agent" ? "<span class='evico'>✎</span> " : "") + esc(brief) +
+              (detail ? " <button type='button' class='lgmore' data-cid='" + esc(c.id) + "'>+</button><div class='evdetail' id='ev_" + esc(c.id) + "' style='display:none'>" + esc(detail) + "</div>" : "") +
+            "</div>"
+          : "") +
           photos +
         "</div>";
       }).join("");
       wireIntake();
     }
+    // Expand/collapse an event's detail (revision history) when the + is tapped.
+    logEl.addEventListener("click", function(e){
+      var mb = e.target.closest ? e.target.closest(".lgmore") : null;
+      if(!mb) return;
+      var d = document.getElementById("ev_" + mb.getAttribute("data-cid")); if(!d) return;
+      var open = d.style.display !== "none";
+      d.style.display = open ? "none" : "block";
+      mb.textContent = open ? "+" : "−";
+    });
     // Collapsible "Entered by <client>": starts closed, the + opens it for reference.
     function wireIntake(){
       var tog = document.getElementById("intakeTog"); if(!tog) return;
