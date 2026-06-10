@@ -157,7 +157,7 @@
     if(!u.active) sum.push("disabled");
     var cchip = (!isMaster && u.client) ? "<span class='cchip' style='background:"+(u.clientColor||"#21443a")+"'>"+esc(u.client)+"</span>" : "";
     var head =
-      "<div class='usum' onclick=\"toggleUser('"+k+"')\">"+
+      "<div class='usum' aria-expanded='false' onclick=\"toggleUser('"+k+"')\">"+
         "<div><div class='um'>"+esc(u.email || (u.username?("@"+u.username):"(login)"))+"</div><div class='us'>"+esc(sum.join(" · "))+"</div></div>"+
         "<div style='display:flex;align-items:center;gap:8px'>"+cchip+roleTag+"<span class='caret'>›</span></div>"+
       "</div>";
@@ -191,6 +191,7 @@
     var open = b.style.display !== "none";
     b.style.display = open ? "none" : "block";
     it.classList.toggle("open", !open);
+    var s=it.querySelector(".usum"); if(s) s.setAttribute("aria-expanded", open ? "false" : "true");
   };
 
   function wireUser(u){

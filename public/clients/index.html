@@ -144,7 +144,7 @@
     var sum=[c.status&&c.status!=="Active"?c.status:"",c.contact,c.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
     var statusSel="<select id='st_"+k+"'>"+["Active","Prospect","Churned"].map(function(s){return "<option"+(c.status===s?" selected":"")+">"+s+"</option>";}).join("")+"</select>";
     return "<div class='citem' id='it_"+k+"'>"+
-      "<div class='csum' onclick=\"tog('"+k+"')\">"+
+      "<div class='csum' aria-expanded='false' onclick=\"tog('"+k+"')\">"+
         "<div><span class='chip' style='background:"+(c.color||clientColor(c.name))+"'>"+esc(c.name)+"</span><div class='cs'>"+esc(sum)+"</div></div>"+
         "<span class='caret'>›</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
@@ -157,7 +157,7 @@
         "<div style='margin-top:6px'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button></div>"+
         "<div class='msg' id='m_"+k+"'></div></div></div>";
   }
-  window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); b.style.display=(b.style.display==="block")?"none":"block"; it.classList.toggle("open", b.style.display==="block"); };
+  window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var openNow=b.style.display!=="block"; b.style.display=openNow?"block":"none"; it.classList.toggle("open", openNow); var s=it.querySelector(".csum"); if(s) s.setAttribute("aria-expanded", openNow?"true":"false"); };
   function wire(c){
     var k=ukey(c.id);
     phoneInput(document.getElementById("ph_"+k));
