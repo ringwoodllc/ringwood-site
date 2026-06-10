@@ -128,13 +128,26 @@
       idHtml = "Signed in as <a href='/account'>" + esc(w.client || w.name || "your account") + "</a>";
     }
 
-    strip.innerHTML = idHtml + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
+    strip.innerHTML = idHtml + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
 
     var so = document.getElementById("rwSignout");
     if (so) so.addEventListener("click", function (e) {
       e.preventDefault();
       fetch("/api/logout", { method: "POST" }).then(function () { location.href = "/login"; }).catch(function () { location.href = "/login"; });
+    });
+
+    // Master-only hard refresh: drop the caches and pull the latest build, so a
+    // deploy lands without hunting for a way to clear the installed app.
+    var rf = document.getElementById("rwRefresh");
+    if (rf) rf.addEventListener("click", function (e) {
+      e.preventDefault();
+      rf.textContent = "Refreshing…";
+      Promise.resolve()
+        .then(function () { return (typeof caches !== "undefined" && caches.keys) ? caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); }) : null; })
+        .then(function () { return (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.update(); })); }) : null; })
+        .catch(function () {})
+        .then(function () { location.reload(); });
     });
 
     // The switcher dropdown (master only).
