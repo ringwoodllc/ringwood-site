@@ -66,6 +66,12 @@
     <h1>Maintenance</h1>
     <p class="lead">Service records and asset repairs, newest first. Tap one to see its details. Repairs link to the ticket; services open here.</p>
   </div>
+  <button type="button" id="scanBtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;cursor:pointer;padding:15px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);background:var(--bg-2);font:inherit;font-weight:600;margin-bottom:6px">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7"/></svg>
+    <span>Scan a QR code</span>
+  </button>
+  <input type="file" id="qrScanInput" accept="image/*" capture="environment" style="display:none" />
+  <div id="qrScanMsg" style="font-size:.85rem;margin-bottom:14px"></div>
   <div class="filters">
     <div class="f" id="clientWrap"><label for="clientSel">Client</label><select id="clientSel"><option value="">All clients</option></select></div>
     <div class="f"><label for="typeSel">Type</label><select id="typeSel"><option value="">All types</option></select></div>
@@ -73,8 +79,43 @@
   <div class="total" id="total"></div>
   <div id="list"><div class="empty">Loading…</div></div>
 </main>
+<script src="/jsQR.js"></script>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  // ---- scan a QR code: pull up that asset's service record ----
+  function decodeQRFromImage(file){
+    return new Promise(function(resolve, reject){
+      var img=new Image(), url=URL.createObjectURL(file);
+      img.onload=function(){
+        var max=1100, w=img.width, h=img.height, s=Math.min(1, max/Math.max(w,h));
+        w=Math.round(w*s); h=Math.round(h*s);
+        var c=document.createElement("canvas"); c.width=w; c.height=h;
+        var ctx=c.getContext("2d"); ctx.drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        function fallback(){ try{ var d=ctx.getImageData(0,0,w,h); var res=window.jsQR?window.jsQR(d.data,w,h):null; if(res&&res.data) resolve(res.data); else reject(new Error("No QR code found in the photo.")); }catch(e){ reject(e); } }
+        if(window.BarcodeDetector){ try{ new BarcodeDetector({formats:["qr_code"]}).detect(c).then(function(codes){ if(codes&&codes.length) resolve(codes[0].rawValue); else fallback(); }, fallback); return; }catch(e){} }
+        fallback();
+      };
+      img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
+      img.src=url;
+    });
+  }
+  (function(){
+    var input=document.getElementById("qrScanInput");
+    document.getElementById("scanBtn").addEventListener("click", function(){ input.click(); });
+    input.addEventListener("change", function(e){
+      var file=e.target.files&&e.target.files[0]; e.target.value="";
+      var m=document.getElementById("qrScanMsg"); if(!file) return;
+      m.style.color="var(--muted)"; m.textContent="Reading the code…";
+      decodeQRFromImage(file).then(function(val){
+        m.textContent="Looking up the asset…";
+        fetch("/api/asset/resolve?code="+encodeURIComponent(val)).then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ m.textContent=""; location.href="/service?asset="+encodeURIComponent(d.id); }
+          else { m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"No asset matches that code."; }
+        }).catch(function(){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; });
+      }).catch(function(err){ m.style.color="#8a3d1c"; m.textContent=(err&&err.message)||"Couldn't read a QR code. Try a flat, close shot."; });
+    });
+  })();
   function money(v){ return (v===""||v==null)?"":("$"+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
   function fdate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return s; } }
   var clientSel=document.getElementById("clientSel"), typeSel=document.getElementById("typeSel");

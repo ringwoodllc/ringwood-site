@@ -96,7 +96,17 @@
   </div>
 
   <form id="serviceForm">
+    <div class="field" id="scanCard">
+      <label class="photo-btn" for="qrScanInput" style="margin:0">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7"/></svg>
+        <span>Scan a QR code</span>
+      </label>
+      <input type="file" id="qrScanInput" accept="image/*" capture="environment" style="display:none" />
+      <div class="hint" style="display:block;margin-top:8px">Scan the code on the equipment to pull up its service record and see what's open on it.</div>
+      <div id="qrScanMsg" style="font-size:.85rem;margin-top:6px"></div>
+    </div>
     <div id="assetBanner" style="display:none"></div>
+    <div id="openWork"></div>
     <div class="field" id="pickerField">
       <label for="clientFilter">Client</label>
       <select id="clientFilter" style="margin-bottom:10px"><option value="">All clients</option></select>
@@ -152,6 +162,7 @@
   </form>
 </main>
 
+<script src="/jsQR.js"></script>
 <script>
   // ---- assets dropdown ----
   var assetSel = document.getElementById("asset");
@@ -264,8 +275,66 @@
     if (!allAssets.length){ assetSel.innerHTML = "<option value=''>No assets yet</option>"; return; }
     renderAssets();
     var pre = new URLSearchParams(location.search).get("asset");
-    if (pre){ assetSel.value = pre; if (assetSel.value === pre){ loadHistory(); lockToAsset(pre); } }
+    if (pre){ assetSel.value = pre; if (assetSel.value === pre){ loadHistory(); lockToAsset(pre); loadOpenWork(pre); } }
   }).catch(function(){ assetSel.innerHTML = "<option value=''>Could not load assets</option>"; });
+
+  // ---- scan a QR code to pull up the asset's service record ----
+  // Read a QR out of a photo: native detector when available, jsQR fallback.
+  function decodeQRFromImage(file){
+    return new Promise(function(resolve, reject){
+      var img=new Image(), url=URL.createObjectURL(file);
+      img.onload=function(){
+        var max=1100, w=img.width, h=img.height, s=Math.min(1, max/Math.max(w,h));
+        w=Math.round(w*s); h=Math.round(h*s);
+        var c=document.createElement("canvas"); c.width=w; c.height=h;
+        var ctx=c.getContext("2d"); ctx.drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        function fallback(){ try{ var d=ctx.getImageData(0,0,w,h); var res=window.jsQR?window.jsQR(d.data,w,h):null; if(res&&res.data) resolve(res.data); else reject(new Error("No QR code found in the photo.")); }catch(e){ reject(e); } }
+        if(window.BarcodeDetector){ try{ new BarcodeDetector({formats:["qr_code"]}).detect(c).then(function(codes){ if(codes&&codes.length) resolve(codes[0].rawValue); else fallback(); }, fallback); return; }catch(e){} }
+        fallback();
+      };
+      img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
+      img.src=url;
+    });
+  }
+  // Select an asset by id (adding the option if the picker doesn't have it),
+  // then show its history and open work and lock the form to it.
+  function useAsset(id, name){
+    var opt = assetSel.querySelector('option[value="'+id+'"]');
+    if(!opt){ opt=document.createElement("option"); opt.value=id; assetSel.appendChild(opt); }
+    if(name) opt.textContent=name;
+    assetSel.value=id;
+    loadHistory(); lockToAsset(id); loadOpenWork(id);
+  }
+  function loadOpenWork(id){
+    var el=document.getElementById("openWork");
+    el.innerHTML="<div style='color:var(--muted);font-size:.88rem;margin-bottom:14px'>Checking open work…</div>";
+    fetch("/api/tickets/list?assetId="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(rows){
+      rows=Array.isArray(rows)?rows:[];
+      var open=rows.filter(function(t){ var s=(t.status||"").toLowerCase(); return s!=="complete"&&s!=="completed"&&s!=="archived"&&s!=="closed"&&s!=="done"; });
+      if(!open.length){ el.innerHTML="<div style='background:#e3efe7;border:1px solid var(--line);border-radius:6px;padding:12px 14px;font-size:.9rem;color:var(--green-deep);margin-bottom:16px'>Nothing open on this asset. Log the service below.</div>"; return; }
+      var rowsHtml=open.map(function(t){
+        return "<a href='/status?id="+escapeHtml(t.id)+"' style='display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);text-decoration:none;color:inherit'>"+
+          "<span style='font-weight:600;color:var(--green-deep)'>"+escapeHtml(t.title||"Ticket")+(t.ref?" <span style='color:var(--muted);font-weight:400;font-size:.84rem'>"+escapeHtml(t.ref)+"</span>":"")+"</span>"+
+          "<span style='flex:0 0 auto;font-size:.74rem;font-weight:700;color:#7a5a12;background:#f6eccf;padding:2px 9px;border-radius:999px'>"+escapeHtml(t.status||"Open")+"</span></a>";
+      }).join("");
+      el.innerHTML="<div style='background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:18px'>"+
+        "<div style='font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:2px'>What's open ("+open.length+")</div>"+
+        rowsHtml+"<div style='font-size:.82rem;color:var(--muted);margin-top:8px'>Tap one to open the ticket. Then log the service below.</div></div>";
+    }).catch(function(){ el.innerHTML=""; });
+  }
+  document.getElementById("qrScanInput").addEventListener("change", function(e){
+    var file=e.target.files&&e.target.files[0]; e.target.value="";
+    var m=document.getElementById("qrScanMsg"); if(!file) return;
+    m.style.color="var(--muted)"; m.textContent="Reading the code…";
+    decodeQRFromImage(file).then(function(val){
+      m.textContent="Looking up the asset…";
+      fetch("/api/asset/resolve?code="+encodeURIComponent(val)).then(function(r){return r.json();}).then(function(d){
+        if(d&&d.ok){ m.textContent=""; useAsset(d.id, d.name); }
+        else { m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"No asset matches that code."; }
+      }).catch(function(){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; });
+    }).catch(function(err){ m.style.color="#8a3d1c"; m.textContent=(err&&err.message)||"Couldn't read a QR code. Try a flat, close shot."; });
+  });
 
   // Came from an asset page: lock to that asset and show its details, so the
   // tech doesn't pick or re-enter it. "Change asset" reopens the picker.

@@ -53,6 +53,7 @@ export default {
     if (url.pathname === "/api/service/update" && request.method === "POST") return updateService(request, env, session);
     if (url.pathname === "/api/assets/get" && request.method === "GET") return getAsset(url, env, session);
     if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
+    if (url.pathname === "/api/asset/resolve" && request.method === "GET") return resolveAssetCode(url, env, session);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
     if (url.pathname === "/api/asset/qr/generate" && request.method === "POST") return generateAssetQr(request, env, session);
@@ -1676,6 +1677,39 @@ async function setVerified(request, env, session) {
   const res = await sbUpdate(env, "assets", id, { verification: "Verified" });
   if (!res.ok) return json({ ok: false, error: "Failed." }, 502);
   return json({ ok: true });
+}
+
+// Turn a scanned/typed code into an asset id. Accepts an /a/?id= link, a bare
+// asset id (uuid or rec...), or a store-bought sticker matched on qr_tag. Honors
+// client scope so a client login can't resolve another client's asset.
+async function resolveAssetCode(url, env, session) {
+  if (!sbReady(env) || !can(session, "assets", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const raw = (url.searchParams.get("code") || "").trim();
+  if (!raw) return json({ ok: false, error: "No code." }, 400);
+  let cand = raw;
+  let m = raw.match(/[?&]id=([A-Za-z0-9-]+)/) || raw.match(/\/a\/([A-Za-z0-9-]+)/);
+  if (m) cand = m[1];
+  // Scope filter for client logins.
+  let scope = "";
+  const forced = scopeName(session);
+  if (forced != null) {
+    const refs = await getRefs(env);
+    const cid = findId(refs.clients, forced);
+    scope = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
+  }
+  const nameOf = (r) => r.nickname || r.name || "Asset";
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cand);
+  // A direct id from the link/typed value: confirm it exists in scope.
+  if (isUuid) {
+    const rows = await sbSelect(env, `assets?id=eq.${cand}${scope}&select=id,name,nickname&limit=1`);
+    if (rows && rows.length) return json({ ok: true, id: rows[0].id, name: nameOf(rows[0]) });
+  }
+  // Otherwise match a sticker code (try the whole scan, then the extracted part).
+  for (const v of [raw, cand]) {
+    const rows = await sbSelect(env, `assets?qr_tag=eq.${encodeURIComponent(v)}${scope}&select=id,name,nickname&limit=1`);
+    if (rows && rows.length) return json({ ok: true, id: rows[0].id, name: nameOf(rows[0]) });
+  }
+  return json({ ok: false, error: "No asset matches that code." });
 }
 
 async function listAssets(env, session) {
