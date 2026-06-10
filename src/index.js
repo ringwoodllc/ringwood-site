@@ -56,6 +56,8 @@ export default {
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
     if (url.pathname === "/api/asset/delete" && request.method === "POST") return deleteAsset(request, env, session);
+    if (url.pathname === "/api/assets/review" && request.method === "GET") return assetsForReview(request, env);
+    if (url.pathname === "/api/asset/merge" && request.method === "POST") return mergeAssets(request, env, session);
     if (url.pathname === "/api/asset/verify" && request.method === "POST") return setVerified(request, env, session);
     if (url.pathname === "/api/service" && request.method === "POST") return createService(request, env, ctx, session);
     if (url.pathname === "/api/service/list" && request.method === "GET") return listServices(url, env, session);
@@ -92,6 +94,7 @@ export default {
       "/signin": "/signin/",
       "/account": "/account/",
       "/users": "/users/",
+      "/review": "/review/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -1232,6 +1235,58 @@ async function updateAsset(request, env, session) {
   }
   const res = await sbUpdate(env, "assets", id, patch);
   if (!res.ok) return json({ ok: false, error: "Save failed." }, 502);
+  return json({ ok: true });
+}
+
+// Master review queue: assets the AI created/suggested that a human should
+// confirm, with a likely-duplicate flag so they can be merged.
+async function assetsForReview(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const all = await sbSelect(env, "assets?select=id,name,nickname,make,model,serial,verification,photo_urls,client_id,client:clients(name)&order=logged_at.desc");
+  const baseOf = (s) => (s || "").replace(/\s+\d+$/, "").trim().toLowerCase(); // "Ice Machine 2" -> "ice machine"
+  const list = (all || []).filter((a) => (a.verification || "Pending") !== "Verified");
+  const assets = list.map((a) => {
+    const ab = baseOf(a.nickname || a.name);
+    // Prefer to merge INTO a Verified, lower/no-numbered sibling of the same client.
+    let cand = null;
+    for (const b of all || []) {
+      if (b.id === a.id || b.client_id !== a.client_id) continue;
+      if (baseOf(b.nickname || b.name) !== ab) continue;
+      if (!cand) cand = b;
+      else if ((b.verification === "Verified") && cand.verification !== "Verified") cand = b;
+    }
+    return {
+      id: a.id,
+      name: a.nickname || a.name || "Asset",
+      fullName: a.name || "",
+      client: (a.client && a.client.name) || "",
+      make: a.make || "",
+      model: a.model || "",
+      serial: a.serial || "",
+      verification: a.verification || "Pending",
+      photo: (a.photo_urls && a.photo_urls[0]) || "",
+      dup: cand ? { id: cand.id, name: cand.nickname || cand.name || "Asset" } : null,
+    };
+  });
+  return noStore({ ok: true, assets });
+}
+
+// Merge one asset into another: move its tickets and service records over, then
+// delete it.
+async function mergeAssets(request, env, session) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const fromId = (body.fromId || "").trim(), intoId = (body.intoId || "").trim();
+  if (!fromId || !intoId || fromId === intoId) return json({ ok: false, error: "Pick two different assets." }, 400);
+  await fetch(`${env.SUPABASE_URL}/rest/v1/tickets?asset_id=eq.${fromId}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ asset_id: intoId }) });
+  await fetch(`${env.SUPABASE_URL}/rest/v1/service_records?asset_id=eq.${fromId}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ asset_id: intoId }) });
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/assets?id=eq.${fromId}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not merge." }, 502);
   return json({ ok: true });
 }
 

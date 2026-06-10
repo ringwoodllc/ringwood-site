@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Asset review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:640px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:1.8rem;color:var(--green-deep);margin:10px 0 4px}
+  .lead{color:var(--muted);font-size:.95rem;margin-bottom:20px}
+  .card{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:12px;display:flex;gap:14px}
+  .card img{width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:0 0 auto;background:var(--bg)}
+  .card .nob{width:84px;height:84px;border-radius:6px;border:1px dashed var(--line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.7rem;text-align:center}
+  .bd{flex:1;min-width:0}
+  .nm{font-weight:600;color:var(--green-deep);font-size:1.05rem;word-break:break-word}
+  .full{color:var(--muted);font-size:.84rem;word-break:break-word}
+  .meta{color:var(--muted);font-size:.84rem;margin-top:3px}
+  .tag{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;margin-top:6px}
+  .tag.ai{background:#dfe9f4;color:#274a73}.tag.pending{background:#f6eccf;color:#7a5a12}
+  .dup{margin-top:8px;font-size:.82rem;color:#8a5a36;background:#f0e0d4;border-radius:6px;padding:6px 9px}
+  .btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+  .btns button,.btns a{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;text-decoration:none}
+  .btns .go{background:var(--green);color:#f6f2e8;border-color:var(--green)}
+  .btns .danger{color:#8a3d1c;border-color:rgba(138,61,28,.4)}
+  .btns button:hover{border-color:var(--green)}
+  .msg{font-size:.84rem;margin-top:8px;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Back</a>
+  </header>
+  <h1>Asset review</h1>
+  <div class="lead">Assets the AI created or suggested (from tickets and captures). Confirm the good ones, merge duplicates, or remove mistakes. Verified assets drop off this list.</div>
+  <div id="list"><div class="lead">Loading…</div></div>
+</div>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/review"); return; }
+    if(d.role!=="master"){ location.replace("/app"); return; }
+    load();
+  }).catch(function(){});
+
+  function load(){
+    fetch("/api/assets/review").then(function(r){return r.json();}).then(function(d){
+      var el=document.getElementById("list"), a=(d&&d.assets)||[];
+      if(!a.length){ el.innerHTML="<div class='lead'>Nothing to review. All assets are confirmed.</div>"; return; }
+      el.innerHTML = a.map(renderCard).join("");
+      a.forEach(wire);
+    }).catch(function(){ document.getElementById("list").innerHTML="<div class='lead'>Could not load.</div>"; });
+  }
+  function renderCard(a){
+    var k=a.id;
+    var meta=[a.client,a.make,a.model,a.serial?("SN "+a.serial):""].filter(Boolean).map(esc).join(" · ");
+    var tag=a.verification==="AI suggested"?"<span class='tag ai'>AI suggested</span>":"<span class='tag pending'>Pending</span>";
+    var photo=a.photo?"<img src='"+esc(a.photo)+"' alt='' />":"<div class='nob'>no photo</div>";
+    var dup=a.dup?"<div class='dup'>Looks like a duplicate of <strong>"+esc(a.dup.name)+"</strong></div>":"";
+    var mergeBtn=a.dup?"<button class='danger' data-merge='"+esc(a.dup.id)+"' data-id='"+esc(k)+"'>Merge into "+esc(a.dup.name)+"</button>":"";
+    return "<div class='card' id='c_"+k+"'>"+photo+
+      "<div class='bd'><div class='nm'>"+esc(a.name)+"</div>"+
+      (a.fullName&&a.fullName!==a.name?"<div class='full'>"+esc(a.fullName)+"</div>":"")+
+      (meta?"<div class='meta'>"+meta+"</div>":"")+tag+dup+
+      "<div class='btns'><button class='go' data-confirm='"+esc(k)+"'>Confirm</button>"+
+        "<a href='/a/?id="+esc(k)+"'>Open / edit</a>"+
+        mergeBtn+
+        "<button class='danger' data-del='"+esc(k)+"'>Delete</button></div>"+
+      "<div class='msg' id='m_"+k+"'></div></div></div>";
+  }
+  function wire(a){
+    var k=a.id;
+    var card=document.getElementById("c_"+k);
+    card.querySelector("[data-confirm]").addEventListener("click", function(){
+      act("/api/asset/verify",{id:k},k,"Confirmed.");
+    });
+    var del=card.querySelector("[data-del]");
+    del.addEventListener("click", function(){ if(confirm("Delete this asset? Linked tickets/services are unlinked, not deleted.")) act("/api/asset/delete",{id:k},k,"Deleted."); });
+    var mg=card.querySelector("[data-merge]");
+    if(mg) mg.addEventListener("click", function(){ if(confirm("Merge this into '"+a.dup.name+"'? Its tickets and service records move over, then it's removed.")) act("/api/asset/merge",{fromId:k,intoId:a.dup.id},k,"Merged."); });
+  }
+  function act(url,payload,k,okMsg){
+    var m=document.getElementById("m_"+k); m.className="msg"; m.textContent="Working…";
+    fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json();}).then(function(d){
+        if(d&&d.ok){ var c=document.getElementById("c_"+k); if(c){ c.style.opacity=".5"; setTimeout(load,400); } }
+        else { m.className="msg err"; m.textContent=(d&&d.error)||"Failed."; }
+      }).catch(function(){ m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
+</script>
+</body>
+</html>
