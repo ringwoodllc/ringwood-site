@@ -1536,6 +1536,14 @@ async function detectAndLinkAsset(ticketId, pics, clientId, env) {
     const m = await sbSelect(env, `assets?make=eq.${encodeURIComponent(make)}&model=eq.${encodeURIComponent(model)}${scope}&select=id&limit=1`);
     if (m && m[0]) assetId = m[0].id;
   }
+  // 3) match by the everyday type for this client (nickname or name), so a
+  // second photo of the same kind links the existing asset instead of a twin.
+  if (!assetId && c(read.shortName)) {
+    const base = c(read.shortName);
+    let m = await sbSelect(env, `assets?select=id&nickname=ilike.${encodeURIComponent(base)}*${scope}&limit=1`);
+    if (!(m && m[0])) m = await sbSelect(env, `assets?select=id&name=ilike.*${encodeURIComponent(base)}*${scope}&limit=1`);
+    if (m && m[0]) assetId = m[0].id;
+  }
   if (!assetId) {
     const row = { name: c(read.assetName) || [make, model].filter(Boolean).join(" ") || "Asset", verification: "AI suggested", qr_tag: await genAssetKey(env), nameplate_reading: buildReadingNote(read) };
     if (c(read.shortName)) row.nickname = await uniqueNickname(env, c(read.shortName), clientId);
