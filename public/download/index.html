@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Get the app</title>
+<meta name="description" content="Install the Ringwood field-ops app on your phone." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px}
+  .card{width:100%;max-width:400px;text-align:center}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.3rem;font-weight:600;color:var(--green-deep);justify-content:center;margin-bottom:14px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:1.9rem;color:var(--green-deep);margin-bottom:8px;line-height:1.1}
+  .sub{color:var(--muted);font-size:1rem;margin-bottom:6px}
+  .signin{display:inline-block;margin-top:22px;color:var(--green-deep);font-size:.92rem;font-weight:600;text-decoration:none;border-bottom:1px solid var(--clay);padding-bottom:1px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="2.6"/><circle cx="13" cy="13" r="6"/><circle cx="13" cy="13" r="9.5"/></g></svg>
+    Ringwood
+  </div>
+  <h1>Get the app</h1>
+  <p class="sub">Install Ringwood on your phone. Tickets, assets, and service, in your pocket.</p>
+  <div id="installSlot"></div>
+  <a class="signin" href="/login">Already set up? Sign in</a>
+</div>
+<script src="/install-prompt.js"></script>
+</body>
+</html>

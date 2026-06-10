@@ -99,6 +99,8 @@ export default {
       "/app": "/app/",
       "/login": "/login/",
       "/signin": "/signin/",
+      "/download": "/download/",
+      "/get": "/download/",
       "/account": "/account/",
       "/users": "/users/",
       "/review": "/review/",
@@ -134,6 +136,7 @@ function rewrite(url, pathname, request) {
 function isPublic(url, sub) {
   const p = url.pathname;
   if (p === "/login" || p === "/login/" || p === "/signin" || p === "/signin/") return true;
+  if (p === "/download" || p === "/download/" || p === "/get" || p === "/get/") return true;
   if (p === "/api/login" || p === "/api/logout" || p === "/api/whoami") return true;
   if (p === "/api/contact" || p === "/api/diag") return true;
   if (p === "/manifest.json" || p === "/sw.js" || p === "/install-prompt.js" || p.startsWith("/icons/")) return true;
