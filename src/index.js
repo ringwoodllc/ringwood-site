@@ -46,7 +46,7 @@ export default {
     if (url.pathname === "/api/assets/list" && request.method === "GET") return listAssets(env, session);
     if (url.pathname === "/api/assets/nickname-all") return nicknameAllAssets(request, env);
     if (url.pathname === "/api/options" && request.method === "GET") return optionsHandler(env, session);
-    if (url.pathname === "/api/diag" && request.method === "GET") return diag(env);
+    if (url.pathname === "/api/diag" && request.method === "GET") return diag(env, request);
     if (url.pathname === "/api/clients" && request.method === "POST") return createClient(request, env);
     if (url.pathname === "/api/picklist" && request.method === "POST") return createPicklistValue(request, env);
     if (url.pathname === "/api/service/get" && request.method === "GET") return getService(url, env, session);
@@ -140,7 +140,7 @@ function isPublic(url, sub) {
   if (p === "/login" || p === "/login/" || p === "/signin" || p === "/signin/") return true;
   if (p === "/download" || p === "/download/" || p === "/get" || p === "/get/") return true;
   if (p === "/api/login" || p === "/api/logout" || p === "/api/whoami") return true;
-  if (p === "/api/contact" || p === "/api/diag") return true;
+  if (p === "/api/contact") return true;
   if (p === "/manifest.json" || p === "/sw.js" || p === "/install-prompt.js" || p.startsWith("/icons/")) return true;
   if (p.startsWith("/downloads/")) return true; // public app downloads (APK)
   if (sub === "talk" || sub === "contact") return true; // public contact form
@@ -897,7 +897,13 @@ async function getCategories(env) {
   return json(list);
 }
 
-async function diag(env) {
+async function diag(env, request) {
+  // Diagnostics leak counts / auth / storage status, so once the app has any
+  // login it's master-only. Before the first account exists (setup), it's open
+  // so connectivity can be checked.
+  if (await hasAnyUser(env)) {
+    if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  }
   const out = { hasUrl: !!env.SUPABASE_URL, hasKey: !!env.SUPABASE_SERVICE_KEY, hasAnon: !!env.SUPABASE_ANON_KEY };
   if (sbReady(env)) {
     const lists = await getLists(env);
