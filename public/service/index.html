@@ -253,6 +253,7 @@
     var f = (assetFilter.value || "").toLowerCase();
     var cl = clientFilter.value;
     var matches = allAssets.filter(function(a){ return (!cl || a.client === cl) && a.name.toLowerCase().indexOf(f) !== -1; });
+    matches.sort(function(a,b){ return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); });
     assetSel.innerHTML = "<option value=''>" + (matches.length ? "Choose an asset" : "No match") + "</option>";
     matches.slice(0, 300).forEach(function(a){ var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; assetSel.appendChild(o); });
   }

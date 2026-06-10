@@ -281,6 +281,7 @@
       (t.location && !hasLoc ? "<option selected>" + esc(t.location) + "</option>" : "");
     var tClient = t.client || "";
     var assetArr = ALL_ASSETS.filter(function(a){ return !tClient || a.client === tClient; });
+    assetArr.sort(function(a,b){ return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); });
     var assetOpts = "<option value=''>— None —</option>" +
       assetArr.map(function(a){ return "<option value='" + esc(a.id) + "'" + (t.assetId===a.id?" selected":"") + ">" + esc(a.name||"Asset") + "</option>"; }).join("") +
       "<option value='__new'>＋ New asset…</option>";

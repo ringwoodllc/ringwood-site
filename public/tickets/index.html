@@ -293,6 +293,7 @@ function renderAssetOptions() {
   var client = clientValue();
   var keep = assetEl.value;
   var arr = ALL_ASSETS.filter(function (a) { return !client || a.client === client; });
+  arr.sort(function (a, b) { return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()); });
   var html = "<option value=''>— None —</option>";
   arr.forEach(function (a) { html += "<option value='" + a.id + "'>" + (a.name || "Asset").replace(/</g, "&lt;") + "</option>"; });
   html += "<option value='__new'>＋ New asset…</option>";
