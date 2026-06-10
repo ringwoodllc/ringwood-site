@@ -81,6 +81,8 @@ export default {
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
     if (url.pathname === "/api/admin/user" && request.method === "POST") return adminSaveUser(request, env);
     if (url.pathname === "/api/admin/user/password" && request.method === "POST") return adminSetPassword(request, env);
+    if (url.pathname === "/api/admin/actas/users" && request.method === "GET") return listActAsUsers(request, env);
+    if (url.pathname === "/api/admin/actas" && request.method === "POST") return setActAs(request, env);
 
     // Asset view / lookup page (QR target).
     if (url.pathname.startsWith("/a/") && env.ASSETS) return env.ASSETS.fetch(rewrite(url, "/a/", request));
@@ -275,6 +277,54 @@ async function login(request, env) {
 async function requireMaster(request, env) {
   const s = await verifySession(getCookie(request, "rw_session"), env);
   return s && s.role === "master" ? s : null;
+}
+
+// ---- "Act as" (impersonation), master-only ----
+function actasCookie(value, maxAge) {
+  return `rw_actas=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Domain=.ringwood.ai; Max-Age=${maxAge}`;
+}
+// Set or clear which user the master is acting as. The real signed-in session
+// must be master (checked against rw_session directly, not the effective one),
+// so a client can never escalate, and a master can always switch back.
+async function setActAs(request, env) {
+  const master = await requireMaster(request, env);
+  if (!master) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  if (body.clear) {
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json", "set-cookie": actasCookie("", 0) },
+    });
+  }
+  const userId = (body.userId || "").toString().trim();
+  if (!userId) return json({ ok: false, error: "Pick a user." }, 400);
+  const rows = await sbSelect(env, `app_users?id=eq.${encodeURIComponent(userId)}&select=id,active`);
+  const u = rows && rows[0];
+  if (!u || u.active === false) return json({ ok: false, error: "User not found." }, 404);
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  const tok = await signSession({ actas: u.id, exp }, env);
+  return new Response(JSON.stringify({ ok: true }), {
+    headers: { "content-type": "application/json", "set-cookie": actasCookie(tok, SESSION_DAYS * 86400) },
+  });
+}
+// The list of users the master can act as.
+async function listActAsUsers(request, env) {
+  const master = await requireMaster(request, env);
+  if (!master) return json({ ok: false, error: "Master only." }, 403);
+  const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,client:clients(name)");
+  const users = (rows || [])
+    .filter((u) => u.active !== false)
+    .map((u) => {
+      const role = u.role === "master" ? "master" : "client";
+      const label = role === "master" ? u.username || (u.email || "").split("@")[0] : (u.client && u.client.name) || u.username || u.email;
+      return { id: u.id, role, label, client: (u.client && u.client.name) || "" };
+    })
+    .sort((a, b) => (a.role === b.role ? a.label.toLowerCase().localeCompare(b.label.toLowerCase()) : a.role === "master" ? -1 : 1));
+  return noStore({ ok: true, users });
 }
 function randomToken() {
   return b64urlBytes(crypto.getRandomValues(new Uint8Array(24)));
@@ -513,7 +563,18 @@ function logout() {
 
 async function whoami(request, env) {
   const s = await getSession(request, env);
-  return json({ ok: !!s, email: s ? s.email : null, role: s ? s.role : null, client: s ? s.client || null : null, perms: s ? s.perms || null : null, required: env.LOGIN_REQUIRED === "1" });
+  return json({
+    ok: !!s,
+    email: s ? s.email : null,
+    role: s ? s.role : null,
+    client: s ? s.client || null : null,
+    perms: s ? s.perms || null : null,
+    name: s ? s.name || null : null,
+    impersonating: s ? !!s.impersonating : false,
+    realRole: s ? s.realRole || s.role : null,
+    realName: s ? s.realName || null : null,
+    required: env.LOGIN_REQUIRED === "1",
+  });
 }
 
 // Change your own password (must be signed in).
@@ -541,30 +602,65 @@ async function changePassword(request, env) {
 // account's CURRENT role/client/perms/active so a master's changes (access,
 // client, disable) take effect right away — not on next sign-in. A short cache
 // keeps this from hitting the database on every single request.
-let _sessCache = new Map(); // token -> { t, data }
+let _sessCache = new Map(); // cacheKey -> { t, data }
 async function getSession(request, env) {
   const token = getCookie(request, "rw_session");
   const claims = await verifySession(token, env);
   if (!claims) return null;
-  const hit = _sessCache.get(token);
+  const actasTok = getCookie(request, "rw_actas") || "";
+  const cacheKey = token + "|" + actasTok;
+  const hit = _sessCache.get(cacheKey);
   if (hit && Date.now() - hit.t < 8000) return hit.data;
   if (!sbReady(env)) return claims; // can't look up; trust the signed claims
-  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(claims.email)}&select=role,active,perms,client:clients(name)`);
+  const rows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(claims.email)}&select=username,role,active,perms,client:clients(name)`);
   if (rows === null) return claims; // table missing / transient error: don't lock out
   const u = rows[0];
   if (!u || u.active === false) {
-    _sessCache.delete(token);
+    _sessCache.delete(cacheKey);
     return null; // account deleted or disabled -> session no longer valid
   }
-  const role = u.role === "master" ? "master" : "client";
-  const data = {
-    email: claims.email,
-    role,
-    client: role === "client" ? (u.client && u.client.name) || "" : null,
-    perms: role === "client" ? u.perms || {} : null,
-  };
+  const realRole = u.role === "master" ? "master" : "client";
+  const realName = u.username || (claims.email || "").split("@")[0];
+
+  let data = null;
+  // Impersonation ("act as"): only a real master may view/act as another user.
+  // The effective session below becomes that user, so scoping, permissions, and
+  // comment authorship all follow them automatically.
+  if (realRole === "master" && actasTok) {
+    const ap = await verifySession(actasTok, env);
+    if (ap && ap.actas) {
+      const trows = await sbSelect(env, `app_users?id=eq.${ap.actas}&select=email,username,role,active,perms,client:clients(name)`);
+      const t = trows && trows[0];
+      if (t && t.active !== false) {
+        const trole = t.role === "master" ? "master" : "client";
+        const tclient = trole === "client" ? (t.client && t.client.name) || "" : null;
+        data = {
+          email: t.email,
+          role: trole,
+          client: tclient,
+          perms: trole === "client" ? t.perms || {} : null,
+          name: tclient || t.username || (t.email || "").split("@")[0],
+          impersonating: true,
+          realRole: "master",
+          realName,
+        };
+      }
+    }
+  }
+  if (!data) {
+    data = {
+      email: claims.email,
+      role: realRole,
+      client: realRole === "client" ? (u.client && u.client.name) || "" : null,
+      perms: realRole === "client" ? u.perms || {} : null,
+      name: realRole === "client" ? (u.client && u.client.name) || realName : realName,
+      impersonating: false,
+      realRole,
+      realName,
+    };
+  }
   if (_sessCache.size > 500) _sessCache.clear();
-  _sessCache.set(token, { t: Date.now(), data });
+  _sessCache.set(cacheKey, { t: Date.now(), data });
   return data;
 }
 // Has anyone created a login yet? Once true, it stays true (cached) so the gate
