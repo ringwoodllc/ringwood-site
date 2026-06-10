@@ -140,14 +140,17 @@
   }).catch(function(){});
 
   function fillFilters(){
-    var clients={}, types={};
-    ITEMS.forEach(function(s){ if(s.client) clients[s.client]=1; if(s.type) types[s.type]=1; });
-    var ck=clientSel.value; clientSel.innerHTML="<option value=''>All clients</option>"+Object.keys(clients).sort().map(function(c){return "<option>"+esc(c)+"</option>";}).join(""); clientSel.value=ck;
+    var clients={}, types={}, hasUn=false;
+    ITEMS.forEach(function(s){ if(s.client) clients[s.client]=1; else hasUn=true; if(s.type) types[s.type]=1; });
+    var ck=clientSel.value;
+    var chtml="<option value=''>All clients</option>"+Object.keys(clients).sort().map(function(c){return "<option>"+esc(c)+"</option>";}).join("");
+    if(hasUn) chtml+="<option value='__unassigned'>Unassigned</option>";
+    clientSel.innerHTML=chtml; clientSel.value=ck;
     var tk=typeSel.value; typeSel.innerHTML="<option value=''>All types</option>"+Object.keys(types).sort().map(function(t){return "<option>"+esc(t)+"</option>";}).join(""); typeSel.value=tk;
   }
   function render(){
     var c=clientSel.value, t=typeSel.value;
-    var rows=ITEMS.filter(function(s){ if(c && s.client!==c) return false; if(t && s.type!==t) return false; return true; });
+    var rows=ITEMS.filter(function(s){ if(c==="__unassigned"){ if(s.client) return false; } else if(c && s.client!==c) return false; if(t && s.type!==t) return false; return true; });
     var total=rows.reduce(function(a,s){ var n=Number(s.cost); return a+(isNaN(n)?0:n); },0);
     document.getElementById("total").textContent = rows.length+" record"+(rows.length===1?"":"s")+(total?(" · "+money(total)+" total"):"");
     var el=document.getElementById("list");

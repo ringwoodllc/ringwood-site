@@ -169,10 +169,16 @@
   var CACHE_KEY = "rw_lists_v3";
   function readCache(){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); return (c&&c.data)?c.data:null; }catch(e){ return null; } }
   function writeCache(d){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(),data:d})); }catch(e){} }
-  function renderClientFilter(clients){
-    var keep=clientFilter.value, html="<option value=''>All clients</option>";
-    (clients||[]).forEach(function(c){ html+="<option>"+c.replace(/</g,"&lt;")+"</option>"; });
-    clientFilter.innerHTML=html; if(keep) clientFilter.value=keep;
+  // Only list clients that actually have assets (plus Unassigned, if any) — no
+  // hunting through empty clients.
+  function renderClientFilter(){
+    var names={}, hasUn=false;
+    (allAssets||[]).forEach(function(a){ if(a.client) names[a.client]=true; else hasUn=true; });
+    var list=Object.keys(names).sort(function(x,y){ return x.toLowerCase().localeCompare(y.toLowerCase()); });
+    var keep=clientFilter.value, html="<option value=''>All clients</option>"+list.map(function(c){ return "<option>"+esc(c)+"</option>"; }).join("");
+    if(hasUn) html+="<option value='__unassigned'>Unassigned</option>";
+    clientFilter.innerHTML=html;
+    if(keep){ clientFilter.value=keep; if(clientFilter.value!==keep) clientFilter.value=""; }
   }
   var cachedLists = readCache();
   if(cachedLists){ OPTIONS=cachedLists; if(cachedLists.serviceTypes&&cachedLists.serviceTypes.length) SERVICE_TYPES=cachedLists.serviceTypes; renderClientFilter(cachedLists.clients); }
@@ -214,9 +220,11 @@
   }
 
   function renderList(){
+    renderClientFilter();
     var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase(), sort=document.getElementById("sortSel").value;
     var arr=allAssets.filter(function(a){
-      if(client && a.client!==client) return false;
+      if(client==="__unassigned"){ if(a.client) return false; }
+      else if(client && a.client!==client) return false;
       if(q){ var hay=[a.name,a.make,a.model,a.serial,a.type,a.location,a.qr].join(" ").toLowerCase(); if(hay.indexOf(q)<0) return false; }
       return true;
     });

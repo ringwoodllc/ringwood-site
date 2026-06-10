@@ -242,7 +242,7 @@
   var STATUSES = ["Open","Scheduled","In Progress","Complete","Archived"];
   function statusTok(s){ return ({"Open":"open","Scheduled":"sched","In Progress":"prog","Complete":"done","Closed":"done","Archived":"arch"})[s] || "open"; }
 
-  function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
 
   /* Read a chosen file, downscale it, and hand back base64 + content type. */
@@ -269,14 +269,19 @@
   var CACHE_KEY = "rw_lists_v3";
   function readClientsCache(){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); return (c&&c.data&&c.data.clients&&c.data.clients.length)?c.data.clients:null; }catch(e){ return null; } }
   function writeClientsCache(clients){ try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||"null")||{}; c.t=Date.now(); c.data=c.data||{}; c.data.clients=clients; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); }catch(e){} }
-  function renderClients(clients){
-    CLIENTS = clients || [];
+  // CLIENTS is the full list (used by the editor's Client dropdown). The filter
+  // dropdown, though, only lists clients that actually have tickets — no hunting
+  // through empty clients.
+  function renderClients(clients){ CLIENTS = clients || []; }
+  function buildClientFilter(){
+    var names = {}, hasUn = false;
+    (ALL_TICKETS||[]).forEach(function(t){ if(t.client) names[t.client]=true; else hasUn=true; });
+    var list = Object.keys(names).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
     var keep = clientSel.value;
-    var html = "<option value=''>All clients</option>";
-    CLIENTS.forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
-    html += "<option value='__unassigned'>Unassigned</option>";
+    var html = "<option value=''>All clients</option>" + list.map(function(c){ return "<option>"+esc(c)+"</option>"; }).join("");
+    if(hasUn) html += "<option value='__unassigned'>Unassigned</option>";
     clientSel.innerHTML = html;
-    if(keep) clientSel.value = keep;
+    if(keep){ clientSel.value = keep; if(clientSel.value !== keep) clientSel.value = ""; }
   }
   renderClients(readClientsCache() || SEED_CLIENTS);
   function loadClients(tries){
@@ -360,6 +365,7 @@
   function render(){
     editWrap.innerHTML = "";
     showChrome(true);
+    buildClientFilter();
     colorClientSelect();
     var client = clientSel.value, sort = sortSel.value;
     var showArch = !!(showArchEl && showArchEl.checked);
@@ -403,7 +409,7 @@
         if (t.status !== "Archived") actions += qbtn("Archive", t.id, "Archived");
       }
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
-      var reviewPill = needsReview ? "<span class='pill p-review'>Needs review</span>" : "";
+      var reviewPill = (needsReview && !IS_CLIENT) ? "<span class='pill p-review'>Needs review</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ", true)'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
