@@ -2662,10 +2662,10 @@ async function updateTicket(request, env, session) {
   }
   const refs = await getRefs(env);
   // Remember the prior values so we can log what changed (revision history).
-  let prevStatus = null, prevTitle = null, prevDesc = null;
-  if ("status" in body || "title" in body || "description" in body) {
-    const curT = await sbSelect(env, `tickets?id=eq.${id}&select=status,title,description`);
-    if (curT && curT[0]) { prevStatus = curT[0].status; prevTitle = curT[0].title; prevDesc = curT[0].description; }
+  let prevStatus = null, prevTitle = null, prevDesc = null, prevAssigned = null;
+  if ("status" in body || "title" in body || "description" in body || "assignedTo" in body) {
+    const curT = await sbSelect(env, `tickets?id=eq.${id}&select=status,title,description,assigned_to`);
+    if (curT && curT[0]) { prevStatus = curT[0].status; prevTitle = curT[0].title; prevDesc = curT[0].description; prevAssigned = curT[0].assigned_to; }
   }
   const patch = {};
   if ("status" in body) patch.status = body.status;
@@ -2717,21 +2717,25 @@ async function updateTicket(request, env, session) {
   if (Object.keys(patch).length) {
     const res = await sbUpdate(env, "tickets", id, patch);
     if (!res.ok) return json({ ok: false, error: ("Save failed. " + (res.error || "")).slice(0, 300) }, 502);
+    // Combine everything changed in this one Save into a single log entry, so the
+    // history stays readable. Brief lists what changed; the + holds the details.
+    const parts = [], details = [];
     if ("status" in body && prevStatus && body.status && body.status !== prevStatus) {
-      await logTicketEvent(env, id, session, "Status changed from " + prevStatus + " to " + body.status);
+      parts.push("status"); details.push("Status: " + prevStatus + " → " + body.status);
     }
     if ("title" in body && body.title && prevTitle != null && body.title !== prevTitle) {
-      await logTicketEvent(env, id, session, "Title updated", 'From: "' + (prevTitle || "") + '"\nTo: "' + body.title + '"');
+      parts.push("title"); details.push('Title:\nFrom: "' + (prevTitle || "") + '"\nTo: "' + body.title + '"');
     }
     if ("description" in body && prevDesc != null && (body.description || "") !== (prevDesc || "")) {
-      await logTicketEvent(env, id, session, "Description updated", "Previous:\n" + (prevDesc || "(empty)"));
+      parts.push("description"); details.push("Description — previous:\n" + (prevDesc || "(empty)"));
     }
-    if ("reviewed" in body && body.reviewed === true) {
-      await logTicketEvent(env, id, session, "Marked reviewed");
+    if ("assignedTo" in body) {
+      const av = (body.assignedTo || "").toString().trim();
+      if (av !== (prevAssigned || "")) { parts.push("tech"); details.push(av ? ("Assigned to " + av) : "Tech unassigned"); }
     }
-    if ("assignedTo" in body && (body.assignedTo || "").toString().trim()) {
-      await logTicketEvent(env, id, session, "Assigned to " + body.assignedTo.toString().trim());
-    }
+    let brief = parts.length ? ("Updated " + parts.join(", ")) : "";
+    if ("reviewed" in body && body.reviewed === true) brief = brief ? (brief + ", marked reviewed") : "Marked reviewed";
+    if (brief) await logTicketEvent(env, id, session, brief, details.length ? details.join("\n\n") : undefined);
   }
   if (photoPatch) {
     const res2 = await sbUpdate(env, "tickets", id, photoPatch);
