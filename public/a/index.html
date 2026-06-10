@@ -105,6 +105,20 @@
   .stat{display:inline-flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:.92rem;font-family:inherit;font-weight:600;color:var(--green-deep);text-decoration:none;cursor:pointer}
   .statadd{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;border:1.5px solid var(--green);color:var(--green);font-size:1rem;font-weight:700;cursor:pointer;background:var(--bg);text-decoration:none;vertical-align:middle}
   .statadd:hover{background:var(--green);color:#f6f2e8}
+  .histadd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+  .hadd{display:inline-flex;align-items:center;gap:4px;background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font-size:.86rem;font-weight:600;text-decoration:none}
+  .hadd:hover{border-color:var(--green)}
+  .hall{font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay);text-decoration:none;margin-left:auto}
+  .hrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:8px;cursor:pointer}
+  .hrow:hover{border-color:var(--green)}
+  .hbd{min-width:0}
+  .htag{display:inline-block;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;margin-right:7px;vertical-align:middle}
+  .htag.t{background:#dfe9f4;color:#274a73}
+  .htag.s{background:#e3efe7;color:var(--green-deep)}
+  .htitle{font-weight:600;color:var(--green-deep)}
+  .hmeta{color:var(--muted);font-size:.84rem;margin-top:3px;word-break:break-word}
+  .hright{flex:0 0 auto;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.85rem;white-space:nowrap}
+  .hchev{color:var(--muted);font-size:1.2rem}
   .agenttog{background:transparent;border:none;padding:0;font:inherit;font-weight:600;color:var(--green-deep);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
   .agenttog #agentIco{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;border:1px solid var(--line);font-size:.95rem}
   .stat:hover{border-color:var(--green)}
@@ -364,8 +378,8 @@
     // Tickets and Service headings below.
     var stats =
       "<div class='stats'>"+
-        "<a class='stat' id='stat_tk' href='#tickets' onclick=\"document.getElementById('tickets').scrollIntoView({behavior:'smooth'});return false;\">🎫 Tickets <b id='tkCount'>·</b></a>"+
-        "<a class='stat"+(svcArr.length?"":" zero")+"' href='#svc' onclick=\"document.getElementById('svc').scrollIntoView({behavior:'smooth'});return false;\">🔧 Service <b>"+svcArr.length+"</b></a>"+
+        "<a class='stat' id='stat_tk' href='#history' onclick=\"document.getElementById('history').scrollIntoView({behavior:'smooth'});return false;\">🎫 Tickets <b id='tkCount'>·</b></a>"+
+        "<a class='stat"+(svcArr.length?"":" zero")+"' href='#history' onclick=\"document.getElementById('history').scrollIntoView({behavior:'smooth'});return false;\">🔧 Service <b>"+svcArr.length+"</b></a>"+
         "<label class='stat qrstat"+(hasQr?"":" zero")+"' for='qrAssign' style='cursor:pointer' title='"+(hasQr?"QR code assigned. Tap to scan a different code.":"No QR code yet. Tap to scan a sticker on the equipment.")+"'>QR <b>"+(hasQr?"✓":"＋")+"</b></label>"+
         "<input type='file' id='qrAssign' accept='image/*' capture='environment' style='display:none'/>"+
         "<button class='stat' id='editBtn' type='button'>✏️ Edit</button>"+
@@ -384,10 +398,15 @@
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
       stats+photos+identity+ai+
-      "<h2 id='tickets'>Tickets <a class='statadd' href='/tickets?asset="+aid+"' title='New ticket for this asset'>＋</a></h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
-      "<h2 id='svc'>Service history <a class='statadd' href='/service?asset="+aid+"' title='Log a service for this asset'>＋</a> <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist+
+      "<h2 id='history'>History</h2>"+
+      "<div class='histadd'>"+
+        "<a class='hadd' href='/tickets?asset="+aid+"'>＋ Ticket</a>"+
+        "<a class='hadd' href='/service?asset="+aid+"'>＋ Service</a>"+
+        "<a class='hall' href='/services'>All records &rarr;</a>"+
+      "</div>"+
+      "<div id='assetHistory'><div class='empty'>Loading…</div></div>"+
       "<div id='assetRev' style='margin-top:18px'></div>";
-    loadAssetTickets(curId);
+    loadAssetHistory(curId);
     loadAssetEvents(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
@@ -395,17 +414,30 @@
     var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
   }
 
-  function loadAssetTickets(id){
-    fetch("/api/tickets/list?archived=1&assetId="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(rows){
-      var el=document.getElementById("assetTickets"); if(!el) return;
-      rows = Array.isArray(rows)?rows:[];
-      var tc=document.getElementById("tkCount"); if(tc){ tc.textContent=rows.length; var chip=document.getElementById("stat_tk"); if(chip && !rows.length) chip.classList.add("zero"); }
-      if(!rows.length){ el.innerHTML="<div class='empty'>No tickets for this asset yet.</div>"; return; }
-      el.innerHTML = "<table><thead><tr><th>Ref</th><th>Title</th><th>Status</th><th>Date</th></tr></thead><tbody>"+
-        rows.map(function(t){
-          return "<tr onclick=\"location.href='/status?id="+esc(t.id)+"'\"><td>"+esc(t.ref||"—")+"</td><td>"+esc(t.title||"Ticket")+"</td><td>"+esc(t.status||"")+"</td><td>"+esc(t.created?new Date(t.created).toLocaleDateString():"")+"</td></tr>";
-        }).join("")+"</tbody></table><div class='hint'>Tap a row to open the ticket.</div>";
-    }).catch(function(){ var el=document.getElementById("assetTickets"); if(el) el.innerHTML="<div class='empty'>Could not load tickets.</div>"; });
+  // One combined history list: this asset's tickets and service records together,
+  // newest first, each tagged. Tickets open the ticket; services open inline.
+  function loadAssetHistory(id){
+    var services = (curAsset && curAsset.services) || [];
+    function paint(tickets){
+      var tc=document.getElementById("tkCount"); if(tc){ tc.textContent=tickets.length; var chip=document.getElementById("stat_tk"); if(chip && !tickets.length) chip.classList.add("zero"); }
+      var items=[];
+      tickets.forEach(function(t){ items.push({ kind:"ticket", id:t.id, title:t.title||"Ticket", date:t.created||"", meta:[t.ref].filter(Boolean), right:t.status||"" }); });
+      services.forEach(function(s){ items.push({ kind:"service", id:s.id, title:s.type||"Service", date:s.date||"", meta:[s.technician, s.notes].filter(Boolean), right:(s.cost!=null&&s.cost!=="")?money(s.cost):"" }); });
+      items.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+      var el=document.getElementById("assetHistory"); if(!el) return;
+      if(!items.length){ el.innerHTML="<div class='empty'>No tickets or service records yet.</div>"; return; }
+      el.innerHTML = items.map(function(it){
+        var d = it.date ? new Date(it.date).toLocaleDateString() : "";
+        var tag = it.kind==="ticket" ? "<span class='htag t'>Ticket</span>" : "<span class='htag s'>Service</span>";
+        var onclick = it.kind==="ticket" ? ("location.href='/status?id="+esc(it.id)+"'") : ("editService('"+esc(it.id)+"')");
+        var meta = [d].concat(it.meta).filter(Boolean).map(esc).join(" · ");
+        return "<div class='hrow' onclick=\""+onclick+"\">"+
+          "<div class='hbd'>"+tag+"<span class='htitle'>"+esc(it.title)+"</span>"+(meta?"<div class='hmeta'>"+meta+"</div>":"")+"</div>"+
+          "<div class='hright'>"+(it.right?esc(it.right):"")+"<span class='hchev'>&rsaquo;</span></div>"+
+        "</div>";
+      }).join("");
+    }
+    fetch("/api/tickets/list?archived=1&assetId="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(rows){ paint(Array.isArray(rows)?rows:[]); }).catch(function(){ paint([]); });
   }
 
   // Admin-only revision history drawer at the very bottom (empty for clients).
