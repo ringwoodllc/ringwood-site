@@ -43,6 +43,9 @@
   .rec .notes{color:var(--muted);font-size:.85rem;margin-top:3px;word-break:break-word}
   .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
   .cost{font-weight:700;color:var(--green-deep);white-space:nowrap}
+  .kind{display:inline-block;font-size:.6rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;vertical-align:middle;margin-right:6px}
+  .kind.ks{background:#e3efe7;color:#21443a}
+  .kind.kt{background:#f0e0d4;color:#7a4a26}
   .client-chip{font-size:.76rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:3px 10px;border-radius:999px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
   .empty{color:var(--muted);padding:18px 4px}
 </style>
@@ -61,7 +64,7 @@
   <div class="intro">
     <div class="eyebrow">Service records</div>
     <h1>Maintenance</h1>
-    <p class="lead">Every service event, newest first. Filter by client or type. Tap one to see its details.</p>
+    <p class="lead">Service records and asset repairs, newest first. Tap one to see its details. Repairs link to the ticket; services open here.</p>
   </div>
   <div class="filters">
     <div class="f" id="clientWrap"><label for="clientSel">Client</label><select id="clientSel"><option value="">All clients</option></select></div>
@@ -75,7 +78,21 @@
   function money(v){ return (v===""||v==null)?"":("$"+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
   function fdate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return s; } }
   var clientSel=document.getElementById("clientSel"), typeSel=document.getElementById("typeSel");
-  var ALL=[];
+  var ALL=[];      // service records (used by the inline editor)
+  var ITEMS=[];    // combined: service records + asset-linked tickets
+  // Build the combined work history: formal service records plus any ticket that
+  // is tied to an asset (a repair is part of that asset's history too).
+  function buildItems(services, tickets){
+    var items = (services||[]).map(function(s){
+      return { kind:"service", id:s.id, asset:s.asset, client:s.client, clientColor:s.clientColor, date:s.date, type:s.type, summary:s.notes, cost:s.cost };
+    });
+    (tickets||[]).forEach(function(t){
+      if(!t.assetId) return;  // only asset-linked tickets belong here
+      items.push({ kind:"ticket", id:t.id, asset:t.asset, client:t.client, clientColor:t.clientColor, date:t.created, type:t.category||"Ticket", summary:t.title||t.description, status:t.status });
+    });
+    items.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+    return items;
+  }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if(w && w.ok && w.role==="client"){ document.getElementById("clientWrap").style.display="none"; }
@@ -83,23 +100,26 @@
 
   function fillFilters(){
     var clients={}, types={};
-    ALL.forEach(function(s){ if(s.client) clients[s.client]=1; if(s.type) types[s.type]=1; });
+    ITEMS.forEach(function(s){ if(s.client) clients[s.client]=1; if(s.type) types[s.type]=1; });
     var ck=clientSel.value; clientSel.innerHTML="<option value=''>All clients</option>"+Object.keys(clients).sort().map(function(c){return "<option>"+esc(c)+"</option>";}).join(""); clientSel.value=ck;
     var tk=typeSel.value; typeSel.innerHTML="<option value=''>All types</option>"+Object.keys(types).sort().map(function(t){return "<option>"+esc(t)+"</option>";}).join(""); typeSel.value=tk;
   }
   function render(){
     var c=clientSel.value, t=typeSel.value;
-    var rows=ALL.filter(function(s){ if(c && s.client!==c) return false; if(t && s.type!==t) return false; return true; });
+    var rows=ITEMS.filter(function(s){ if(c && s.client!==c) return false; if(t && s.type!==t) return false; return true; });
     var total=rows.reduce(function(a,s){ var n=Number(s.cost); return a+(isNaN(n)?0:n); },0);
     document.getElementById("total").textContent = rows.length+" record"+(rows.length===1?"":"s")+(total?(" · "+money(total)+" total"):"");
     var el=document.getElementById("list");
-    if(!rows.length){ el.innerHTML="<div class='empty'>No service records"+(ALL.length?" match.":" yet.")+"</div>"; return; }
+    if(!rows.length){ el.innerHTML="<div class='empty'>Nothing"+(ITEMS.length?" matches.":" yet.")+"</div>"; return; }
     el.innerHTML=rows.map(function(s){
-      var meta=(s.date?"<b>"+esc(fdate(s.date))+"</b>":"")+[s.type,s.technician].filter(Boolean).map(esc).map(function(x){return " · "+x;}).join("");
-      return "<div class='rec' onclick=\"openRec('"+esc(s.id)+"')\">"+
-        "<div class='bd'><div class='top'>"+esc(s.asset||"Asset")+"</div>"+
+      var isTicket = s.kind==="ticket";
+      var tag = isTicket ? "<span class='kind kt'>Ticket</span>" : "<span class='kind ks'>Service</span>";
+      var meta=(s.date?"<b>"+esc(fdate(s.date))+"</b>":"")+[s.type, isTicket?s.status:null].filter(Boolean).map(esc).map(function(x){return " · "+x;}).join("");
+      var onclick = isTicket ? ("location.href='/status?id="+esc(s.id)+"'") : ("openRec('"+esc(s.id)+"')");
+      return "<div class='rec' onclick=\""+onclick+"\">"+
+        "<div class='bd'><div class='top'>"+tag+" "+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
-        (s.notes?"<div class='notes'>"+esc(s.notes)+"</div>":"")+"</div>"+
+        (s.summary?"<div class='notes'>"+esc(s.summary)+"</div>":"")+"</div>"+
         "<div class='rcol'>"+(s.client?"<span class='client-chip' style='background:"+(s.clientColor||clientColor(s.client))+"'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
         "<span class='rchev'>›</span>"+
       "</div>";
@@ -108,9 +128,15 @@
   document.querySelector("main").insertAdjacentHTML("beforeend","<div id='editWrap'></div>");
   clientSel.addEventListener("change", render);
   typeSel.addEventListener("change", render);
-  fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){
-    ALL=Array.isArray(rows)?rows:[]; fillFilters(); render();
-  }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Could not load service records.</div>"; });
+  Promise.all([
+    fetch("/api/services/all").then(function(r){return r.json();}).catch(function(){return [];}),
+    fetch("/api/tickets/list?archived=1").then(function(r){return r.json();}).catch(function(){return [];})
+  ]).then(function(res){
+    ALL = Array.isArray(res[0])?res[0]:[];
+    var tix = Array.isArray(res[1])?res[1]:[];
+    ITEMS = buildItems(ALL, tix);
+    fillFilters(); render();
+  }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Could not load records.</div>"; });
 
   var SERVICE_TYPES=["Install","Inspection","Maintenance","Repair","Replacement","Other"];
   var topEls=[document.querySelector(".filters"),document.getElementById("total"),document.getElementById("list")];
