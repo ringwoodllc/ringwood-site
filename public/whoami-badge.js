@@ -9,6 +9,24 @@
     });
   }
 
+  // Offline banner: field crews hit dead zones. Tell them plainly that changes
+  // won't save until they reconnect, instead of failing silently.
+  (function () {
+    var bar = null;
+    function show(off) {
+      if (off) {
+        if (bar) return;
+        bar = document.createElement("div");
+        bar.textContent = "You're offline. You can keep looking, but changes won't save until you reconnect.";
+        bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:10001;background:#8a3d1c;color:#fff;text-align:center;font-size:.85rem;font-weight:600;font-family:inherit;padding:9px 14px;padding-bottom:calc(9px + env(safe-area-inset-bottom, 0px))";
+        (document.body || document.documentElement).appendChild(bar);
+      } else if (bar) { bar.remove(); bar = null; }
+    }
+    window.addEventListener("offline", function () { show(true); });
+    window.addEventListener("online", function () { show(false); });
+    if (navigator.onLine === false) show(true);
+  })();
+
   function esc(s) { return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   // Accessibility: the CSS reset removed focus rings and many clickable rows are
