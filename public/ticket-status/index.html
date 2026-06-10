@@ -45,6 +45,18 @@
   textarea{min-height:90px;resize:vertical}
 
   .toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 14px}
+  #filters{margin:8px 0 4px}
+  .schips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .schip{display:inline-flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);cursor:pointer}
+  .schip:hover{border-color:var(--green)}
+  .schip b{background:var(--line);color:var(--muted);border-radius:999px;padding:1px 8px;font-size:.78rem;min-width:20px;text-align:center}
+  .schip.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
+  .schip.on b{background:rgba(255,255,255,.28);color:#f6f2e8}
+  .schip.review.on{background:#9a7b12;border-color:#9a7b12}
+  .filterbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .filterbar .mini{flex:1;min-width:130px;padding:10px 12px;font-size:.92rem}
+  .archk{display:flex;align-items:center;gap:7px;font-size:.88rem;color:var(--muted);font-weight:600;white-space:nowrap;cursor:pointer}
+  .archk input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:17px;height:17px;accent-color:var(--green);padding:0;margin:0}
   .archbtn{background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:8px 14px;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer}
   .archbtn.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
 
@@ -135,36 +147,16 @@
     <p>Open work first, with the most recently updated on top. Switch to Closed, change the sort, or filter by client and topic. Open one to update it, add a note, or move it along.</p>
   </div>
 
-  <div id="filters" style="display:flex;gap:10px;flex-wrap:wrap">
-    <div class="field" style="flex:1;min-width:150px">
-      <label for="status">Status</label>
-      <select id="status">
-        <option value="__open" selected>Open</option>
-        <option value="__closed">Closed</option>
-        <option value="__review">Needs review</option>
-        <option value="__all">All</option>
-        <option value="Open">— Open only</option>
-        <option value="Scheduled">— Scheduled</option>
-        <option value="In Progress">— In Progress</option>
-        <option value="Complete">— Complete</option>
-        <option value="Archived">— Archived</option>
-      </select>
-    </div>
-    <div class="field" style="flex:1;min-width:150px">
-      <label for="sort">Sort</label>
-      <select id="sort">
+  <div id="filters">
+    <div id="statChips" class="schips"></div>
+    <div class="filterbar">
+      <select id="client" class="mini"><option value="">All clients</option></select>
+      <select id="sort" class="mini">
         <option value="act" selected>Latest activity</option>
-        <option value="new">Newest entered</option>
-        <option value="old">Oldest entered</option>
+        <option value="new">Newest</option>
+        <option value="old">Oldest</option>
       </select>
-    </div>
-    <div class="field" style="flex:1;min-width:150px">
-      <label for="client">Client</label>
-      <select id="client"><option value="">All clients</option></select>
-    </div>
-    <div class="field" style="flex:1;min-width:150px">
-      <label for="topic">Topic</label>
-      <select id="topic"><option value="">All topics</option></select>
+      <label class="archk" id="archkWrap"><input type="checkbox" id="showArch" /> Show archived</label>
     </div>
   </div>
 
@@ -178,9 +170,10 @@
 
 <script>
   var clientSel = document.getElementById("client");
-  var topicSel = document.getElementById("topic");
-  var statusSel = document.getElementById("status");
   var sortSel = document.getElementById("sort");
+  var showArchEl = document.getElementById("showArch");
+  var chipsEl = document.getElementById("statChips");
+  var curStatus = "open";  // open | review | closed | all (driven by the chips)
   var CLOSED = ["Complete","Closed","Archived"];
   // A client login only sees its own tickets, so hide the client filter and the
   // Client field in the editor.
@@ -188,15 +181,41 @@
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if (w && w.ok && w.role === "client"){
       IS_CLIENT = true;
-      var f = clientSel.closest(".field"); if (f) f.style.display = "none";
-      // Clients get simple filters: just Open / Closed / All (no review or per-status).
-      var keepVals = { "__open":1, "__closed":1, "__all":1 };
-      Array.prototype.slice.call(statusSel.options).forEach(function(o){ if(!keepVals[o.value]) o.remove(); });
-      // Topic/category is admin work, so hide that filter for clients.
-      var tf = topicSel.closest(".field"); if (tf) tf.style.display = "none";
+      // A client only sees its own tickets, never archived: hide the client picker
+      // and the Show archived toggle. The chips drop "Needs review" too (admin only).
+      clientSel.style.display = "none";
+      var aw = document.getElementById("archkWrap"); if (aw) aw.style.display = "none";
     }
     if (w && w.ok && w.role === "master"){ IS_MASTER = true; }
-  }).catch(function(){});
+    renderChips();
+  }).catch(function(){ renderChips(); });
+
+  // The status chips double as a counter (like the asset icons) and the filter.
+  function renderChips(){
+    if(!chipsEl) return;
+    var showArch = !!(showArchEl && showArchEl.checked);
+    var cl = clientSel.value;
+    var scoped = (ALL_TICKETS||[]).filter(function(t){
+      if(!showArch && t.status === "Archived") return false;
+      if(cl === "__unassigned"){ if(t.client) return false; }
+      else if(cl){ if(t.client !== cl) return false; }
+      return true;
+    });
+    function isClosed(t){ return CLOSED.indexOf(t.status) >= 0; }
+    var nOpen = scoped.filter(function(t){ return !isClosed(t); }).length;
+    var nReview = scoped.filter(function(t){ return !t.reviewed && !isClosed(t); }).length;
+    var nClosed = scoped.filter(isClosed).length;
+    var chips = [{k:"open",label:"Open",n:nOpen}];
+    if(!IS_CLIENT) chips.push({k:"review",label:"Needs review",n:nReview});
+    chips.push({k:"closed",label:"Closed",n:nClosed});
+    chips.push({k:"all",label:"All",n:scoped.length});
+    chipsEl.innerHTML = chips.map(function(c){
+      return "<button type='button' class='schip "+c.k+(curStatus===c.k?" on":"")+"' data-st='"+c.k+"'>"+c.label+" <b>"+c.n+"</b></button>";
+    }).join("");
+    Array.prototype.slice.call(chipsEl.querySelectorAll(".schip")).forEach(function(btn){
+      btn.addEventListener("click", function(){ curStatus = btn.getAttribute("data-st"); render(); });
+    });
+  }
   var listEl = document.getElementById("list");
   var editWrap = document.getElementById("editWrap");
   var countEl = document.getElementById("count");
@@ -256,16 +275,9 @@
   }
   loadClients();
 
-  function renderTopics(){
-    var keep = topicSel.value;
-    var html = "<option value=''>All topics</option>";
-    CATEGORIES.forEach(function(c){ html += "<option>" + esc(c) + "</option>"; });
-    topicSel.innerHTML = html;
-    if(keep) topicSel.value = keep;
-  }
+  // Categories still power the editor's Topic dropdown; there's no Topic list filter.
   fetch("/api/categories", { cache:"no-store" }).then(function(r){return r.json();}).then(function(list){
     CATEGORIES = (list||[]).map(function(i){ return i.name; });
-    renderTopics();
   }).catch(function(){});
 
   var ALL_ASSETS = [];
@@ -334,20 +346,20 @@
     editWrap.innerHTML = "";
     showChrome(true);
     colorClientSelect();
-    var client = clientSel.value, topic = topicSel.value, status = statusSel.value, sort = sortSel.value;
+    var client = clientSel.value, sort = sortSel.value;
+    var showArch = !!(showArchEl && showArchEl.checked);
+    renderChips();
     var rows = ALL_TICKETS.filter(function(t){
-      // Status filter: Open bucket (active work), Closed bucket (Complete/Archived),
-      // All, or one exact status.
+      // Archived is an advanced view: hidden unless "Show archived" is on.
+      if (!showArch && t.status === "Archived") return false;
+      // Status buckets, driven by the chips: open work, the review queue, closed, or all.
       var closed = CLOSED.indexOf(t.status) >= 0;
-      if (status === "__all") { /* show all */ }
-      else if (status === "__review") { if (t.reviewed || closed) return false; }  // review queue = active tickets only
-      else if (status === "__open") { if (closed) return false; }
-      else if (status === "__closed") { if (!closed) return false; }
-      else if (status === "__active") { if (t.status === "Archived") return false; }
-      else { if (t.status !== status) return false; }
+      if (curStatus === "all") { /* show all (within the archive setting) */ }
+      else if (curStatus === "review") { if (t.reviewed || closed) return false; }  // review queue = active tickets only
+      else if (curStatus === "open") { if (closed) return false; }
+      else if (curStatus === "closed") { if (!closed) return false; }
       if (client === "__unassigned") { if (t.client) return false; }
       else if (client) { if (t.client !== client) return false; }
-      if (topic && t.category !== topic) return false;
       return true;
     });
     // Sort: latest activity (newest note/change on top), or by entry date.
@@ -750,9 +762,8 @@
   };
 
   clientSel.addEventListener("change", render);
-  topicSel.addEventListener("change", render);
-  statusSel.addEventListener("change", render);
   sortSel.addEventListener("change", render);
+  if (showArchEl) showArchEl.addEventListener("change", render);
 </script>
 <script src="/lightbox.js"></script>
 <script src="/native-camera.js"></script>

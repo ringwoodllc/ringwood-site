@@ -322,7 +322,8 @@ async function listActAsUsers(request, env) {
   const master = await requireMaster(request, env);
   if (!master) return json({ ok: false, error: "Master only." }, 403);
   const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,client:clients(name)");
-  const active = (rows || []).filter((u) => u.active !== false);
+  // Exclude the signed-in master's own login: acting as yourself is a no-op.
+  const active = (rows || []).filter((u) => u.active !== false && u.email !== master.email);
   // One entry per CLIENT (a client may have many logins; the admin just wants to
   // view as "Dunkin", not pick a specific Dunkin user). Master logins stay
   // individual.
@@ -741,7 +742,9 @@ async function getSession(request, env) {
     if (ap && ap.actas) {
       const trows = await sbSelect(env, `app_users?id=eq.${ap.actas}&select=email,username,role,active,perms,client:clients(name)`);
       const t = trows && trows[0];
-      if (t && t.active !== false) {
+      // Acting as your own login is a no-op: fall through to the normal session
+      // so it doesn't show a pointless "Acting as you / Back to you" banner.
+      if (t && t.active !== false && t.email !== claims.email) {
         const trole = t.role === "master" ? "master" : "client";
         const tclient = trole === "client" ? (t.client && t.client.name) || "" : null;
         data = {
