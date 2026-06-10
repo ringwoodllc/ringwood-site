@@ -36,6 +36,8 @@
   .intro p{margin-top:10px;color:var(--muted);font-size:1.04rem}
 
   .field{margin-bottom:16px}
+  .frow{display:flex;gap:12px;flex-wrap:wrap}
+  .frow>.field{flex:1;min-width:150px}
   label{display:block;font-weight:600;font-size:.96rem;color:var(--green-deep);margin-bottom:7px}
   input,select,textarea{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:13px 14px;-webkit-appearance:none;appearance:none}
   select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
@@ -374,16 +376,20 @@
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
         "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
-        "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
-        (IS_CLIENT ? "" : "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>") +
-        "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
+        "<div class='frow'>" +
+          "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
+          "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
+        "</div>" +
+        "<div class='frow'>" +
+          (IS_CLIENT ? "" : "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>") +
+          "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
+        "</div>" +
         "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
           "<select id='e_asset'>" + assetOpts + "</select>" +
           "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
-        "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
         "<div class='field'><label>Description</label>" +
           "<textarea id='e_desc' style='min-height:120px'>" + esc(t.description) + "</textarea>" +
-          "<button class='qbtn' id='e_ai' type='button' style='margin-top:8px'>✨ Suggest with AI</button>" +
+          "<button class='qbtn' id='e_ai' type='button' style='margin-top:8px'>✨ Rewrite with AI</button>" +
         "</div>" +
         "<div class='field'><label>Photos</label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
@@ -454,18 +460,19 @@
       var msg = document.getElementById("e_msg"); msg.textContent = "";
       var payload = {
         note: document.getElementById("e_desc").value,
+        asset: (function(){ var s=document.getElementById("e_asset"); if(!s) return ""; var v=s.value; if(!v||v==="__new"||v==="") return ""; var o=s.options[s.selectedIndex]; return o?o.text:""; })(),
         photos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }),
         photoUrls: existingPhotos
       };
       fetch("/api/tickets/suggest", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
-          b.disabled = false; b.textContent = "✨ Suggest with AI";
+          b.disabled = false; b.textContent = "✨ Rewrite with AI";
           if(d&&d.ok){
             if(d.description) document.getElementById("e_desc").value = d.description;
             if(d.category){ var cs=document.getElementById("e_cat"); for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===d.category||cs.options[i].text===d.category){ cs.selectedIndex=i; break; } } }
             if(d.title){ genTitle = d.title; document.getElementById("e_title").value = d.title; }
           } else { msg.textContent = (d&&d.error)||"The assistant couldn't respond."; }
-        }).catch(function(){ b.disabled=false; b.textContent="✨ Suggest with AI"; msg.textContent="Couldn't reach the assistant."; });
+        }).catch(function(){ b.disabled=false; b.textContent="✨ Rewrite with AI"; msg.textContent="Couldn't reach the assistant."; });
     });
 
     /* ---- update log ---- */

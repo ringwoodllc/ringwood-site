@@ -2362,9 +2362,10 @@ async function suggestTicket(request, env, session) {
     return json({ ok: false, error: "Bad request." }, 400);
   }
   const note = (body.note || "").toString().trim();
+  const asset = (body.asset || "").toString().trim();
   const pics = normalizePics(body);
   const urlPics = Array.isArray(body.photoUrls) ? body.photoUrls.filter(Boolean) : [];
-  if (!note && !pics.length && !urlPics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
+  if (!note && !asset && !pics.length && !urlPics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
 
   let cats = ["Repair", "Maintenance", "Install / Setup", "Buildout / Project", "Other"];
   try {
@@ -2381,8 +2382,9 @@ async function suggestTicket(request, env, session) {
     "Work out what they want done and write the ticket.\n\n" +
     "- description: one or two plain sentences describing the request or problem and, where shown, the location or surface (e.g. 'Mount the framed sign on the drywall wall by the entrance.'). Build on their note and keep their intent.\n" +
     "- category: choose exactly one from this list: " + cats.join(", ") + ".\n" +
-    "- title: a short, specific title (max 8 words, Title Case, no quotes, no period).\n\n" +
-    "Important: describe only what the photos and note actually show or say. Do NOT invent brands, model numbers, measurements, dimensions, names, or any detail you cannot verify. If something is unclear, keep it general or leave it out.\n" +
+    "- title: a short, specific title (max 8 words, Title Case, no quotes, no period). Name the actual thing and what is happening, not the category. Prefer 'Label Maker Won't Turn On' over 'Repair'.\n\n" +
+    (asset ? "This ticket is about a specific piece of equipment: \"" + asset + "\". Use that exact name in the title and description (e.g. \"" + asset + " Won't Turn On\").\n" : "") +
+    "Important: describe only what the photos, note, and the named equipment actually show or say. Do NOT invent brands, model numbers, measurements, dimensions, names, or any detail you cannot verify. If something is unclear, keep it general or leave it out.\n" +
     (note ? 'Their note: "' + note + '"\n' : "") +
     "If a field cannot be determined, use an empty string for it.";
 
