@@ -137,6 +137,7 @@ function isPublic(url, sub) {
   if (p === "/api/login" || p === "/api/logout" || p === "/api/whoami") return true;
   if (p === "/api/contact" || p === "/api/diag") return true;
   if (p === "/manifest.json" || p === "/sw.js" || p === "/install-prompt.js" || p.startsWith("/icons/")) return true;
+  if (p.startsWith("/downloads/")) return true; // public app downloads (APK)
   if (sub === "talk" || sub === "contact") return true; // public contact form
   if (sub === "ringwood" || sub === "www") return true; // marketing site
   return false;
