@@ -91,9 +91,9 @@
   .state{color:var(--muted);padding:8px 0 30px}
   .err{color:#8a3d1c}
   .agentnote{background:#dfe9f4;color:#274a73;border-radius:4px;padding:10px 12px;font-size:.9rem;margin-bottom:14px}
-  .qrcard{display:flex;gap:16px;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:20px;flex-wrap:wrap}
-  .qrcard .qrimg{flex:0 0 auto;background:#fff;padding:8px;border-radius:6px;border:1px solid var(--line);line-height:0}
-  .qrcard .qrimg svg,.qrcard .qrimg img{width:128px;height:128px;display:block}
+  .qrcard{display:flex;gap:14px;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:20px;flex-wrap:wrap}
+  .qrcard .qrimg{flex:0 0 auto;background:#fff;padding:6px;border-radius:6px;border:1px solid var(--line);line-height:0}
+  .qrcard .qrimg svg,.qrcard .qrimg img{width:84px;height:84px;display:block}
   .qrcard .qrinfo{flex:1;min-width:200px}
   .qrcard .qrinfo .lbl{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:4px}
   .qrcard .qrurl{font-size:.8rem;color:var(--muted);word-break:break-all;margin-bottom:10px}
@@ -292,7 +292,7 @@
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
       "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
       "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
-      svcSummary+qrCard(a)+photos+identity+ai+
+      svcSummary+photos+identity+qrCard(a)+ai+
       "<h2>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
       "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist;
     loadAssetTickets(curId);
