@@ -318,11 +318,17 @@
       ? (svcArr.length + " record" + (svcArr.length===1?"":"s") + (lastSvc?(" · last "+new Date(lastSvc).toLocaleDateString()):"") + (totalCost?(" · "+money(totalCost)+" total"):""))
       : "No service records yet";
     // Compact counters instead of a big card. Tickets count fills in once loaded.
+    // The QR chip sits right here: a check means a code is assigned, a plus means
+    // it needs one. Tapping it opens the camera to scan a code straight onto the asset.
+    var hasQr = !!(a.qr && (""+a.qr).trim());
     var stats =
       "<div class='stats'>"+
         "<a class='stat' id='stat_tk' href='#tickets' onclick=\"document.getElementById('tickets').scrollIntoView({behavior:'smooth'});return false;\">🎫 Tickets <b id='tkCount'>·</b></a>"+
         "<a class='stat"+(svcArr.length?"":" zero")+"' href='#svc' onclick=\"document.getElementById('svc').scrollIntoView({behavior:'smooth'});return false;\">🔧 Service <b>"+svcArr.length+"</b></a>"+
-      "</div>";
+        "<label class='stat qrstat"+(hasQr?"":" zero")+"' for='qrAssign' style='cursor:pointer' title='"+(hasQr?"QR code assigned. Tap to scan a different code.":"No QR code yet. Tap to scan a sticker on the equipment.")+"'>QR <b>"+(hasQr?"✓":"＋")+"</b></label>"+
+        "<input type='file' id='qrAssign' accept='image/*' capture='environment' style='display:none'/>"+
+      "</div>"+
+      "<div id='qrCardMsg' style='font-size:.82rem;color:var(--muted);margin:-12px 0 16px'></div>";
     var hist;
     if(a.services && a.services.length){
       var rows = a.services.map(function(s){
@@ -338,16 +344,13 @@
       (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
       "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
       "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
-      stats+photos+identity+qrCard(a)+ai+
+      stats+photos+identity+ai+
       "<h2 id='tickets'>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
       "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist;
     loadAssetTickets(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
-    var pb=document.getElementById("qrPrint"); if(pb) pb.addEventListener("click", function(){ printQR(a); });
-    var cb=document.getElementById("qrCopy"); if(cb) cb.addEventListener("click", function(){ copyText(assetUrl(a.id), cb); });
     var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
-    var qg=document.getElementById("qrGen"); if(qg) qg.addEventListener("click", generateQrForAsset);
   }
 
   function loadAssetTickets(id){
@@ -566,6 +569,7 @@
         "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>"+
           "<label class='btn ghost' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem' for='f_qrscan'>Scan a code to assign</label>"+
           "<input type='file' id='f_qrscan' accept='image/*' capture='environment' style='display:none' />"+
+          "<button type='button' id='f_qrprint' class='btn ghost' style='padding:8px 13px;border-radius:999px;font-size:.84rem'>Print a label</button>"+
         "</div>"+
         "<div id='f_qrmsg' style='font-size:.84rem;color:var(--muted);margin-top:6px'></div>"+
       "</div>"+
@@ -582,6 +586,7 @@
       }).catch(function(){ b.disabled=false; b.textContent="Delete asset"; setMsg("Couldn't reach the server."); });
     });
     document.getElementById("runBtn").addEventListener("click", runAgentNow);
+    var qpb=document.getElementById("f_qrprint"); if(qpb) qpb.addEventListener("click", function(){ printQR(curAsset); });
     document.getElementById("f_qrscan").addEventListener("change", function(e){
       var file=e.target.files&&e.target.files[0]; e.target.value="";
       var qm=document.getElementById("f_qrmsg"); if(!file) return;
