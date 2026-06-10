@@ -85,6 +85,10 @@ export default {
     if (url.pathname === "/api/admin/clients" && request.method === "GET") return adminListClients(request, env);
     if (url.pathname === "/api/admin/client" && request.method === "POST") return adminSaveClient(request, env);
     if (url.pathname === "/api/admin/client/delete" && request.method === "POST") return deleteClient(request, env);
+    if (url.pathname === "/api/vendors" && request.method === "GET") return listVendors(request, env, session);
+    if (url.pathname === "/api/admin/vendors" && request.method === "GET") return adminListVendors(request, env);
+    if (url.pathname === "/api/admin/vendor" && request.method === "POST") return adminSaveVendor(request, env);
+    if (url.pathname === "/api/admin/vendor/delete" && request.method === "POST") return deleteVendor(request, env);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -117,6 +121,7 @@ export default {
       "/review": "/review/",
       "/services": "/services/",
       "/clients": "/clients/",
+      "/vendors": "/vendors/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -497,6 +502,60 @@ async function deleteClient(request, env) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/clients?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete the client." }, 502);
   clearRefsCache();
+  return json({ ok: true });
+}
+
+/* ===================== Vendors / technicians ===================== */
+// The people and companies work gets assigned to. "Internal" = a Ringwood
+// person; "Vendor" = an outside company. Stored in the `vendors` table.
+
+// For the ticket "Assigned to" dropdown: active vendors only, names + trade.
+async function listVendors(request, env, session) {
+  if (!sbReady(env) || !can(session, "tickets", "view")) return json([]);
+  const rows = await sbSelect(env, "vendors?select=id,name,kind,trade,active&order=name");
+  if (rows === null) return json([]); // table not added yet -> empty, app keeps working
+  return noStore(
+    (rows || []).filter((v) => v.active !== false).map((v) => ({ id: v.id, name: v.name || "", kind: v.kind || "Vendor", trade: v.trade || "" }))
+  );
+}
+
+async function adminListVendors(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,active&order=name");
+  if (rows === null) return noStore({ ok: true, vendors: [], missing: true });
+  return noStore({
+    ok: true,
+    vendors: (rows || []).map((v) => ({
+      id: v.id, name: v.name || "", kind: v.kind || "Vendor", trade: v.trade || "",
+      phone: v.phone || "", email: v.email || "", notes: v.notes || "", active: v.active !== false,
+    })),
+  });
+}
+
+async function adminSaveVendor(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const name = c(body.name);
+  if (!name) return json({ ok: false, error: "Enter a name." }, 400);
+  const kind = c(body.kind) === "Internal" ? "Internal" : "Vendor";
+  const patch = { name, kind, trade: c(body.trade) || null, phone: c(body.phone) || null, email: c(body.email) || null, notes: c(body.notes) || null };
+  if ("active" in body) patch.active = body.active !== false;
+  const id = c(body.id);
+  const res = id ? await sbUpdate(env, "vendors", id, patch) : await sbInsert(env, "vendors", Object.assign({ active: true }, patch));
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true, vendor: res.data || null });
+}
+
+async function deleteVendor(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No vendor id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/vendors?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
 }
 

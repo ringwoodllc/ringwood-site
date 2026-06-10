@@ -308,6 +308,22 @@
 
   var ALL_ASSETS = [];
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){ ALL_ASSETS = Array.isArray(list)?list:[]; }).catch(function(){});
+  var VENDORS = [];
+  function loadVendors(){ return fetch("/api/vendors",{cache:"no-store"}).then(function(r){return r.json();}).then(function(list){ VENDORS = Array.isArray(list)?list:[]; }).catch(function(){ VENDORS=[]; }); }
+  loadVendors();
+  // The "Assigned to" dropdown: vendors/technicians, the current value (even if it
+  // predates the list), and a "＋ New vendor…" quick-add.
+  function assignedSelectHtml(cur){
+    var names = {};
+    VENDORS.forEach(function(v){ if(v.name) names[v.name]=v; });
+    if(cur && !names[cur]) names[cur] = { name:cur, trade:"" };
+    var list = Object.keys(names).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    var opts = "<option value=''>— Unassigned —</option>" + list.map(function(n){
+      var v = names[n], lbl = n + (v.trade ? " · " + v.trade : "");
+      return "<option value='" + esc(n) + "'" + (cur===n?" selected":"") + ">" + esc(lbl) + "</option>";
+    }).join("") + "<option value='__new'>＋ New vendor…</option>";
+    return "<select id='e_assigned'>" + opts + "</select>";
+  }
 
   // Show or hide the list "chrome" (intro + filters + count) so a selected ticket
   // appears on its own at the top, matching the asset lookup screen.
@@ -493,7 +509,16 @@
             "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
           "</div>" +
           "<div class='frow'>" +
-            "<div class='field'><label>Assigned to</label><input id='e_assigned' value='" + esc(t.assignedTo||"") + "' placeholder='Name or tech' /></div>" +
+            "<div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
+              "<div id='e_assignedNew' style='display:none;margin-top:8px'>" +
+                "<input id='e_assignedName' type='text' placeholder='New vendor or person name' style='margin-bottom:6px' />" +
+                "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
+                  "<select id='e_assignedKind' style='flex:0 0 auto;width:auto'><option value='Vendor'>Vendor (outside)</option><option value='Internal'>Internal (Ringwood)</option></select>" +
+                  "<button type='button' class='qbtn' id='e_assignedAdd'>Add</button>" +
+                  "<a href='/vendors' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Manage vendors</a>" +
+                "</div>" +
+              "</div>" +
+            "</div>" +
             "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
               "<select id='e_asset'>" + assetOpts + "</select>" +
               "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
@@ -643,6 +668,33 @@
     if(foldUse) foldUse.addEventListener("click", function(){ document.getElementById("e_desc").value=document.getElementById("e_foldText").textContent; document.getElementById("e_foldWrap").style.display="none"; });
     var foldKeep=document.getElementById("e_foldKeep");
     if(foldKeep) foldKeep.addEventListener("click", function(){ document.getElementById("e_foldWrap").style.display="none"; });
+
+    // Assigned-to dropdown + quick-add a new vendor without leaving the ticket.
+    var asgSel = document.getElementById("e_assigned");
+    if (asgSel) asgSel.addEventListener("change", function(){
+      var isNew = asgSel.value === "__new";
+      var nw = document.getElementById("e_assignedNew");
+      if(nw) nw.style.display = isNew ? "block" : "none";
+      if(isNew){ var nm = document.getElementById("e_assignedName"); if(nm) nm.focus(); }
+    });
+    var asgAdd = document.getElementById("e_assignedAdd");
+    if (asgAdd) asgAdd.addEventListener("click", function(){
+      var nmEl = document.getElementById("e_assignedName"), nm = (nmEl.value||"").trim();
+      if(!nm){ nmEl.focus(); return; }
+      var kind = document.getElementById("e_assignedKind").value;
+      asgAdd.disabled = true; asgAdd.textContent = "Adding…";
+      fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ name:nm, kind:kind })})
+        .then(function(r){return r.json();}).then(function(d){
+          asgAdd.disabled=false; asgAdd.textContent="Add";
+          if(d&&d.ok){
+            VENDORS.push({ name:nm, kind:kind, trade:"" });
+            var o=document.createElement("option"); o.value=nm; o.textContent=nm;
+            asgSel.insertBefore(o, asgSel.querySelector("option[value='__new']"));
+            asgSel.value=nm;
+            document.getElementById("e_assignedNew").style.display="none"; nmEl.value="";
+          } else { var em=document.getElementById("e_msg"); if(em){ em.style.color="#8a3d1c"; em.textContent=(d&&d.error)||"Couldn't add the vendor."; } }
+        }).catch(function(){ asgAdd.disabled=false; asgAdd.textContent="Add"; });
+    });
 
     /* ---- update log ---- */
     var logEl = document.getElementById("e_log");
@@ -866,7 +918,9 @@
         payload.client = ecl ? ecl.value : undefined;
         payload.category = document.getElementById("e_cat").value;
         payload.location = document.getElementById("e_loc").value;
-        payload.assignedTo = document.getElementById("e_assigned") ? document.getElementById("e_assigned").value : undefined;
+        var _asg = document.getElementById("e_assigned") ? document.getElementById("e_assigned").value : undefined;
+        if (_asg === "__new") _asg = "";  // quick-add wasn't completed
+        payload.assignedTo = _asg;
         payload.description = document.getElementById("e_desc").value;
         payload.title = document.getElementById("e_title").value || genTitle;
         if (assetSelEl && assetSelEl.value === "__new"){ var nn = newAssetEl.value.trim(); if(nn) payload.newAssetName = nn; }

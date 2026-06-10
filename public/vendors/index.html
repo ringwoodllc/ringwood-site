@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Vendors &amp; technicians</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:640px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:18px 0 22px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:12px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.7rem);color:var(--green-deep);line-height:1.1}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 18px}
+  h2{font-family:"Spectral",serif;font-weight:500;font-size:1.25rem;color:var(--green-deep);margin:24px 0 10px}
+  label{display:block;font-weight:600;font-size:.86rem;color:var(--green-deep);margin-bottom:5px}
+  .field{margin-bottom:12px}
+  input,select,textarea{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  textarea{min-height:64px;resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green)}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:18px 16px;margin-bottom:14px}
+  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.98rem;padding:12px 16px;border-radius:6px}
+  .btn:hover{background:var(--green-deep)}
+  .btn.sm{padding:8px 13px;font-size:.86rem;border-radius:999px}
+  .btn:disabled{opacity:.6;cursor:default}
+  .citem{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden}
+  .csum{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;padding:14px 16px}
+  .csum:hover{background:rgba(33,68,58,.04)}
+  .kind{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .kind.vendor{background:#eadcc4;color:#6b5524}
+  .kind.internal{background:#e3efe7;color:var(--green-deep)}
+  .nm{font-weight:600;color:var(--green-deep)}
+  .cs{color:var(--muted);font-size:.84rem;margin-top:2px}
+  .caret{color:var(--muted);font-size:1.1rem;transition:transform .15s}
+  .citem.open .caret{transform:rotate(90deg)}
+  .cbody{padding:14px 16px 16px;border-top:1px solid var(--line);display:none}
+  .row2{display:flex;gap:10px;flex-wrap:wrap}.row2 .field{flex:1;min-width:140px}
+  .msg{font-size:.86rem;margin-top:8px;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
+  .empty{color:var(--muted)}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Home</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Admin</div>
+    <h1>Vendors &amp; technicians</h1>
+    <div class="lead">The people and companies you assign work to. Internal is a Ringwood person; Vendor is an outside company. Build the directory once and pick from it on every ticket.</div>
+  </div>
+
+  <div id="setupNote" class="note" style="display:none"></div>
+
+  <h2>Add a vendor or technician</h2>
+  <div class="panel">
+    <div class="field"><label>Name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Acme Computer Repair, or John (HVAC)" /></div>
+    <div class="row2">
+      <div class="field"><label>Type</label><select id="n_kind"><option value="Vendor">Vendor (outside)</option><option value="Internal">Internal (Ringwood)</option></select></div>
+      <div class="field"><label>Trade <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_trade" type="text" autocomplete="off" placeholder="e.g. Computer, HVAC, Electrical" /></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Phone <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_phone" type="tel" autocomplete="off" /></div>
+      <div class="field"><label>Email <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_email" type="email" autocomplete="off" /></div>
+    </div>
+    <div class="field"><label>Notes <span style="font-weight:400;color:var(--muted)">— optional</span></label><textarea id="n_notes"></textarea></div>
+    <button class="btn" id="n_add" type="button">Add</button>
+    <div class="msg" id="n_msg"></div>
+  </div>
+
+  <h2>Directory</h2>
+  <div id="list"><div class="lead">Loading…</div></div>
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function ukey(id){ return (id||"").toString().replace(/[^a-zA-Z0-9]/g,""); }
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/vendors"); return; }
+    if(d.role!=="master"){ location.replace("/app"); return; }
+    document.getElementById("n_add").addEventListener("click", addVendor);
+    load();
+  }).catch(function(){});
+
+  var VENDORS = [];
+  function load(){
+    fetch("/api/admin/vendors",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      VENDORS = d.vendors||[];
+      var note = document.getElementById("setupNote");
+      if(d.missing){ note.style.display="block"; note.textContent="The vendors table isn't set up yet. Add it in Supabase (one-time), then this list works."; }
+      else { note.style.display="none"; }
+      render();
+    }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function render(){
+    var el=document.getElementById("list");
+    if(!VENDORS.length){ el.innerHTML="<div class='empty'>No vendors yet. Add your first above.</div>"; return; }
+    el.innerHTML = VENDORS.map(renderItem).join("");
+    VENDORS.forEach(wire);
+  }
+  function renderItem(v){
+    var k=ukey(v.id);
+    var kindCls = v.kind==="Internal" ? "internal" : "vendor";
+    var sum=[v.trade, v.phone, v.email].filter(Boolean).map(esc).join(" · ")||(v.active?"":"Inactive")||"No details yet";
+    return "<div class='citem"+(v.active?"":" off")+"' id='it_"+k+"'>"+
+      "<div class='csum' onclick=\"tog('"+k+"')\">"+
+        "<div><span class='kind "+kindCls+"'>"+(v.kind==="Internal"?"Internal":"Vendor")+"</span> <span class='nm'>"+esc(v.name)+"</span>"+(v.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sum+"</div></div>"+
+        "<span class='caret'>›</span></div>"+
+      "<div class='cbody' id='b_"+k+"'>"+
+        "<div class='field'><label>Name</label><input id='nm_"+k+"' value='"+esc(v.name)+"'/></div>"+
+        "<div class='row2'>"+
+          "<div class='field'><label>Type</label><select id='kd_"+k+"'><option value='Vendor'"+(v.kind!=="Internal"?" selected":"")+">Vendor (outside)</option><option value='Internal'"+(v.kind==="Internal"?" selected":"")+">Internal (Ringwood)</option></select></div>"+
+          "<div class='field'><label>Trade</label><input id='tr_"+k+"' value='"+esc(v.trade)+"'/></div>"+
+        "</div>"+
+        "<div class='row2'>"+
+          "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(v.phone)+"'/></div>"+
+          "<div class='field'><label>Email</label><input id='em_"+k+"' type='email' value='"+esc(v.email)+"'/></div>"+
+        "</div>"+
+        "<div class='field'><label>Notes</label><textarea id='no_"+k+"'>"+esc(v.notes)+"</textarea></div>"+
+        "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 10px'><input type='checkbox' id='ac_"+k+"' "+(v.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active (shows in the Assigned-to list)</label>"+
+        "<div style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
+          "<button class='btn sm' id='del_"+k+"' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Delete</button></div>"+
+        "<div class='msg' id='m_"+k+"'></div></div></div>";
+  }
+  window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
+
+  function wire(v){
+    var k=ukey(v.id);
+    document.getElementById("sv_"+k).addEventListener("click", function(){
+      var b=this, m=document.getElementById("m_"+k); m.className="msg";
+      var name=document.getElementById("nm_"+k).value.trim();
+      if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
+      b.disabled=true; b.textContent="Saving…";
+      var payload={ id:v.id, name:name, kind:document.getElementById("kd_"+k).value, trade:document.getElementById("tr_"+k).value, phone:document.getElementById("ph_"+k).value, email:document.getElementById("em_"+k).value, notes:document.getElementById("no_"+k).value, active:document.getElementById("ac_"+k).checked };
+      fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+        .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
+          if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
+        .catch(function(){ b.disabled=false; b.textContent="Save"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+    });
+    document.getElementById("del_"+k).addEventListener("click", function(){
+      var m=document.getElementById("m_"+k); m.className="msg";
+      if(!confirm("Delete "+v.name+"? Tickets already assigned to this name keep the name; it just leaves the directory.")) return;
+      var b=this; b.disabled=true; b.textContent="Deleting…";
+      fetch("/api/admin/vendor/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:v.id})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ load(); } else { b.disabled=false; b.textContent="Delete"; m.className="msg err"; m.textContent=(d&&d.error)||"Could not delete."; } })
+        .catch(function(){ b.disabled=false; b.textContent="Delete"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+    });
+  }
+
+  function addVendor(){
+    var b=document.getElementById("n_add"), m=document.getElementById("n_msg"); m.className="msg";
+    var name=document.getElementById("n_name").value.trim();
+    if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
+    b.disabled=true; b.textContent="Adding…";
+    var payload={ name:name, kind:document.getElementById("n_kind").value, trade:document.getElementById("n_trade").value, phone:document.getElementById("n_phone").value, email:document.getElementById("n_email").value, notes:document.getElementById("n_notes").value };
+    fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add";
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_trade","n_phone","n_email","n_notes"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
+      .catch(function(){ b.disabled=false; b.textContent="Add"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
