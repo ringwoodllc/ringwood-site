@@ -111,6 +111,19 @@ create index if not exists tickets_status_idx on tickets (status);
 alter table tickets add column if not exists photo_urls text[];
 alter table tickets add column if not exists asset_id uuid references assets(id);
 
+-- Per-ticket update log: typed notes plus automatic events (status changes).
+create table if not exists ticket_comments (
+  id uuid primary key default gen_random_uuid(),
+  ticket_id uuid not null references tickets(id) on delete cascade,
+  author text not null,                       -- "Ringwood" or the client name
+  role text not null,                         -- 'master' | 'client'
+  kind text not null default 'note',          -- 'note' | 'event'
+  body text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists ticket_comments_ticket_idx on ticket_comments (ticket_id);
+alter table ticket_comments enable row level security;
+
 create table if not exists service_records (
   id uuid primary key default gen_random_uuid(),
   asset_id uuid references assets(id),

@@ -75,6 +75,20 @@
   .row2{display:flex;gap:10px;margin-top:6px}
   .row2 .btn{padding:13px}
   .msg{margin-top:12px;font-size:.92rem;color:#8a3d1c}
+
+  /* Per-ticket update log */
+  .logsec{border-top:1px solid var(--line);margin:22px 0 6px;padding-top:18px}
+  .logsec h4{font-family:"Spectral",serif;font-weight:600;font-size:1.06rem;color:var(--green-deep);margin-bottom:12px}
+  .log{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+  .lg{display:flex;flex-direction:column;gap:3px}
+  .lg .who{font-weight:700;font-size:.84rem;color:#f6f2e8;background:var(--green-deep);align-self:flex-start;padding:2px 10px;border-radius:999px}
+  .lg .meta{font-size:.78rem;color:var(--muted)}
+  .lg .text{font-size:.98rem;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+  .lg.event .text{color:var(--muted);font-style:italic;font-size:.9rem}
+  .lg.event .who{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+  .log .empty-log{color:var(--muted);font-size:.92rem}
+  .addnote textarea{min-height:64px}
+  .addnote .btn{margin-top:8px;width:auto;padding:10px 20px;font-size:.96rem}
 </style>
 </head>
 <body>
@@ -224,8 +238,20 @@
       render();
     }).catch(function(){ listEl.innerHTML = "<div class='empty'>Could not load tickets.</div>"; });
   }
+  // Map client name -> assigned color (from the server) so the Client dropdown
+  // can match the chips. Falls back to the deterministic color.
+  var CLIENT_COLORS = {};
+  function colorClientSelect(){
+    ALL_TICKETS.forEach(function(t){ if(t.client && t.clientColor) CLIENT_COLORS[t.client] = t.clientColor; });
+    function colFor(v){ return (!v || v.indexOf("__")===0) ? "" : (CLIENT_COLORS[v] || clientColor(v)); }
+    for(var i=0;i<clientSel.options.length;i++){ var o=clientSel.options[i]; o.style.color = colFor(o.value) || ""; }
+    var sel = colFor(clientSel.value);
+    clientSel.style.color = sel || ""; clientSel.style.fontWeight = sel ? "700" : "";
+  }
+
   function render(){
     editWrap.innerHTML = "";
+    colorClientSelect();
     var client = clientSel.value, topic = topicSel.value, status = statusSel.value;
     var rows = ALL_TICKETS.filter(function(t){
       // Status filter: a specific status, all active (hide Archived), or everything.
@@ -307,11 +333,27 @@
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
           "<input type='file' id='e_file' accept='image/*' multiple capture='environment' />" +
         "</div>" +
+        "<div class='logsec'>" +
+          "<h4>Update log</h4>" +
+          "<div class='log' id='e_log'><div class='empty-log'>Loading…</div></div>" +
+          "<div class='addnote'><label for='e_note'>Add a note</label>" +
+            "<textarea id='e_note' placeholder='Add an update or note for the record. " + (IS_CLIENT ? "Posts as " + esc(t.client||"you") + "." : "Posts as Ringwood.") + "'></textarea>" +
+            "<button class='btn' id='e_addnote' type='button'>Add note</button>" +
+          "</div>" +
+        "</div>" +
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
         "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
         "<div class='msg' id='e_msg'></div>" +
       "</div>";
     window.scrollTo(0,0);
+
+    var eClientEl = document.getElementById("e_client");
+    if (eClientEl){
+      function eColFor(v){ return v ? (CLIENT_COLORS[v] || clientColor(v)) : ""; }
+      for(var ci=0;ci<eClientEl.options.length;ci++){ var oo=eClientEl.options[ci]; oo.style.color = eColFor(oo.value) || ""; }
+      function paintEClient(){ var c=eColFor(eClientEl.value); eClientEl.style.color=c||""; eClientEl.style.fontWeight=c?"700":""; }
+      eClientEl.addEventListener("change", paintEClient); paintEClient();
+    }
 
     var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
     assetSelEl.addEventListener("change", function(){ newAssetEl.style.display = assetSelEl.value === "__new" ? "block" : "none"; if(assetSelEl.value==="__new") newAssetEl.focus(); });
@@ -362,6 +404,43 @@
             if(d.title){ genTitle = d.title; document.getElementById("e_title").value = d.title; }
           } else { msg.textContent = (d&&d.error)||"The assistant couldn't respond."; }
         }).catch(function(){ b.disabled=false; b.textContent="✨ Suggest with AI"; msg.textContent="Couldn't reach the assistant."; });
+    });
+
+    /* ---- update log ---- */
+    var logEl = document.getElementById("e_log");
+    var noteCol = (t.clientColor || clientColor(t.client || "")) ;
+    function fmtWhen(s){ if(!s) return ""; try{ var d=new Date(s); return d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); }catch(e){ return ""; } }
+    function renderLog(rows){
+      if(!rows || !rows.length){ logEl.innerHTML = "<div class='empty-log'>No updates yet. Add the first note below.</div>"; return; }
+      logEl.innerHTML = rows.map(function(c){
+        var isEvent = c.kind === "event";
+        var col = c.role === "client" ? noteCol : "var(--green-deep)";
+        var whoStyle = (isEvent || c.role !== "client") ? "" : (" style='background:" + col + "'");
+        return "<div class='lg " + (isEvent?"event":"note") + "'>" +
+          "<span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
+          "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" +
+          "<div class='text'>" + esc(c.body) + "</div>" +
+        "</div>";
+      }).join("");
+    }
+    function loadLog(){
+      fetch("/api/tickets/comments?id=" + encodeURIComponent(t.id), { cache:"no-store" })
+        .then(function(r){return r.json();}).then(renderLog)
+        .catch(function(){ logEl.innerHTML = "<div class='empty-log'>Couldn't load the log.</div>"; });
+    }
+    loadLog();
+    document.getElementById("e_addnote").addEventListener("click", function(){
+      var ta = document.getElementById("e_note");
+      var text = (ta.value||"").trim();
+      var msg = document.getElementById("e_msg"); msg.textContent = "";
+      if(!text){ ta.focus(); return; }
+      var b = this; b.disabled = true; b.textContent = "Adding…";
+      fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:text }) })
+        .then(function(r){return r.json();}).then(function(d){
+          b.disabled = false; b.textContent = "Add note";
+          if(d&&d.ok){ ta.value = ""; loadLog(); }
+          else { msg.textContent = (d&&d.error)||"Couldn't add the note."; }
+        }).catch(function(){ b.disabled=false; b.textContent="Add note"; msg.textContent="Couldn't reach the server."; });
     });
 
     document.getElementById("e_back").addEventListener("click", render);

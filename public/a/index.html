@@ -132,7 +132,6 @@
     <label class="qrchip" for="scanInput" style="margin-top:10px;display:inline-block">Scan a QR code</label>
     <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
     <div id="scanMsg" style="font-size:.84rem;color:var(--muted);margin-top:6px"></div>
-    <div id="qrSamples" style="margin-top:10px"></div>
   </div>
   <div id="view"></div>
 </main>
@@ -145,7 +144,7 @@
   var SERVICE_TYPES = ["Install","Inspection","Maintenance","Repair","Replacement","Other"];
   var OPTIONS = { types:[], locations:[], clients:[] };
 
-  var assetList=document.getElementById("assetList"), searchInput=document.getElementById("searchInput"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter"), assetCount=document.getElementById("assetCount"), qrSamples=document.getElementById("qrSamples");
+  var assetList=document.getElementById("assetList"), searchInput=document.getElementById("searchInput"), qrInput=document.getElementById("qrInput"), view=document.getElementById("view"), clientFilter=document.getElementById("clientFilter"), assetCount=document.getElementById("assetCount");
   var allAssets=[], curAsset=null, curId="";
   // A client login only sees its own assets; hide the client filter.
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
@@ -179,7 +178,6 @@
   fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
     allAssets = Array.isArray(list)?list:[];
     renderList();
-    renderSamples();
     // Deep link: ?id=<uuid> loads directly; a QR tag resolves to its asset.
     var raw = new URLSearchParams(location.search).get("id") || new URLSearchParams(location.search).get("qr") || location.pathname.replace(/^\/a\//,"");
     var id = resolveRef(raw);
@@ -220,13 +218,6 @@
         (a.client?"<span class='client-chip' style='background:"+(a.clientColor||clientColor(a.client))+"'>"+esc(a.client)+"</span>":"")+"</div>";
     }).join("");
   }
-  function renderSamples(){
-    var withQr=allAssets.filter(function(a){ return a.qr; });
-    if(!withQr.length){ qrSamples.innerHTML=""; return; }
-    qrSamples.innerHTML="<div style='color:var(--muted);font-size:.82rem;margin-bottom:6px'>Sample QR codes (tap to open, like scanning):</div>"+
-      withQr.slice(0,6).map(function(a){ return "<span class='qrchip' onclick=\"load('"+esc(a.id)+"')\">"+esc(a.qr)+"</span>"; }).join("");
-  }
-
   clientFilter.addEventListener("change", renderList);
   searchInput.addEventListener("input", renderList);
   document.getElementById("sortSel").addEventListener("change", renderList);

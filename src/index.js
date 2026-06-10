@@ -67,6 +67,8 @@ export default {
     if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx, session);
     if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env, session);
     if (url.pathname === "/api/tickets/asset" && request.method === "GET") return getTicketAsset(url, env, session);
+    if (url.pathname === "/api/tickets/comments" && request.method === "GET") return listTicketComments(url, env, session);
+    if (url.pathname === "/api/tickets/comment" && request.method === "POST") return addTicketComment(request, env, session);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
@@ -1992,6 +1994,49 @@ async function listTickets(url, env, session) {
   );
 }
 
+// The label to show for who wrote a comment / made a change.
+function authorOf(session) {
+  if (!session) return { author: "Ringwood", role: "master" };
+  if (session.role === "master") return { author: "Ringwood", role: "master" };
+  return { author: session.client || "Client", role: "client" };
+}
+
+async function listTicketComments(url, env, session) {
+  if (!can(session, "tickets", "view")) return json([]);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json([]);
+  if (!(await ownsRecord(env, session, "tickets", id))) return json([]);
+  const rows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=id,author,role,kind,body,created_at&order=created_at.asc`);
+  return json(
+    (rows || []).map((c) => ({ id: c.id, author: c.author, role: c.role, kind: c.kind || "note", body: c.body || "", created: c.created_at || "" }))
+  );
+}
+
+async function addTicketComment(request, env, session) {
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "tickets", "view")) return deny("tickets");
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  const text = (body.body || "").toString().trim();
+  if (!id || !text) return json({ ok: false, error: "Write a note first." }, 400);
+  if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
+  const a = authorOf(session);
+  const res = await sbInsert(env, "ticket_comments", { ticket_id: id, author: a.author, role: a.role, kind: "note", body: text.slice(0, 4000) });
+  if (!res.ok) return json({ ok: false, error: "Could not add the note." }, 502);
+  return json({ ok: true });
+}
+
+// Record an automatic event on a ticket (e.g., a status change).
+async function logTicketEvent(env, ticketId, session, text) {
+  const a = authorOf(session);
+  await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: a.author, role: a.role, kind: "event", body: text });
+}
+
 async function updateTicket(request, env, session) {
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   if (!can(session, "tickets", "edit")) return deny("tickets");
@@ -2005,6 +2050,12 @@ async function updateTicket(request, env, session) {
   if (!id) return json({ ok: false, error: "No ticket id." }, 400);
   if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
   const refs = await getRefs(env);
+  // Remember the status so we can log a change event.
+  let prevStatus = null;
+  if ("status" in body) {
+    const curT = await sbSelect(env, `tickets?id=eq.${id}&select=status`);
+    prevStatus = curT && curT[0] ? curT[0].status : null;
+  }
   const patch = {};
   if ("status" in body) patch.status = body.status;
   if ("category" in body) patch.category_id = findId(refs.cats, body.category);
@@ -2049,6 +2100,9 @@ async function updateTicket(request, env, session) {
   if (Object.keys(patch).length) {
     const res = await sbUpdate(env, "tickets", id, patch);
     if (!res.ok) return json({ ok: false, error: ("Save failed. " + (res.error || "")).slice(0, 300) }, 502);
+    if ("status" in body && prevStatus && body.status && body.status !== prevStatus) {
+      await logTicketEvent(env, id, session, "Status changed from " + prevStatus + " to " + body.status);
+    }
   }
   if (photoPatch) {
     const res2 = await sbUpdate(env, "tickets", id, photoPatch);
