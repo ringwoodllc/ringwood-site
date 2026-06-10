@@ -1988,7 +1988,7 @@ async function resolveTicketAsset(env, body, clientId, session) {
 // ticket. Only creates an asset when it actually read equipment details, so
 // non-equipment photos don't spawn junk assets.
 async function detectAndLinkAsset(ticketId, pics, clientId, env, photoUrls) {
-  if (!pics.length || !env.ANTHROPIC_API_KEY) return;
+  if (!pics.length || !env.ANTHROPIC_API_KEY) return null;
   const images = pics.map((p) => ({ media_type: p.contentType, base64: p.base64 }));
   let read = null;
   try {
@@ -1996,10 +1996,10 @@ async function detectAndLinkAsset(ticketId, pics, clientId, env, photoUrls) {
   } catch {
     read = null;
   }
-  if (!read) return;
+  if (!read) return null;
   const c = (v) => (v || "").toString().trim();
   const serial = c(read.serial), make = c(read.manufacturer), model = c(read.model);
-  if (!serial && !make && !model) return; // no nameplate read -> don't invent an asset
+  if (!serial && !make && !model) return null; // no nameplate read -> don't invent an asset
   const scope = clientId ? `&client_id=eq.${clientId}` : "";
   let assetId = null;
   if (serial) {
@@ -2041,6 +2041,47 @@ async function detectAndLinkAsset(ticketId, pics, clientId, env, photoUrls) {
     if (ins.ok && ins.data) assetId = ins.data.id;
   }
   if (assetId) await sbUpdate(env, "tickets", ticketId, { asset_id: assetId });
+  return assetId || null;
+}
+
+// After a ticket is filed, draft it the way the asset agent reads a nameplate:
+// identify/link the equipment from the photos, then write a clean title,
+// description, and category from the report + equipment + photos, and leave an
+// "agent reading" entry in the update log. The ticket stays Needs review.
+async function autoEnrichTicket(ticketId, opts, env) {
+  try {
+    if (!env.ANTHROPIC_API_KEY) return;
+    const pics = opts.pics || [];
+    const photoUrls = (opts.photoUrls || []).filter(Boolean);
+    let assetId = opts.assetId || null;
+    let assetName = "";
+    // Identify the equipment from the photos if it wasn't picked/scanned.
+    if (!assetId && pics.length) {
+      assetId = await detectAndLinkAsset(ticketId, pics, opts.clientId, env, photoUrls);
+    }
+    if (assetId) {
+      const a = await sbSelect(env, `assets?id=eq.${assetId}&select=name,nickname&limit=1`);
+      if (a && a[0]) assetName = a[0].nickname || a[0].name || "";
+    }
+    const fields = await suggestTicketFields({ note: opts.note || "", asset: assetName, pics, urlPics: photoUrls, env });
+    if (!fields) return;
+    const patch = {};
+    if (fields.title) patch.title = fields.title;
+    if (fields.description) patch.description = fields.description;
+    if (fields.category) {
+      const refs = await getRefs(env);
+      const cid = findId(refs.cats, fields.category);
+      if (cid) patch.category_id = cid;
+    }
+    if (Object.keys(patch).length) await sbUpdate(env, "tickets", ticketId, patch);
+    // Leave a visible reading in the log (preserves the original report).
+    const lines = ["✨ Ringwood AI Agent read this report" + (pics.length ? " and the photos" : "") + " and drafted the ticket for review."];
+    if (assetName) lines.push("Linked equipment: " + assetName + ".");
+    if (opts.note) lines.push("Original report: \"" + opts.note.slice(0, 500) + "\"");
+    await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: "Ringwood AI Agent", role: "agent", kind: "event", body: lines.join("\n").slice(0, 4000) });
+  } catch {
+    /* background best-effort; never blocks the submit */
+  }
 }
 
 async function createTicket(request, env, ctx, session) {
@@ -2097,13 +2138,14 @@ async function createTicket(request, env, ctx, session) {
     }
   }
 
-  // If the user didn't pick/scan an asset, let the agent identify it from the
-  // photos in the background and link (or auto-create) the matching asset. Pass
-  // the stored photo URLs so a newly created asset keeps the photo.
+  // In the background, let the agent draft the ticket: identify the equipment
+  // from the photos (if not already picked), then write a clean title,
+  // description, and category and leave an agent reading in the log. Mirrors how
+  // the asset agent reads a nameplate. Never blocks the submit response.
   let detecting = false;
-  if (!linkAsset && pics.length && env.ANTHROPIC_API_KEY && ctx && ctx.waitUntil) {
-    detecting = true;
-    ctx.waitUntil(detectAndLinkAsset(id, pics, clId, env, savedUrls));
+  if (env.ANTHROPIC_API_KEY && (note || pics.length) && ctx && ctx.waitUntil) {
+    detecting = !linkAsset && pics.length > 0; // the UI's "identifying…" hint only applies when detecting an asset
+    ctx.waitUntil(autoEnrichTicket(id, { note, pics, photoUrls: savedUrls, clientId: clId, assetId: linkAsset || null }, env));
   }
 
   return json({ ok: true, id, ref, title, photoCount: pics.length, savedPhotos, detecting });
@@ -2621,6 +2663,21 @@ async function suggestTicket(request, env, session) {
   const pics = normalizePics(body);
   const urlPics = Array.isArray(body.photoUrls) ? body.photoUrls.filter(Boolean) : [];
   if (!note && !asset && !pics.length && !urlPics.length) return json({ ok: false, error: "Add a photo or a few words first." }, 400);
+  const out = await suggestTicketFields({ note, asset, pics, urlPics, env });
+  if (!out) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+  return json({ ok: true, description: out.description || "", category: out.category || "", title: out.title || "" });
+}
+
+// The shared AI pass behind "Rewrite with AI" and the automatic enrichment on
+// submit. Reads the note, the named/linked equipment, and any photos, and
+// returns a clean { title, description, category }. Returns null on failure.
+async function suggestTicketFields({ note, asset, pics, urlPics, env }) {
+  note = (note || "").toString().trim();
+  asset = (asset || "").toString().trim();
+  pics = pics || [];
+  urlPics = (urlPics || []).filter(Boolean);
+  if (!env.ANTHROPIC_API_KEY) return null;
+  if (!note && !asset && !pics.length && !urlPics.length) return null;
 
   let cats = ["Repair", "Maintenance", "Install / Setup", "Buildout / Project", "Other"];
   try {
@@ -2669,20 +2726,20 @@ async function suggestTicket(request, env, session) {
         output_config: { format: { type: "json_schema", schema } },
       }),
     });
-    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    if (!res.ok) return null;
     const data = await res.json();
     const block = (data.content || []).find((b) => b.type === "text");
-    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    if (!block) return null;
     let out;
     try {
       out = JSON.parse(block.text);
     } catch {
-      return json({ ok: false, error: "Couldn't read the suggestion." }, 502);
+      return null;
     }
     const match = cats.find((c) => c.toLowerCase() === (out.category || "").toLowerCase());
     const title = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 90);
-    return json({ ok: true, description: out.description || "", category: match || "", title: title });
+    return { description: out.description || "", category: match || "", title: title };
   } catch {
-    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+    return null;
   }
 }

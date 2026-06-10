@@ -101,6 +101,9 @@
   .lg .text{font-size:.98rem;color:var(--ink);white-space:pre-wrap;word-break:break-word}
   .lg.event .text{color:var(--muted);font-style:italic;font-size:.9rem}
   .lg.event .who{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+  .lg.agent{background:#eef3ef;border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+  .lg.agent .text{color:var(--green-deep);font-style:normal;font-size:.92rem}
+  .lg.agent .who{background:#e3efe7;color:var(--green-deep);border-color:transparent}
   .log .empty-log{color:var(--muted);font-size:.92rem}
   .addnote textarea{min-height:64px}
   .addnote .btn{width:auto;padding:10px 20px;font-size:.96rem}
@@ -593,7 +596,7 @@
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
         var photos = (c.photos && c.photos.length) ?
           "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
-        return "<div class='lg " + (isEvent?"event":"note") + "' data-cid='" + esc(c.id) + "'>" +
+        return "<div class='lg " + (isEvent?"event":"note") + (c.role==="agent"?" agent":"") + "' data-cid='" + esc(c.id) + "'>" +
           "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
           "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
           (c.body ? "<div class='text'>" + esc(c.body) + "</div>" : "") +
