@@ -19,7 +19,7 @@
     ".rw-switch{display:inline-flex;align-items:center;gap:5px;background:var(--green-deep,#21443a);color:#f6f2e8;border:none;border-radius:999px;padding:2px 10px;font:inherit;font-weight:700;font-size:.74rem;cursor:pointer}" +
     ".rw-switch.acting{background:var(--clay,#a9633a)}" +
     ".rw-switch .car{opacity:.85;font-size:.7rem}" +
-    ".rw-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line,rgba(35,40,42,.14));border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.18);min-width:230px;max-height:62vh;overflow:auto;z-index:10000;text-align:left;padding:6px}" +
+    ".rw-menu{position:fixed;right:10px;left:auto;top:60px;background:#fff;border:1px solid var(--line,rgba(35,40,42,.14));border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.18);min-width:220px;max-width:min(290px,92vw);max-height:70vh;overflow:auto;z-index:10000;text-align:left;padding:6px}" +
     ".rw-menu .h{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted,#5f5d52);font-weight:700;padding:8px 10px 4px}" +
     ".rw-menu button{display:flex;align-items:center;gap:7px;width:100%;text-align:left;background:transparent;border:none;border-radius:6px;padding:8px 10px;font:inherit;font-size:.86rem;color:var(--ink,#23282a);cursor:pointer}" +
     ".rw-menu button:hover{background:var(--bg-2,#efe8d8)}" +
@@ -75,9 +75,7 @@
       idHtml = "Signed in as <a href='/account'>" + esc(w.client || w.name || "your account") + "</a>";
     }
 
-    var canSvc = w.role === "master" || (w.perms && (w.perms.service === "view" || w.perms.service === "edit"));
-    var nav = canSvc ? "<a href='/services'>Service records</a> &middot; " : "";
-    strip.innerHTML = idHtml + " &middot; " + nav + "<a href='#' id='rwSignout'>Sign out</a>";
+    strip.innerHTML = idHtml + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
 
     var so = document.getElementById("rwSignout");
@@ -107,8 +105,12 @@
       }
       sw.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
-        if (menu.style.display === "none") { menu.style.display = "block"; loadMenu(); }
-        else menu.style.display = "none";
+        if (menu.style.display === "none") {
+          var r = sw.getBoundingClientRect();
+          menu.style.top = Math.round(r.bottom + 6) + "px"; // sit just below the badge, pinned to the right edge
+          menu.style.display = "block";
+          loadMenu();
+        } else menu.style.display = "none";
       });
       menu.addEventListener("click", function (e) {
         e.stopPropagation();
