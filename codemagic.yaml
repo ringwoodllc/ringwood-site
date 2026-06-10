@@ -58,6 +58,10 @@ workflows:
           add NSCameraUsageDescription "Ringwood uses the camera to photograph equipment and tickets."
           add NSPhotoLibraryUsageDescription "Ringwood attaches photos to assets and tickets."
           add NSPhotoLibraryAddUsageDescription "Ringwood saves photos you capture."
+          # Standard HTTPS only -> declare no non-exempt encryption so TestFlight
+          # doesn't ask the export-compliance question on every build.
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
       - name: Set up code signing (creates the certificate + profile if missing)
         script: |
           keychain initialize
