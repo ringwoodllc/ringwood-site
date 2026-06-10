@@ -102,7 +102,11 @@
   .btnrow{display:flex;flex-wrap:nowrap;gap:8px;margin:16px 0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .btnrow .btn{flex:0 0 auto;white-space:nowrap;padding:11px 15px;font-size:.94rem}
   .stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 22px}
-  .stat{display:inline-flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:.92rem;font-weight:600;color:var(--green-deep);text-decoration:none;cursor:pointer}
+  .stat{display:inline-flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:.92rem;font-family:inherit;font-weight:600;color:var(--green-deep);text-decoration:none;cursor:pointer}
+  .statadd{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;border:1.5px solid var(--green);color:var(--green);font-size:1rem;font-weight:700;cursor:pointer;background:var(--bg);text-decoration:none;vertical-align:middle}
+  .statadd:hover{background:var(--green);color:#f6f2e8}
+  .agenttog{background:transparent;border:none;padding:0;font:inherit;font-weight:600;color:var(--green-deep);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .agenttog #agentIco{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;border:1px solid var(--line);font-size:.95rem}
   .stat:hover{border-color:var(--green)}
   .stat b{background:var(--green);color:#f6f2e8;border-radius:999px;padding:1px 9px;font-size:.82rem;min-width:22px;text-align:center}
   .stat.zero b{background:var(--line);color:var(--muted)}
@@ -343,7 +347,7 @@
     photos = photos?"<div class='photos'>"+photos+"</div>":"";
     var added = a.loggedAt ? new Date(a.loggedAt).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) + " at " + new Date(a.loggedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}) : "";
     var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+row("Logged",added)+"</dl></div>";
-    var ai = a.aiReading?"<div class='card'><dt style='color:var(--muted);font-weight:600;margin-bottom:4px'>Agent reading</dt><div class='ainote'>"+esc(a.aiReading)+"</div></div>":"";
+    var ai = a.aiReading?"<div class='card'><button type='button' class='agenttog' id='agentTog'><span id='agentIco'>＋</span> Agent reading</button><div id='agentBody' style='display:none;margin-top:8px'><div class='ainote'>"+esc(a.aiReading)+"</div></div></div>":"";
     var svcArr = a.services || [];
     var lastSvc = svcArr.reduce(function(m,s){ return (s.date && (!m || s.date>m)) ? s.date : m; }, "");
     var totalCost = svcArr.reduce(function(t,s){ var c=Number(s.cost); return t + (isNaN(c)?0:c); }, 0);
@@ -354,12 +358,18 @@
     // The QR chip sits right here: a check means a code is assigned, a plus means
     // it needs one. Tapping it opens the camera to scan a code straight onto the asset.
     var hasQr = !!(a.qr && (""+a.qr).trim());
+    var aid = encodeURIComponent(curId);
+    // One line of chips: the counters (tap to jump to the section), QR, a small
+    // Edit, and Verify if it still needs it. Adding work happens from the + at the
+    // Tickets and Service headings below.
     var stats =
       "<div class='stats'>"+
         "<a class='stat' id='stat_tk' href='#tickets' onclick=\"document.getElementById('tickets').scrollIntoView({behavior:'smooth'});return false;\">🎫 Tickets <b id='tkCount'>·</b></a>"+
         "<a class='stat"+(svcArr.length?"":" zero")+"' href='#svc' onclick=\"document.getElementById('svc').scrollIntoView({behavior:'smooth'});return false;\">🔧 Service <b>"+svcArr.length+"</b></a>"+
         "<label class='stat qrstat"+(hasQr?"":" zero")+"' for='qrAssign' style='cursor:pointer' title='"+(hasQr?"QR code assigned. Tap to scan a different code.":"No QR code yet. Tap to scan a sticker on the equipment.")+"'>QR <b>"+(hasQr?"✓":"＋")+"</b></label>"+
         "<input type='file' id='qrAssign' accept='image/*' capture='environment' style='display:none'/>"+
+        "<button class='stat' id='editBtn' type='button'>✏️ Edit</button>"+
+        (a.status !== "Verified" ? "<button class='stat' id='verifyBtn' type='button'>✓ Verify</button>" : "")+
       "</div>"+
       "<div id='qrCardMsg' style='font-size:.82rem;color:var(--muted);margin:-12px 0 16px'></div>";
     var hist;
@@ -373,18 +383,15 @@
       "<a href='#' class='back' style='display:inline-block;margin:18px 0 12px' onclick=\"backToList();return false;\">&larr; Back to list</a>"+
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
-      "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>"+
-      (a.status !== "Verified" ? "<button class='btn ghost' id='verifyBtn' type='button'>Mark verified</button>" : "")+
-      "<a class='btn ghost' href='/service?asset="+encodeURIComponent(curId)+"'>Log a service</a>"+
-      "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
       stats+photos+identity+ai+
-      "<h2 id='tickets'>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
-      "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist+
+      "<h2 id='tickets'>Tickets <a class='statadd' href='/tickets?asset="+aid+"' title='New ticket for this asset'>＋</a></h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
+      "<h2 id='svc'>Service history <a class='statadd' href='/service?asset="+aid+"' title='Log a service for this asset'>＋</a> <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist+
       "<div id='assetRev' style='margin-top:18px'></div>";
     loadAssetTickets(curId);
     loadAssetEvents(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
+    var agTog=document.getElementById("agentTog"); if(agTog) agTog.addEventListener("click", function(){ var b=document.getElementById("agentBody"), ico=document.getElementById("agentIco"); var open=b.style.display!=="none"; b.style.display=open?"none":"block"; if(ico) ico.textContent=open?"＋":"−"; });
     var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
   }
 
@@ -549,8 +556,8 @@
   function verifyNow(){
     var b=document.getElementById("verifyBtn"); if(b){ b.disabled=true; b.textContent="Saving…"; }
     fetch("/api/asset/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:curId})}).then(function(r){return r.json();}).then(function(d){
-      if(d&&d.ok){ load(curId); } else if(b){ b.disabled=false; b.textContent="Mark verified"; }
-    }).catch(function(){ if(b){ b.disabled=false; b.textContent="Mark verified"; } });
+      if(d&&d.ok){ load(curId); } else if(b){ b.disabled=false; b.textContent="✓ Verify"; }
+    }).catch(function(){ if(b){ b.disabled=false; b.textContent="✓ Verify"; } });
   }
 
   // dropdown of known values + "add new" text
