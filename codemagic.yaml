@@ -79,6 +79,11 @@ workflows:
           cd "$CM_BUILD_DIR/mobile/ios/App"
           # Keep the App target's bundle id aligned with the registered App ID.
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ai.ringwood.app;/g' App.xcodeproj/project.pbxproj
+          # Unique, increasing build number (a timestamp) so App Store Connect
+          # never rejects the upload as a duplicate build.
+          BN=$(date +%s)
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $BN;/g" App.xcodeproj/project.pbxproj
+          echo "Build number set to $BN"
           echo "=== installed provisioning profiles ==="; ls -1 ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || true
           xcode-project use-profiles
       - name: Build IPA
