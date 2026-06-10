@@ -1318,7 +1318,7 @@ async function updateAsset(request, env, session) {
 // confirm, with a likely-duplicate flag so they can be merged.
 async function assetsForReview(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const all = await sbSelect(env, "assets?select=id,name,nickname,make,model,serial,verification,photo_urls,client_id,client:clients(name)&order=logged_at.desc");
+  const all = await sbSelect(env, "assets?select=id,name,nickname,make,model,serial,verification,photo_urls,overall_photo_url,nameplate_photo_url,serial_photo_url,client_id,client:clients(name)&order=logged_at.desc");
   const baseOf = (s) => (s || "").replace(/\s+\d+$/, "").trim().toLowerCase(); // "Ice Machine 2" -> "ice machine"
   const list = (all || []).filter((a) => (a.verification || "Pending") !== "Verified");
   const assets = list.map((a) => {
@@ -1340,10 +1340,23 @@ async function assetsForReview(request, env) {
       model: a.model || "",
       serial: a.serial || "",
       verification: a.verification || "Pending",
-      photo: (a.photo_urls && a.photo_urls[0]) || "",
+      photo: assetPhotos(a)[0] || "",
       dup: cand ? { id: cand.id, name: cand.nickname || cand.name || "Asset" } : null,
     };
   });
+  // For older assets created before photos were carried over, borrow a photo from
+  // a ticket that points at the asset, so review still shows something.
+  const needPhoto = assets.filter((a) => !a.photo).map((a) => a.id);
+  if (needPhoto.length) {
+    const tix = await sbSelect(env, `tickets?select=asset_id,photo_url,photo_urls&asset_id=in.(${needPhoto.join(",")})`);
+    const byAsset = {};
+    (tix || []).forEach((t) => {
+      if (byAsset[t.asset_id]) return;
+      const p = (t.photo_urls && t.photo_urls[0]) || t.photo_url || "";
+      if (p) byAsset[t.asset_id] = p;
+    });
+    assets.forEach((a) => { if (!a.photo && byAsset[a.id]) a.photo = byAsset[a.id]; });
+  }
   return noStore({ ok: true, assets });
 }
 
@@ -1677,7 +1690,7 @@ async function resolveTicketAsset(env, body, clientId, session) {
 // asset (by serial, then make+model) or auto-create one, and link it to the
 // ticket. Only creates an asset when it actually read equipment details, so
 // non-equipment photos don't spawn junk assets.
-async function detectAndLinkAsset(ticketId, pics, clientId, env) {
+async function detectAndLinkAsset(ticketId, pics, clientId, env, photoUrls) {
   if (!pics.length || !env.ANTHROPIC_API_KEY) return;
   const images = pics.map((p) => ({ media_type: p.contentType, base64: p.base64 }));
   let read = null;
@@ -1720,6 +1733,12 @@ async function detectAndLinkAsset(ticketId, pics, clientId, env) {
       const refs = await getRefs(env);
       const et = findId(refs.equip, c(read.equipmentType));
       if (et) row.equipment_type_id = et;
+    }
+    // Carry the ticket's photos onto the new asset so review and the asset page
+    // show what the AI looked at, instead of "no photo".
+    if (Array.isArray(photoUrls) && photoUrls.length) {
+      row.photo_urls = photoUrls.filter(Boolean);
+      row.overall_photo_url = photoUrls[0];
     }
     const ins = await sbInsert(env, "assets", row);
     if (ins.ok && ins.data) assetId = ins.data.id;
@@ -1767,6 +1786,7 @@ async function createTicket(request, env, ctx, session) {
   // (and we can report exactly how many saved).
   const pics = normalizePics(body);
   let savedPhotos = 0;
+  let savedUrls = [];
   if (pics.length) {
     const urls = [];
     for (let i = 0; i < pics.length; i++) {
@@ -1776,15 +1796,17 @@ async function createTicket(request, env, ctx, session) {
     if (urls.length) {
       await sbUpdate(env, "tickets", id, { photo_urls: urls, photo_url: urls[0] });
       savedPhotos = urls.length;
+      savedUrls = urls;
     }
   }
 
   // If the user didn't pick/scan an asset, let the agent identify it from the
-  // photos in the background and link (or auto-create) the matching asset.
+  // photos in the background and link (or auto-create) the matching asset. Pass
+  // the stored photo URLs so a newly created asset keeps the photo.
   let detecting = false;
   if (!linkAsset && pics.length && env.ANTHROPIC_API_KEY && ctx && ctx.waitUntil) {
     detecting = true;
-    ctx.waitUntil(detectAndLinkAsset(id, pics, clId, env));
+    ctx.waitUntil(detectAndLinkAsset(id, pics, clId, env, savedUrls));
   }
 
   return json({ ok: true, id, ref, title, photoCount: pics.length, savedPhotos, detecting });
