@@ -449,11 +449,13 @@
           "<div class='frow'>" +
             "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
             "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
-            "<div class='field'><label>Assigned to</label><input id='e_assigned' value='" + esc(t.assignedTo||"") + "' placeholder='Name or tech' /></div>" +
           "</div>" +
-          "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
-            "<select id='e_asset'>" + assetOpts + "</select>" +
-            "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>"
+          "<div class='frow'>" +
+            "<div class='field'><label>Assigned to</label><input id='e_assigned' value='" + esc(t.assignedTo||"") + "' placeholder='Name or tech' /></div>" +
+            "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
+              "<select id='e_asset'>" + assetOpts + "</select>" +
+              "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
+          "</div>"
         ) +
         "<div class='field'><label>Description</label>" +
           "<textarea id='e_desc' style='min-height:120px'" + (IS_CLIENT ? " readonly" : "") + ">" + esc(t.description) + "</textarea>" +
