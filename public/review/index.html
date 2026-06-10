@@ -39,6 +39,8 @@
   .btns button,.btns a{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;text-decoration:none}
   .btns .go{background:var(--green);color:#f6f2e8;border-color:var(--green)}
   .btns .danger{color:#8a3d1c;border-color:rgba(138,61,28,.4)}
+  .btns .spacer{flex:1 1 auto}
+  .btns a.go:hover{background:var(--green-deep);border-color:var(--green-deep)}
   .btns button:hover{border-color:var(--green)}
   .msg{font-size:.84rem;margin-top:8px;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
 </style>
@@ -88,8 +90,9 @@
       "<div class='bd'><div class='nm'>"+esc(a.name)+"</div>"+
       (a.fullName&&a.fullName!==a.name?"<div class='full'>"+esc(a.fullName)+"</div>":"")+
       (meta?"<div class='meta'>"+meta+"</div>":"")+tag+dup+
-      "<div class='btns'><button class='go' data-confirm='"+esc(k)+"'>Confirm</button>"+
-        "<a href='/a/?id="+esc(k)+"'>Open / edit</a>"+
+      "<div class='btns'><a class='go' href='/a/?id="+esc(k)+"'>Open / edit</a>"+
+        "<span class='spacer'></span>"+
+        "<button data-confirm='"+esc(k)+"'>Confirm</button>"+
         mergeBtn+
         "<button class='danger' data-del='"+esc(k)+"'>Delete</button></div>"+
       "<div class='msg' id='m_"+k+"'></div></div></div>";
