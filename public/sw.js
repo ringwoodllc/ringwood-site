@@ -1,14 +1,9 @@
 /* Ringwood service worker.
-   Goal: make the app installable and resilient offline WITHOUT breaking the
-   "push to main = instantly live" workflow. So:
-   - HTML page loads: network-first (you always get the freshest deploy), with a
-     cached copy as the offline fallback.
-   - /api/* calls: network-only, with a clean offline JSON response on failure
-     (never serve stale data).
-   - Static assets (js, css, fonts, icons): stale-while-revalidate (fast, and
-     they refresh themselves in the background).
+   Priority: "push to main = instantly live." So EVERYTHING same-origin is
+   network-first — pages and scripts always come fresh when you're online, and
+   the cache is only a fallback when you're offline. /api is network-only.
    Bump VERSION to force every client to drop old caches. */
-const VERSION = "rw-v1";
+const VERSION = "rw-v2";
 const STATIC = "rw-static-" + VERSION;
 const PAGES = "rw-pages-" + VERSION;
 
@@ -64,35 +59,19 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Page loads: freshest deploy first, cached page if offline.
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(PAGES).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match(req).then((m) => m || caches.match("/app")))
-    );
-    return;
-  }
-
-  // Static assets: serve cached immediately, refresh in the background.
+  // Everything else (pages, scripts, styles, icons): network-first so a deploy
+  // shows immediately; fall back to cache only when the network fails (offline).
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const net = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(STATIC).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || net;
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(STATIC).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() =>
+        caches.match(req).then((m) => m || (req.mode === "navigate" ? caches.match("/app") : undefined))
+      )
   );
 });
