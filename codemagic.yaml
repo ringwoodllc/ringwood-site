@@ -43,13 +43,6 @@ workflows:
       node: 18
       xcode: latest
       cocoapods: default
-      # Codemagic's managed automatic signing: with the App Store Connect
-      # integration it creates the distribution certificate (and its private key),
-      # the App ID, and the provisioning profile if they don't exist, and persists
-      # them in your Codemagic team so later builds reuse them.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: ai.ringwood.app
     scripts:
       - name: Install dependencies
         script: cd mobile && npm install
@@ -69,14 +62,24 @@ workflows:
           # doesn't ask the export-compliance question on every build.
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
-      - name: Align bundle id and apply signing
+      - name: Set up code signing (certificate + profile)
         script: |
+          set -e
+          keychain initialize
+          # A fresh account has no distribution certificate, and a certificate
+          # can't be created without a private key. So generate one, then let
+          # fetch-signing-files create the certificate from it AND the App Store
+          # provisioning profile, and install both.
+          openssl genrsa -out /tmp/rw_signing_key.pem 2048
+          app-store-connect fetch-signing-files "ai.ringwood.app" \
+            --type IOS_APP_STORE \
+            --certificate-key @file:/tmp/rw_signing_key.pem \
+            --create
+          keychain add-certificates
           cd "$CM_BUILD_DIR/mobile/ios/App"
           # Keep the App target's bundle id aligned with the registered App ID.
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ai.ringwood.app;/g' App.xcodeproj/project.pbxproj
-          echo "=== bundle ids in project ==="; grep PRODUCT_BUNDLE_IDENTIFIER App.xcodeproj/project.pbxproj | sort -u
           echo "=== installed provisioning profiles ==="; ls -1 ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || true
-          # Managed signing already fetched/created the files; apply them to the project.
           xcode-project use-profiles
       - name: Build IPA
         script: |
