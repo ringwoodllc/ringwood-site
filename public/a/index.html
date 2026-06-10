@@ -288,7 +288,7 @@
       "<a class='btn ghost' href='/tickets?asset="+encodeURIComponent(curId)+"'>New ticket</a></div>"+
       svcSummary+qrCard(a)+photos+identity+ai+
       "<h2>Tickets</h2><div id='assetTickets'><div class='empty'>Loading…</div></div>"+
-      "<h2 id='svc'>Service history</h2>"+hist;
+      "<h2 id='svc'>Service history <a href='/services' style='font-size:.82rem;font-weight:400;border-bottom:1px solid var(--clay)'>All records &rarr;</a></h2>"+hist;
     loadAssetTickets(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);

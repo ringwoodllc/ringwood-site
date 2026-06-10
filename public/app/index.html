@@ -39,6 +39,7 @@
   .tx{flex:1;min-width:0}
   .tx .t{display:block;font-family:"Spectral",serif;font-size:1.2rem;font-weight:500;color:var(--green-deep)}
   .tx .s{display:block;color:var(--muted);font-size:.9rem;margin-top:3px}
+  .count{display:none;background:var(--clay);color:#f6f2e8;font-family:"Hanken Grotesk",sans-serif;font-size:.78rem;font-weight:700;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:999px;padding:0 6px;margin-left:7px;vertical-align:middle}
   .chev{flex:0 0 auto;color:var(--muted)}
   footer{margin-top:30px;text-align:center;color:var(--muted);font-size:.82rem}
   footer a{color:var(--green-deep)}
@@ -90,7 +91,7 @@
 
     <a class="tile" href="/review" id="reviewTile" style="display:none">
       <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
-      <span class="tx"><span class="t">Asset review</span><span class="s">Confirm AI-created assets and merge duplicates</span></span>
+      <span class="tx"><span class="t">Asset review <span class="count" id="reviewCount"></span></span><span class="s">Confirm AI-created assets and merge duplicates</span></span>
       <span class="chev"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
     </a>
 
@@ -125,7 +126,17 @@
     if (!d || !d.ok) return;
     var g = document.getElementById("greeting");
     if (d.role === "client" && d.client){ g.textContent = "Hi, " + d.client; }
-    if (d.role === "master"){ g.textContent = "Welcome back"; document.getElementById("adminTile").style.display = "flex"; document.getElementById("reviewTile").style.display = "flex"; return; }
+    if (d.role === "master"){
+      g.textContent = "Welcome back";
+      document.getElementById("adminTile").style.display = "flex";
+      document.getElementById("reviewTile").style.display = "flex";
+      fetch("/api/assets/review").then(function(r){return r.json();}).then(function(rv){
+        var n = (rv && rv.assets) ? rv.assets.length : 0;
+        var b = document.getElementById("reviewCount");
+        if (n > 0){ b.textContent = n; b.style.display = "inline-block"; }
+      }).catch(function(){});
+      return;
+    }
     if (d.role === "client"){
       var perms = d.perms || {};
       var tiles = document.querySelectorAll(".tile[data-area]");

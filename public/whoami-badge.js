@@ -8,11 +8,13 @@
     ".rw-idstrip{background:var(--bg-2,#efe8d8);border-bottom:1px solid var(--line,rgba(35,40,42,.14));font-size:.8rem;color:var(--muted,#5f5d52);padding:7px 22px;text-align:right;font-family:inherit}" +
     ".rw-idstrip a{color:var(--green-deep,#21443a);text-decoration:none;font-weight:600}" +
     ".rw-idstrip a:hover{text-decoration:underline}" +
+    ".rw-master{display:inline-flex;align-items:center;gap:4px;background:var(--green-deep,#21443a);color:#f6f2e8;border-radius:999px;padding:1px 9px;font-weight:700;font-size:.74rem;margin-right:4px;vertical-align:middle}" +
     ".rw-filing{display:inline-block;background:var(--bg-2,#efe8d8);border:1px solid var(--line,rgba(35,40,42,.14));color:var(--green-deep,#21443a);border-radius:999px;padding:6px 13px;font-size:.85rem;font-weight:600;margin-bottom:16px}";
+
+  var CROWN = "<svg width='11' height='11' viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><path d='M3 7l4 4 5-7 5 7 4-4-2 12H5z'/></svg>";
 
   fetch("/api/whoami").then(function (r) { return r.json(); }).then(function (w) {
     if (!w || !w.ok) return;
-    var who = w.role === "master" ? "master (all clients)" : (w.client || "your account");
 
     var style = document.createElement("style");
     style.textContent = css;
@@ -20,7 +22,10 @@
 
     var strip = document.createElement("div");
     strip.className = "rw-idstrip";
-    strip.innerHTML = "Signed in as <a href='/account'>" + esc(who) + "</a> &middot; <a href='#' id='rwSignout'>Sign out</a>";
+    var idHtml = w.role === "master"
+      ? "<a href='/account'><span class='rw-master'>" + CROWN + "Master</span></a> &middot; all clients"
+      : "Signed in as <a href='/account'>" + esc(w.client || "your account") + "</a>";
+    strip.innerHTML = idHtml + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
     var so = document.getElementById("rwSignout");
     if (so) so.addEventListener("click", function (e) {
