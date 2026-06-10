@@ -43,9 +43,6 @@ workflows:
       node: 18
       xcode: latest
       cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: ai.ringwood.app
     scripts:
       - name: Install dependencies
         script: cd mobile && npm install
@@ -55,22 +52,28 @@ workflows:
         script: cd mobile && (npx cap add ios || true) && npx cap sync ios
       - name: Add camera / photo permission strings
         script: |
-          PLIST="mobile/ios/App/App/Info.plist"
+          PLIST="$CM_BUILD_DIR/mobile/ios/App/App/Info.plist"
           add() { /usr/libexec/PlistBuddy -c "Add :$1 string $2" "$PLIST" 2>/dev/null \
                  || /usr/libexec/PlistBuddy -c "Set :$1 $2" "$PLIST"; }
           add NSCameraUsageDescription "Ringwood uses the camera to photograph equipment and tickets."
           add NSPhotoLibraryUsageDescription "Ringwood attaches photos to assets and tickets."
           add NSPhotoLibraryAddUsageDescription "Ringwood saves photos you capture."
-      - name: Set up signing
+      - name: Set up code signing (creates the certificate + profile if missing)
         script: |
-          cd mobile/ios/App
+          keychain initialize
+          app-store-connect fetch-signing-files "ai.ringwood.app" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
           xcode-project use-profiles
       - name: Build IPA
         script: |
-          cd mobile/ios/App
-          xcode-project build-ipa --workspace App.xcworkspace --scheme App
+          xcode-project build-ipa \
+            --workspace "$CM_BUILD_DIR/mobile/ios/App/App.xcworkspace" \
+            --scheme "App"
     artifacts:
       - build/ios/ipa/*.ipa
+      - "**/*.ipa"
     publishing:
       app_store_connect:
         auth: integration
