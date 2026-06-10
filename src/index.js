@@ -2050,9 +2050,9 @@ async function listTicketComments(url, env, session) {
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json([]);
   if (!(await ownsRecord(env, session, "tickets", id))) return json([]);
-  const rows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=id,author,role,kind,body,created_at&order=created_at.asc`);
+  const rows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=id,author,role,kind,body,photo_urls,created_at&order=created_at.asc`);
   return json(
-    (rows || []).map((c) => ({ id: c.id, author: c.author, role: c.role, kind: c.kind || "note", body: c.body || "", created: c.created_at || "" }))
+    (rows || []).map((c) => ({ id: c.id, author: c.author, role: c.role, kind: c.kind || "note", body: c.body || "", photos: c.photo_urls || [], created: c.created_at || "" }))
   );
 }
 
@@ -2067,11 +2067,32 @@ async function addTicketComment(request, env, session) {
   }
   const id = (body.id || "").trim();
   const text = (body.body || "").toString().trim();
-  if (!id || !text) return json({ ok: false, error: "Write a note first." }, 400);
+  const pics = normalizePics(body);
+  if (!id || (!text && !pics.length)) return json({ ok: false, error: "Write a note or add a photo first." }, 400);
   if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
   const a = authorOf(session);
   const res = await sbInsert(env, "ticket_comments", { ticket_id: id, author: a.author, role: a.role, kind: "note", body: text.slice(0, 4000) });
-  if (!res.ok) return json({ ok: false, error: "Could not add the note." }, 502);
+  if (!res.ok || !res.data) return json({ ok: false, error: "Could not add the note." }, 502);
+  const cid = res.data.id;
+
+  // Photos attached to the note: stored under the note, shown inline in the log.
+  if (pics.length) {
+    const urls = [];
+    for (let i = 0; i < pics.length; i++) {
+      const u = await uploadToStorage(env, `tickets/${id}/notes/${cid}-${i}.jpg`, pics[i].base64, pics[i].contentType);
+      if (u) urls.push(u);
+    }
+    if (urls.length) {
+      await sbUpdate(env, "ticket_comments", cid, { photo_urls: urls });
+      // Optionally also append to the ticket's top photo set.
+      if (body.alsoTop) {
+        const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls`);
+        const existing = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls : [];
+        const merged = existing.concat(urls);
+        await sbUpdate(env, "tickets", id, { photo_urls: merged, photo_url: merged[0] });
+      }
+    }
+  }
   return json({ ok: true });
 }
 

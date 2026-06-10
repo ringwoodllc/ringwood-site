@@ -96,7 +96,10 @@
   .lg.event .who{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
   .log .empty-log{color:var(--muted);font-size:.92rem}
   .addnote textarea{min-height:64px}
-  .addnote .btn{margin-top:8px;width:auto;padding:10px 20px;font-size:.96rem}
+  .addnote .btn{width:auto;padding:10px 20px;font-size:.96rem}
+  .chk input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;accent-color:var(--green);padding:0}
+  .lg .photos{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .lg .photos img{width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:pointer}
 </style>
 </head>
 <body>
@@ -369,7 +372,13 @@
           "<div class='log' id='e_log'><div class='empty-log'>Loading…</div></div>" +
           "<div class='addnote'><label for='e_note'>Add a note</label>" +
             "<textarea id='e_note' placeholder='Add an update or note for the record. " + (IS_CLIENT ? "Posts as " + esc(t.client||"you") + "." : "Posts as Ringwood.") + "'></textarea>" +
-            "<button class='btn' id='e_addnote' type='button'>Add note</button>" +
+            "<div id='e_notethumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px'></div>" +
+            "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px'>" +
+              "<label class='qbtn' for='e_notefile' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
+              "<input type='file' id='e_notefile' accept='image/*' multiple capture='environment' style='display:none' />" +
+              "<label class='chk' style='font-weight:400;font-size:.9rem;display:flex;align-items:center;gap:7px;margin:0'><input type='checkbox' id='e_notetop' /> Also add to the photos up top</label>" +
+            "</div>" +
+            "<button class='btn' id='e_addnote' type='button' style='margin-top:10px'>Add note</button>" +
           "</div>" +
         "</div>" +
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
@@ -458,10 +467,13 @@
             "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" +
           "</span>";
         }
+        var photos = (c.photos && c.photos.length) ?
+          "<div class='photos'>" + c.photos.map(function(u){ return "<img src='" + esc(u) + "' alt='note photo' onclick=\"window.open('" + esc(u) + "','_blank')\" />"; }).join("") + "</div>" : "";
         return "<div class='lg " + (isEvent?"event":"note") + "' data-cid='" + esc(c.id) + "'>" +
           "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
           "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
-          "<div class='text'>" + esc(c.body) + "</div>" +
+          (c.body ? "<div class='text'>" + esc(c.body) + "</div>" : "") +
+          photos +
         "</div>";
       }).join("");
     }
@@ -504,16 +516,41 @@
       }
     });
     loadLog();
+    // Photos attached to a new note (before it's posted).
+    var notePhotos = [];
+    var noteThumbs = document.getElementById("e_notethumbs");
+    function renderNoteThumbs(){
+      noteThumbs.innerHTML = notePhotos.map(function(p, i){
+        return "<span style='position:relative;display:inline-block'>" +
+          "<img src='" + p.preview + "' alt='' style='width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--green)' />" +
+          "<button type='button' onclick='__rmNotePhoto(" + i + ")' style='position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:12px;line-height:1;cursor:pointer'>×</button>" +
+        "</span>";
+      }).join("");
+    }
+    window.__rmNotePhoto = function(i){ notePhotos.splice(i,1); renderNoteThumbs(); };
+    document.getElementById("e_notefile").addEventListener("change", function(e){
+      var files = Array.prototype.slice.call(e.target.files||[]); e.target.value = "";
+      Promise.all(files.map(processPhoto)).then(function(arr){
+        arr.forEach(function(p){ notePhotos.push(p); }); renderNoteThumbs();
+      }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
+    });
+
     document.getElementById("e_addnote").addEventListener("click", function(){
       var ta = document.getElementById("e_note");
       var text = (ta.value||"").trim();
       var msg = document.getElementById("e_msg"); msg.textContent = "";
-      if(!text){ ta.focus(); return; }
+      if(!text && !notePhotos.length){ ta.focus(); return; }
       var b = this; b.disabled = true; b.textContent = "Adding…";
-      fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:text }) })
+      var payload = {
+        id: t.id,
+        body: text,
+        photos: notePhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }),
+        alsoTop: document.getElementById("e_notetop").checked
+      };
+      fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
           b.disabled = false; b.textContent = "Add note";
-          if(d&&d.ok){ ta.value = ""; loadLog(); }
+          if(d&&d.ok){ ta.value = ""; notePhotos = []; renderNoteThumbs(); document.getElementById("e_notetop").checked = false; loadLog(); }
           else { msg.textContent = (d&&d.error)||"Couldn't add the note."; }
         }).catch(function(){ b.disabled=false; b.textContent="Add note"; msg.textContent="Couldn't reach the server."; });
     });

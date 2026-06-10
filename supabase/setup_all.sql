@@ -122,6 +122,8 @@ create table if not exists ticket_comments (
   created_at timestamptz not null default now()
 );
 create index if not exists ticket_comments_ticket_idx on ticket_comments (ticket_id);
+-- A note can carry photos (shown inline in the log, in time order).
+alter table ticket_comments add column if not exists photo_urls text[];
 alter table ticket_comments enable row level security;
 
 create table if not exists service_records (
