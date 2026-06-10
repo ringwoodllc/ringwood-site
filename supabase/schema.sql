@@ -14,12 +14,14 @@ create table if not exists clients (
   name text not null unique,
   status text not null default 'Active',        -- Active | Prospect | Churned
   legal_name text,
+  address text,
   primary_contact text,
   email text,
   phone text,
   notes text,
   created_at timestamptz not null default now()
 );
+alter table clients add column if not exists address text;
 
 create table if not exists equipment_types (
   id uuid primary key default gen_random_uuid(),

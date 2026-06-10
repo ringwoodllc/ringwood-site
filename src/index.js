@@ -72,6 +72,8 @@ export default {
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
+    if (url.pathname === "/api/admin/clients" && request.method === "GET") return adminListClients(request, env);
+    if (url.pathname === "/api/admin/client" && request.method === "POST") return adminSaveClient(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
     if (url.pathname === "/api/admin/user" && request.method === "POST") return adminSaveUser(request, env);
     if (url.pathname === "/api/admin/user/password" && request.method === "POST") return adminSetPassword(request, env);
@@ -97,6 +99,7 @@ export default {
       "/users": "/users/",
       "/review": "/review/",
       "/services": "/services/",
+      "/clients": "/clients/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -350,6 +353,47 @@ function cleanPerms(p) {
 
 // Emails we synthesize for username-only logins (hidden from the UI).
 const SYNTH_DOMAIN = "@id.ringwood.ai";
+
+// ---- master-only: client setup ----
+async function adminListClients(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const rows = await sbSelect(env, "clients?select=id,name,status,address,primary_contact,email,phone,notes&order=name");
+  return noStore({
+    ok: true,
+    clients: (rows || []).map((c) => ({
+      id: c.id,
+      name: c.name || "",
+      status: c.status || "Active",
+      address: c.address || "",
+      contact: c.primary_contact || "",
+      email: c.email || "",
+      phone: c.phone || "",
+      notes: c.notes || "",
+    })),
+  });
+}
+
+async function adminSaveClient(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const id = c(body.id);
+  const name = c(body.name);
+  if (!name) return json({ ok: false, error: "Enter a client name." }, 400);
+  const patch = { name, address: c(body.address) || null, primary_contact: c(body.contact) || null, email: c(body.email) || null, phone: c(body.phone) || null };
+  if ("status" in body) patch.status = c(body.status) || "Active";
+  let res;
+  if (id) res = await sbUpdate(env, "clients", id, patch);
+  else res = await sbInsert(env, "clients", Object.assign({ status: "Active" }, patch));
+  if (!res.ok) return json({ ok: false, error: "Could not save. The name may already be in use." }, 502);
+  clearRefsCache();
+  return json({ ok: true });
+}
 
 async function adminListUsers(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
