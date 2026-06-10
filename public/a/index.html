@@ -237,6 +237,9 @@
   function load(id){
     curId=id; view.innerHTML="<div class='state'>Loading asset…</div>";
     history.replaceState(null,"","/a/?id="+encodeURIComponent(id));
+    // The detail opens below the list, so bring it into view right away. That
+    // makes it obvious something loaded instead of leaving it offscreen.
+    try{ view.scrollIntoView({behavior:"smooth", block:"start"}); }catch(e){ try{ view.scrollIntoView(); }catch(e2){} }
     fetch("/api/asset?id="+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(a){
       if(!a||!a.ok){ view.innerHTML="<div class='state err'>Asset not found.</div>"; return; }
       curAsset=a; renderRead(a);
@@ -272,6 +275,7 @@
       hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>"+rows+"</tbody></table><div class='hint'>Tap a row to edit it.</div>";
     } else { hist="<div class='empty'>No service history yet.</div>"; }
     view.innerHTML =
+      "<a href='#' class='back' style='display:inline-block;margin:18px 0 12px' onclick=\"document.querySelector('.lookup').scrollIntoView({behavior:'smooth',block:'start'});return false;\">&larr; Back to list</a>"+
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
       "<div class='btnrow'><button class='btn' id='editBtn' type='button'>Edit asset</button>"+
