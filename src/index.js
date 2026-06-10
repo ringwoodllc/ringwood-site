@@ -1976,23 +1976,43 @@ async function listTickets(url, env, session) {
     rows = await sbSelect(env, `tickets?select=*${filter}&order=created_at.desc`);
   }
   const nameById = (arr, id) => { const m = (arr || []).find((x) => x.id === id); return m ? m.name : ""; };
+
+  // Latest activity per ticket: the most recent note/event time, or the ticket's
+  // own created time if it has none. Lets the list sort by what changed most
+  // recently. Resilient: if the comments table is missing, fall back to created.
+  const lastActById = {};
+  const ids = (rows || []).map((t) => t.id).filter(Boolean);
+  if (ids.length) {
+    const cmts = await sbSelect(env, `ticket_comments?select=ticket_id,created_at&ticket_id=in.(${ids.join(",")})`);
+    (cmts || []).forEach((c) => {
+      const cur = lastActById[c.ticket_id];
+      if (!cur || (c.created_at || "") > cur) lastActById[c.ticket_id] = c.created_at || "";
+    });
+  }
+
   return json(
-    (rows || []).map((t) => ({
-      id: t.id,
-      title: t.title || "Ticket",
-      category: embedded ? ((t.category && t.category.name) || "") : nameById(refs.cats, t.category_id),
-      client: embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id),
-      clientColor: clientColorFor(refs, embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id)),
-      assetId: t.asset_id || "",
-      asset: embedded ? ((t.asset && (t.asset.nickname || t.asset.name)) || "") : "",
-      status: t.status || "Open",
-      description: t.description || "",
-      ref: t.ref || "",
-      location: t.location || "",
-      photo: t.photo_url || "",
-      photos: t.photo_urls || (t.photo_url ? [t.photo_url] : []),
-      created: t.created_at || "",
-    }))
+    (rows || []).map((t) => {
+      const cAct = lastActById[t.id] || "";
+      const created = t.created_at || "";
+      return {
+        id: t.id,
+        title: t.title || "Ticket",
+        category: embedded ? ((t.category && t.category.name) || "") : nameById(refs.cats, t.category_id),
+        client: embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id),
+        clientColor: clientColorFor(refs, embedded ? ((t.client && t.client.name) || "") : nameById(refs.clients, t.client_id)),
+        assetId: t.asset_id || "",
+        asset: embedded ? ((t.asset && (t.asset.nickname || t.asset.name)) || "") : "",
+        status: t.status || "Open",
+        description: t.description || "",
+        ref: t.ref || "",
+        location: t.location || "",
+        photo: t.photo_url || "",
+        photos: t.photo_urls || (t.photo_url ? [t.photo_url] : []),
+        created: created,
+        lastActivity: cAct > created ? cAct : created,
+        hasNote: !!cAct,
+      };
+    })
   );
 }
 

@@ -119,20 +119,29 @@
   <div class="intro">
     <div class="eyebrow">Ticket status</div>
     <h1>Tickets</h1>
-    <p>Open tickets by default, newest first. Use Status, Client, or Topic to filter. Open one to update it, move it along, or archive it.</p>
+    <p>Open work first, with the most recently updated on top. Switch to Closed, change the sort, or filter by client and topic. Open one to update it, add a note, or move it along.</p>
   </div>
 
   <div style="display:flex;gap:10px;flex-wrap:wrap">
     <div class="field" style="flex:1;min-width:150px">
       <label for="status">Status</label>
       <select id="status">
-        <option value="Open" selected>Open</option>
-        <option value="Scheduled">Scheduled</option>
-        <option value="In Progress">In Progress</option>
-        <option value="Complete">Complete</option>
-        <option value="Archived">Archived</option>
-        <option value="__active">All active</option>
-        <option value="__all">All (incl. archived)</option>
+        <option value="__open" selected>Open</option>
+        <option value="__closed">Closed</option>
+        <option value="__all">All</option>
+        <option value="Open">— Open only</option>
+        <option value="Scheduled">— Scheduled</option>
+        <option value="In Progress">— In Progress</option>
+        <option value="Complete">— Complete</option>
+        <option value="Archived">— Archived</option>
+      </select>
+    </div>
+    <div class="field" style="flex:1;min-width:150px">
+      <label for="sort">Sort</label>
+      <select id="sort">
+        <option value="act" selected>Latest activity</option>
+        <option value="new">Newest entered</option>
+        <option value="old">Oldest entered</option>
       </select>
     </div>
     <div class="field" style="flex:1;min-width:150px">
@@ -157,6 +166,8 @@
   var clientSel = document.getElementById("client");
   var topicSel = document.getElementById("topic");
   var statusSel = document.getElementById("status");
+  var sortSel = document.getElementById("sort");
+  var CLOSED = ["Complete","Closed","Archived"];
   // A client login only sees its own tickets, so hide the client filter and the
   // Client field in the editor.
   var IS_CLIENT = false, IS_MASTER = false;
@@ -261,10 +272,14 @@
   function render(){
     editWrap.innerHTML = "";
     colorClientSelect();
-    var client = clientSel.value, topic = topicSel.value, status = statusSel.value;
+    var client = clientSel.value, topic = topicSel.value, status = statusSel.value, sort = sortSel.value;
     var rows = ALL_TICKETS.filter(function(t){
-      // Status filter: a specific status, all active (hide Archived), or everything.
+      // Status filter: Open bucket (active work), Closed bucket (Complete/Archived),
+      // All, or one exact status.
+      var closed = CLOSED.indexOf(t.status) >= 0;
       if (status === "__all") { /* show all */ }
+      else if (status === "__open") { if (closed) return false; }
+      else if (status === "__closed") { if (!closed) return false; }
       else if (status === "__active") { if (t.status === "Archived") return false; }
       else { if (t.status !== status) return false; }
       if (client === "__unassigned") { if (t.client) return false; }
@@ -272,10 +287,17 @@
       if (topic && t.category !== topic) return false;
       return true;
     });
+    // Sort: latest activity (newest note/change on top), or by entry date.
+    rows.sort(function(a,b){
+      if (sort === "old") return (a.created||"").localeCompare(b.created||"");
+      if (sort === "new") return (b.created||"").localeCompare(a.created||"");
+      return (b.lastActivity||b.created||"").localeCompare(a.lastActivity||a.created||"");  // latest activity
+    });
     if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets match.</div>"; countEl.textContent = ""; return; }
     countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s");
     listEl.innerHTML = rows.map(function(t){
-      var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, fmtDate(t.created)].filter(Boolean).map(esc).join(" · ");
+      var updated = (t.hasNote && t.lastActivity && t.lastActivity > t.created) ? ("Updated " + fmtDate(t.lastActivity)) : "";
+      var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, fmtDate(t.created), updated].filter(Boolean).map(esc).join(" · ");
       var actions;
       if (t.status === "Archived") actions = qbtn("Reopen", t.id, "Open");
       else if (t.status === "Complete" || t.status === "Closed") actions = qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
@@ -524,6 +546,7 @@
   clientSel.addEventListener("change", render);
   topicSel.addEventListener("change", render);
   statusSel.addEventListener("change", render);
+  sortSel.addEventListener("change", render);
 </script>
 <script src="/whoami-badge.js"></script>
 </body>
