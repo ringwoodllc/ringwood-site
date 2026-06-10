@@ -3,7 +3,7 @@
    network-first — pages and scripts always come fresh when you're online, and
    the cache is only a fallback when you're offline. /api is network-only.
    Bump VERSION to force every client to drop old caches. */
-const VERSION = "rw-v2";
+const VERSION = "rw-v3";
 const STATIC = "rw-static-" + VERSION;
 const PAGES = "rw-pages-" + VERSION;
 
@@ -61,8 +61,10 @@ self.addEventListener("fetch", (event) => {
 
   // Everything else (pages, scripts, styles, icons): network-first so a deploy
   // shows immediately; fall back to cache only when the network fails (offline).
+  // cache:"no-store" bypasses the browser's HTTP cache so a freshly deployed
+  // page/script always wins (the installed app was serving stale HTML otherwise).
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: "no-store" })
       .then((res) => {
         if (res && res.ok) {
           const copy = res.clone();
