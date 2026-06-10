@@ -43,14 +43,6 @@ workflows:
       node: 18
       xcode: latest
       cocoapods: default
-      # Managed automatic code signing. With the App Store Connect integration,
-      # Codemagic fetches or creates the distribution certificate, GENERATES AND
-      # STORES its private key in your Codemagic team, and creates the App Store
-      # provisioning profile — reusing all of it on every future build. This is
-      # what fixes the "lost private key / certificate limit" trap for good.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: ai.ringwood.app
     scripts:
       - name: Install dependencies
         script: cd mobile && npm install
@@ -70,18 +62,33 @@ workflows:
           # doesn't ask the export-compliance question on every build.
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
-      - name: Align bundle id, set unique build number, apply signing
+      - name: Set up code signing (create certificate + profile)
         script: |
           set -e
+          keychain initialize
+          # Self-cleaning: revoke any leftover distribution certificates. Their
+          # private keys aren't on this runner (each build makes its own), so they
+          # are unusable and only fill Apple's certificate limit. Best-effort and
+          # non-fatal, so it can never break the build.
+          ( app-store-connect certificates list --type IOS_DISTRIBUTION --json 2>/dev/null \
+              | jq -r '.[].id' 2>/dev/null \
+              | while read -r CID; do [ -n "$CID" ] && app-store-connect certificates delete "$CID" 2>/dev/null; done ) || true
+          # Proven path that built and signed the IPA: generate a key, then create
+          # a fresh distribution certificate from it AND the App Store provisioning
+          # profile, and install both.
+          openssl genrsa -out /tmp/rw_signing_key.pem 2048
+          app-store-connect fetch-signing-files "ai.ringwood.app" \
+            --type IOS_APP_STORE \
+            --certificate-key @file:/tmp/rw_signing_key.pem \
+            --create
+          keychain add-certificates
           cd "$CM_BUILD_DIR/mobile/ios/App"
           # Keep the App target's bundle id aligned with the registered App ID.
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ai.ringwood.app;/g' App.xcodeproj/project.pbxproj
-          # Unique, increasing build number (a timestamp) so App Store Connect
-          # never rejects the upload as a duplicate build.
+          # Unique, increasing build number (a timestamp) so the upload is never a duplicate.
           BN=$(date +%s)
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $BN;/g" App.xcodeproj/project.pbxproj
           echo "Build number set to $BN"
-          # Managed signing already prepared the certificate + profile; apply them.
           xcode-project use-profiles
       - name: Build IPA
         script: |
