@@ -151,7 +151,9 @@
             var cur = (u.label && u.label === w.name) ? " cur" : "";
             var crown = u.role === "master" ? CROWN + " " : "";
             var cli = (u.role === "client" && u.client && u.client !== u.label) ? " <span class='cli'>· " + esc(u.client) + "</span>" : "";
-            html += "<button class='" + cur.trim() + "' data-id='" + esc(u.id) + "'>" + crown + esc(u.label) + cli + "</button>";
+            // A client with a login carries an id; one without is viewed by name.
+            var attr = u.id ? ("data-id='" + esc(u.id) + "'") : ("data-client='" + esc(u.client || u.label) + "'");
+            html += "<button class='" + cur.trim() + "' " + attr + ">" + crown + esc(u.label) + cli + "</button>";
           });
           menu.innerHTML = html;
         }).catch(function () { menu.innerHTML = "<div style='padding:10px'>Couldn't reach the server.</div>"; });
@@ -171,6 +173,7 @@
         if (!b) return;
         if (b.getAttribute("data-clear")) switchTo({ clear: true });
         else if (b.getAttribute("data-id")) switchTo({ userId: b.getAttribute("data-id") });
+        else if (b.getAttribute("data-client")) switchTo({ client: b.getAttribute("data-client") });
       });
       document.addEventListener("click", function () { menu.style.display = "none"; });
     }

@@ -308,39 +308,55 @@ async function setActAs(request, env) {
     });
   }
   const userId = (body.userId || "").toString().trim();
-  if (!userId) return json({ ok: false, error: "Pick a user." }, 400);
-  const rows = await sbSelect(env, `app_users?id=eq.${encodeURIComponent(userId)}&select=id,active`);
-  const u = rows && rows[0];
-  if (!u || u.active === false) return json({ ok: false, error: "User not found." }, 404);
+  const clientName = (body.client || "").toString().trim();
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
-  const tok = await signSession({ actas: u.id, exp }, env);
-  return new Response(JSON.stringify({ ok: true }), {
-    headers: { "content-type": "application/json", "set-cookie": actasCookie(tok, SESSION_DAYS * 86400) },
-  });
+  // View as a specific login (keeps that user's real perms).
+  if (userId) {
+    const rows = await sbSelect(env, `app_users?id=eq.${encodeURIComponent(userId)}&select=id,active`);
+    const u = rows && rows[0];
+    if (!u || u.active === false) return json({ ok: false, error: "User not found." }, 404);
+    const tok = await signSession({ actas: u.id, exp }, env);
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json", "set-cookie": actasCookie(tok, SESSION_DAYS * 86400) },
+    });
+  }
+  // View as a client by name (works even when the client has no login yet).
+  if (clientName) {
+    const crows = await sbSelect(env, `clients?name=eq.${encodeURIComponent(clientName)}&select=id&limit=1`);
+    if (!crows || !crows[0]) return json({ ok: false, error: "Client not found." }, 404);
+    const tok = await signSession({ actasClient: clientName, exp }, env);
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { "content-type": "application/json", "set-cookie": actasCookie(tok, SESSION_DAYS * 86400) },
+    });
+  }
+  return json({ ok: false, error: "Pick a user or client." }, 400);
 }
 // The list of users the master can act as.
 async function listActAsUsers(request, env) {
   const master = await requireMaster(request, env);
   if (!master) return json({ ok: false, error: "Master only." }, 403);
   const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,client:clients(name)");
+  const clients = (await sbSelect(env, "clients?select=name&order=name")) || [];
   // Exclude the signed-in master's own login: acting as yourself is a no-op.
   const active = (rows || []).filter((u) => u.active !== false && u.email !== master.email);
-  // One entry per CLIENT (a client may have many logins; the admin just wants to
-  // view as "Dunkin", not pick a specific Dunkin user). Master logins stay
-  // individual.
   const out = [];
-  const seenClients = {};
+  // Master logins stay individual.
   for (const u of active) {
-    const role = u.role === "master" ? "master" : "client";
-    if (role === "master") {
-      out.push({ id: u.id, role: "master", label: u.username || (u.email || "").split("@")[0], client: "" });
-      continue;
-    }
+    if (u.role === "master") out.push({ id: u.id, role: "master", label: u.username || (u.email || "").split("@")[0], client: "" });
+  }
+  // A representative login per client (so a client WITH a login keeps its real
+  // perms when viewed).
+  const repByClient = {};
+  for (const u of active) {
+    if (u.role === "master") continue;
     const cname = (u.client && u.client.name) || "";
-    if (!cname) { out.push({ id: u.id, role: "client", label: u.username || u.email || "Login", client: "" }); continue; }
-    if (seenClients[cname]) continue;
-    seenClients[cname] = true;
-    out.push({ id: u.id, role: "client", label: cname, client: cname });
+    if (cname && !repByClient[cname]) repByClient[cname] = u.id;
+  }
+  // One entry per CLIENT — every client, even ones with no login yet (viewed by
+  // name). The admin just wants to view as "Sandbox", not pick a specific user.
+  for (const c of clients) {
+    if (!c.name) continue;
+    out.push({ id: repByClient[c.name] || "", client: c.name, role: "client", label: c.name });
   }
   out.sort((a, b) => (a.role === b.role ? a.label.toLowerCase().localeCompare(b.label.toLowerCase()) : a.role === "master" ? -1 : 1));
   return noStore({ ok: true, users: out });
@@ -740,7 +756,23 @@ async function getSession(request, env) {
   // comment authorship all follow them automatically.
   if (realRole === "master" && actasTok) {
     const ap = await verifySession(actasTok, env);
-    if (ap && ap.actas) {
+    // View as a client by name (a client with no login of its own).
+    if (ap && ap.actasClient && !ap.actas) {
+      const crows = await sbSelect(env, `clients?name=eq.${encodeURIComponent(ap.actasClient)}&select=id&limit=1`);
+      if (crows && crows[0]) {
+        data = {
+          email: "viewas:" + ap.actasClient,
+          role: "client",
+          client: ap.actasClient,
+          perms: { tickets: "edit", assets: "view", service: "view" },
+          name: ap.actasClient,
+          impersonating: true,
+          realRole: "master",
+          realName,
+        };
+      }
+    }
+    if (!data && ap && ap.actas) {
       const trows = await sbSelect(env, `app_users?id=eq.${ap.actas}&select=email,username,role,active,perms,client:clients(name)`);
       const t = trows && trows[0];
       // Acting as your own login is a no-op: fall through to the normal session

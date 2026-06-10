@@ -132,6 +132,9 @@
       CLIENTS = (o&&o.clients)||[];
       var opts = "<option value=''>Select…</option>" + CLIENTS.map(function(c){ return "<option>"+esc(c)+"</option>"; }).join("");
       document.getElementById("n_client").innerHTML = opts;
+      // The user list may have rendered before clients loaded, leaving the inline
+      // Client dropdowns empty; re-render now that we have the list.
+      if (USERS.length) renderList();
     }).catch(function(){});
     document.getElementById("n_role").addEventListener("change", function(){
       var client = this.value === "client";
