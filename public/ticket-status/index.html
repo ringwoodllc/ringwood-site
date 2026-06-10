@@ -186,8 +186,11 @@
     if (w && w.ok && w.role === "client"){
       IS_CLIENT = true;
       var f = clientSel.closest(".field"); if (f) f.style.display = "none";
-      // Archived tickets are master-only, so drop the Archived filter for clients.
-      Array.prototype.slice.call(statusSel.options).forEach(function(o){ if(o.value === "Archived"){ o.remove(); } });
+      // Clients get simple filters: just Open / Closed / All (no review or per-status).
+      var keepVals = { "__open":1, "__closed":1, "__all":1 };
+      Array.prototype.slice.call(statusSel.options).forEach(function(o){ if(!keepVals[o.value]) o.remove(); });
+      // Topic/category is admin work, so hide that filter for clients.
+      var tf = topicSel.closest(".field"); if (tf) tf.style.display = "none";
     }
     if (w && w.ok && w.role === "master"){ IS_MASTER = true; }
   }).catch(function(){});

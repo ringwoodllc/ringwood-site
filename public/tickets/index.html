@@ -186,9 +186,22 @@ fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     clientEl.value = w.client;
     var f = clientEl.closest(".field"); if (f) f.style.display = "none";
     var acr = document.getElementById("addClientRow"); if (acr) acr.style.display = "none";
+    // Simple client form: they just describe the problem (with a photo). The
+    // work defaults to Repair and admin re-categorizes; where and asset are
+    // admin details we fill in, so hide them.
+    window.__SIMPLE_CLIENT = true;
+    ["category","location","asset"].forEach(function(id){ var el=document.getElementById(id); var fl=el&&el.closest?el.closest(".field"):null; if(fl) fl.style.display="none"; });
+    defaultRepair();
     if (typeof refresh === "function") refresh();
   }
 }).catch(function(){});
+// For the simple client form, pick "Repair" so the required category is satisfied.
+function defaultRepair(){
+  if (!window.__SIMPLE_CLIENT) return;
+  var opts = categoryEl.options;
+  for (var i = 0; i < opts.length; i++){ if (opts[i].value === "Repair"){ categoryEl.value = "Repair"; break; } }
+  if (typeof refresh === "function") refresh();
+}
 var fileInput = document.getElementById("file");
 var photoBtn = document.getElementById("photoBtn");
 var photoNote = document.getElementById("photoNote");
@@ -236,6 +249,7 @@ fetch("/api/categories", { cache: "no-store" }).then(function (r) { return r.jso
     o.value = item.name; o.textContent = item.name;
     categoryEl.appendChild(o);
   }
+  defaultRepair();
 }).catch(function () {
   categoryEl.innerHTML = "<option value=''>Could not load</option>";
 });

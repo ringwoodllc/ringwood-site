@@ -317,15 +317,26 @@ async function listActAsUsers(request, env) {
   const master = await requireMaster(request, env);
   if (!master) return json({ ok: false, error: "Master only." }, 403);
   const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,client:clients(name)");
-  const users = (rows || [])
-    .filter((u) => u.active !== false)
-    .map((u) => {
-      const role = u.role === "master" ? "master" : "client";
-      const label = role === "master" ? u.username || (u.email || "").split("@")[0] : (u.client && u.client.name) || u.username || u.email;
-      return { id: u.id, role, label, client: (u.client && u.client.name) || "" };
-    })
-    .sort((a, b) => (a.role === b.role ? a.label.toLowerCase().localeCompare(b.label.toLowerCase()) : a.role === "master" ? -1 : 1));
-  return noStore({ ok: true, users });
+  const active = (rows || []).filter((u) => u.active !== false);
+  // One entry per CLIENT (a client may have many logins; the admin just wants to
+  // view as "Dunkin", not pick a specific Dunkin user). Master logins stay
+  // individual.
+  const out = [];
+  const seenClients = {};
+  for (const u of active) {
+    const role = u.role === "master" ? "master" : "client";
+    if (role === "master") {
+      out.push({ id: u.id, role: "master", label: u.username || (u.email || "").split("@")[0], client: "" });
+      continue;
+    }
+    const cname = (u.client && u.client.name) || "";
+    if (!cname) { out.push({ id: u.id, role: "client", label: u.username || u.email || "Login", client: "" }); continue; }
+    if (seenClients[cname]) continue;
+    seenClients[cname] = true;
+    out.push({ id: u.id, role: "client", label: cname, client: cname });
+  }
+  out.sort((a, b) => (a.role === b.role ? a.label.toLowerCase().localeCompare(b.label.toLowerCase()) : a.role === "master" ? -1 : 1));
+  return noStore({ ok: true, users: out });
 }
 function randomToken() {
   return b64urlBytes(crypto.getRandomValues(new Uint8Array(24)));
