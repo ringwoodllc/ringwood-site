@@ -117,6 +117,11 @@
   .lg.agent .text{color:var(--green-deep);font-style:normal;font-size:.92rem}
   .lg.agent .who{background:#e3efe7;color:var(--green-deep);border-color:transparent}
   .log .empty-log{color:var(--muted);font-size:.92rem}
+  .intake{margin-bottom:12px}
+  .intake-tog{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font:inherit;font-size:.86rem;font-weight:600;color:var(--green-deep);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .intake-tog:hover{border-color:var(--green)}
+  .intake-tog #intakeIco{font-size:1rem;width:14px;display:inline-block;text-align:center}
+  .intake-body{margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;font-size:.94rem;color:var(--ink);white-space:pre-wrap}
   .addnote textarea{min-height:64px}
   .addnote .btn{width:auto;padding:10px 20px;font-size:.96rem}
   .chk input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;accent-color:var(--green);padding:0}
@@ -590,8 +595,23 @@
     function fmtWhen(s){ if(!s) return ""; try{ var d=new Date(s); return d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); }catch(e){ return ""; } }
     function renderLog(rows){
       LOG_ROWS = {};
-      if(!rows || !rows.length){ logEl.innerHTML = "<div class='empty-log'>No updates yet. Add the first note below.</div>"; return; }
-      logEl.innerHTML = rows.map(function(c){
+      rows = rows || [];
+      // The customer's original words are kept as an "intake" entry, shown as a
+      // collapsible "Entered by <client>" block (the AI draft is the description).
+      var intake = rows.filter(function(c){ return c.kind === "intake"; });
+      rows = rows.filter(function(c){ return c.kind !== "intake"; });
+      var intakeHtml = "";
+      if (intake.length){
+        var who = intake[0].author || "Customer";
+        var body = intake.map(function(c){ return c.body; }).filter(Boolean).join("\n\n");
+        intakeHtml =
+          "<div class='intake'>" +
+            "<button type='button' class='intake-tog' id='intakeTog'><span id='intakeIco'>＋</span> Entered by " + esc(who) + "</button>" +
+            "<div class='intake-body' id='intakeBody' style='display:none'>" + esc(body) + "</div>" +
+          "</div>";
+      }
+      if(!rows.length){ logEl.innerHTML = intakeHtml + "<div class='empty-log'>No updates yet. Add the first note below.</div>"; wireIntake(); return; }
+      logEl.innerHTML = intakeHtml + rows.map(function(c){
         LOG_ROWS[c.id] = c;
         var isEvent = c.kind === "event";
         var col = c.role === "client" ? noteCol : "var(--green-deep)";
@@ -615,6 +635,18 @@
           photos +
         "</div>";
       }).join("");
+      wireIntake();
+    }
+    // Collapsible "Entered by <client>": starts closed, the + opens it for reference.
+    function wireIntake(){
+      var tog = document.getElementById("intakeTog"); if(!tog) return;
+      tog.addEventListener("click", function(){
+        var b = document.getElementById("intakeBody"), ico = document.getElementById("intakeIco");
+        if(!b) return;
+        var open = b.style.display !== "none";
+        b.style.display = open ? "none" : "block";
+        if(ico) ico.textContent = open ? "＋" : "−";
+      });
     }
     function loadLog(){
       fetch("/api/tickets/comments?id=" + encodeURIComponent(t.id), { cache:"no-store" })

@@ -140,6 +140,16 @@
     <div class="field">
       <label for="notes">Notes</label>
       <textarea id="notes" placeholder="What was done"></textarea>
+      <button type="button" id="polishBtn" style="margin-top:8px;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:8px 15px;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer">✨ Clean up with AI</button>
+      <div id="polishWrap" style="display:none;margin-top:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:12px 14px">
+        <div style="font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:6px">Suggested cleanup</div>
+        <div id="polishText" style="font-size:.96rem;color:var(--ink);white-space:pre-wrap"></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button type="button" id="polishUse" style="background:var(--green);color:#f6f2e8;border:none;border-radius:5px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer">Use this</button>
+          <button type="button" id="polishKeep" style="background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:5px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer">Keep mine</button>
+        </div>
+      </div>
+      <div id="polishMsg" style="font-size:.85rem;color:#8a3d1c;margin-top:6px"></div>
     </div>
 
     <div class="field">
@@ -459,6 +469,28 @@
     });
     e.target.value = "";
   });
+
+  // ---- clean up the note with AI (preview before it replaces your text) ----
+  (function(){
+    var btn = document.getElementById("polishBtn"), wrap = document.getElementById("polishWrap");
+    var out = document.getElementById("polishText"), pmsg = document.getElementById("polishMsg");
+    var notesEl = document.getElementById("notes");
+    if(!btn) return;
+    btn.addEventListener("click", function(){
+      var text = (notesEl.value||"").trim();
+      pmsg.textContent = ""; wrap.style.display = "none";
+      if(!text){ pmsg.textContent = "Write a note first."; return; }
+      btn.disabled = true; btn.textContent = "Cleaning up…";
+      fetch("/api/ai/polish", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ text:text, kind:"service" }) })
+        .then(function(r){return r.json();}).then(function(d){
+          btn.disabled = false; btn.textContent = "✨ Clean up with AI";
+          if(d&&d.ok&&d.text){ out.textContent = d.text; wrap.style.display = "block"; }
+          else { pmsg.textContent = (d&&d.error)||"The assistant couldn't respond."; }
+        }).catch(function(){ btn.disabled=false; btn.textContent="✨ Clean up with AI"; pmsg.textContent="Couldn't reach the assistant."; });
+    });
+    document.getElementById("polishUse").addEventListener("click", function(){ notesEl.value = out.textContent; wrap.style.display = "none"; });
+    document.getElementById("polishKeep").addEventListener("click", function(){ wrap.style.display = "none"; });
+  })();
 
   // ---- submit ----
   var form = document.getElementById("serviceForm");

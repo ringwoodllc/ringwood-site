@@ -77,6 +77,7 @@ export default {
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/delete" && request.method === "POST") return deleteTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
+    if (url.pathname === "/api/ai/polish" && request.method === "POST") return polishNote(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
@@ -2077,10 +2078,15 @@ async function autoEnrichTicket(ticketId, opts, env) {
       if (cid) patch.category_id = cid;
     }
     if (Object.keys(patch).length) await sbUpdate(env, "tickets", ticketId, patch);
-    // Leave a visible reading in the log (preserves the original report).
+    // Preserve exactly what the customer entered as a dedicated "intake" record,
+    // so the ticket can show a collapsible "Entered by <client>" block separate
+    // from the AI draft. (kind=intake keeps it out of the normal note stream.)
+    if (opts.note) {
+      await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: opts.clientName || "Customer", role: "client", kind: "intake", body: opts.note.slice(0, 4000) });
+    }
+    // Leave a short agent reading in the log too.
     const lines = ["✨ Ringwood AI Agent read this report" + (pics.length ? " and the photos" : "") + " and drafted the ticket for review."];
     if (assetName) lines.push("Linked equipment: " + assetName + ".");
-    if (opts.note) lines.push("Original report: \"" + opts.note.slice(0, 500) + "\"");
     await sbInsert(env, "ticket_comments", { ticket_id: ticketId, author: "Ringwood AI Agent", role: "agent", kind: "event", body: lines.join("\n").slice(0, 4000) });
   } catch {
     /* background best-effort; never blocks the submit */
@@ -2148,7 +2154,7 @@ async function createTicket(request, env, ctx, session) {
   let detecting = false;
   if (env.ANTHROPIC_API_KEY && (note || pics.length) && ctx && ctx.waitUntil) {
     detecting = !linkAsset && pics.length > 0; // the UI's "identifying…" hint only applies when detecting an asset
-    ctx.waitUntil(autoEnrichTicket(id, { note, pics, photoUrls: savedUrls, clientId: clId, assetId: linkAsset || null }, env));
+    ctx.waitUntil(autoEnrichTicket(id, { note, pics, photoUrls: savedUrls, clientId: clId, clientName: client, assetId: linkAsset || null }, env));
   }
 
   return json({ ok: true, id, ref, title, photoCount: pics.length, savedPhotos, detecting });
@@ -2652,6 +2658,56 @@ function normalizePics(body) {
 
 // AI assist for tickets: from photos and/or a short note, write a clear,
 // grounded description and pick the best work category.
+// Clean up a free-text note (service note, ticket update) into clear, plain
+// language without inventing anything. Returns { ok, text } for the caller to
+// preview before saving.
+async function polishNote(request, env, session) {
+  if (!session || !(can(session, "service", "edit") || can(session, "tickets", "edit") || can(session, "assets", "edit"))) {
+    return json({ ok: false, error: "Not allowed." }, 403);
+  }
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const text = (body.text || "").toString().trim();
+  if (!text) return json({ ok: false, error: "Write a note first." }, 400);
+  const kind = (body.kind || "note").toString();
+  const schema = { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 500,
+        messages: [{ role: "user", content:
+          "Clean up this " + (kind === "service" ? "field service note" : "work note") + " into clear, professional, plain language. " +
+          "Fix spelling and grammar, tighten wording, and make it easy to scan. " +
+          "Keep every fact and the original meaning. Do NOT invent details, numbers, parts, or names that are not in the note. " +
+          "No marketing words, no em dashes. Return only the cleaned note.\n\nNote: " + text }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out;
+    try {
+      out = JSON.parse(block.text);
+    } catch {
+      return json({ ok: false, error: "Couldn't read the suggestion." }, 502);
+    }
+    const cleaned = (out.text || "").trim();
+    return json({ ok: true, text: cleaned || text });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
+}
+
 async function suggestTicket(request, env, session) {
   if (!can(session, "tickets", "edit")) return deny("tickets");
   if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
