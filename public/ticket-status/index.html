@@ -386,7 +386,7 @@
       "<option value='__new'>＋ New asset…</option>";
 
     editWrap.innerHTML =
-      "<a href='#' class='back' style='display:inline-block;margin:4px 0 14px' onclick='backToTicketList();return false;'>&larr; Back to list</a>" +
+      "<a href='#' class='back' style='display:inline-block;margin:4px 0 14px' onclick='__ticketBack();return false;'>&larr; Back to list</a>" +
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
@@ -621,7 +621,14 @@
         }).catch(function(){ b.disabled=false; b.textContent="Add note"; msg.textContent="Couldn't reach the server."; });
     });
 
-    document.getElementById("e_back").addEventListener("click", backToTicketList);
+    // Guard against leaving with unsaved photos or a half-typed note.
+    window.__ticketBack = function(){
+      var noteEl = document.getElementById("e_note");
+      var unsaved = newPhotos.length || notePhotos.length || (noteEl && noteEl.value.trim());
+      if (unsaved && !confirm("You have unsaved photos or a note. Leave without saving them?")) return;
+      backToTicketList();
+    };
+    document.getElementById("e_back").addEventListener("click", window.__ticketBack);
     document.getElementById("e_save").addEventListener("click", function(){
       var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
       var ecl = document.getElementById("e_client");
@@ -639,11 +646,40 @@
       };
       if (assetSelEl.value === "__new"){ var nn = newAssetEl.value.trim(); if(nn) payload.newAssetName = nn; }
       else { payload.assetId = assetSelEl.value; }  // "" clears the link
+      // Save also commits anything typed in the "Add a note" box, so nothing is lost.
+      var noteText = (document.getElementById("e_note").value || "").trim();
+      var pendingNotePhotos = notePhotos.slice();
+      var alsoTop = document.getElementById("e_notetop") ? document.getElementById("e_notetop").checked : false;
+      var msgEl = document.getElementById("e_msg"); msgEl.style.color = ""; msgEl.textContent = "";
+
+      function finish(warn){
+        b.disabled = false; b.textContent = "Save";
+        // Stay on this ticket; refresh the list quietly for when you go Back.
+        fetch("/api/tickets/list?archived=1", { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){ if(Array.isArray(rows)) ALL_TICKETS = rows; }).catch(function(){});
+        msgEl.style.color = warn ? "#8a3d1c" : "var(--green-deep)";
+        msgEl.textContent = "Saved." + (warn ? " " + warn : "");
+      }
+
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
         .then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ loadAll(); }
-          else { b.disabled=false; b.textContent="Save"; document.getElementById("e_msg").textContent=(d&&d.error)||"Save failed."; }
-        }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("e_msg").textContent="Couldn't reach the server."; });
+          if(!(d && d.ok)){ b.disabled=false; b.textContent="Save"; msgEl.style.color="#8a3d1c"; msgEl.textContent=(d&&d.error)||"Save failed."; return; }
+          // Reflect the saved photos in place so they stay on screen.
+          if (Array.isArray(d.photos)) existingPhotos = d.photos.slice();
+          newPhotos = []; renderThumbs();
+          var warn = d.photoWarning || "";
+          // Commit the pending note (with its photos), if any.
+          if (noteText || pendingNotePhotos.length){
+            fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:noteText, photos:pendingNotePhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }), alsoTop:alsoTop }) })
+              .then(function(r){return r.json();}).then(function(nd){
+                if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); }
+                else if(!warn){ warn = "Your note didn't save. Try Add note again."; }
+                finish(warn);
+              }).catch(function(){ finish(warn || "Your note didn't save. Try Add note again."); });
+          } else {
+            loadLog();
+            finish(warn);
+          }
+        }).catch(function(){ b.disabled=false; b.textContent="Save"; msgEl.style.color="#8a3d1c"; msgEl.textContent="Couldn't reach the server."; });
     });
   };
 

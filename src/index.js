@@ -2314,6 +2314,8 @@ async function updateTicket(request, env, session) {
   const hasKeep = Array.isArray(body.keepPhotos);
   const hasAdd = Array.isArray(body.addPhotos) && body.addPhotos.length;
   let photoPatch = null;
+  let finalPhotos = null;
+  let addFailed = 0;
   if (hasKeep || hasAdd) {
     const cur = await sbSelect(env, `tickets?id=eq.${id}&select=photo_urls`);
     const current = cur && cur[0] && cur[0].photo_urls ? cur[0].photo_urls : [];
@@ -2324,10 +2326,12 @@ async function updateTicket(request, env, session) {
         if (!p || !p.base64) continue;
         const u = await uploadToStorage(env, `tickets/${id}/add-${Date.now()}-${i}.jpg`, p.base64, p.contentType);
         if (u) urls.push(u);
+        else addFailed++;
       }
     }
     const changed = hasAdd || urls.length !== current.length || urls.some((u, i) => u !== current[i]);
     if (changed) photoPatch = { photo_urls: urls, photo_url: urls.length ? urls[0] : null };
+    finalPhotos = urls;
   }
 
   if (Object.keys(patch).length) {
@@ -2347,7 +2351,11 @@ async function updateTicket(request, env, session) {
     const res2 = await sbUpdate(env, "tickets", id, photoPatch);
     if (!res2.ok) return json({ ok: false, error: ("Saved the details, but the photos did not update. " + (res2.error || "")).slice(0, 300) }, 502);
   }
-  return json({ ok: true });
+  return json({
+    ok: true,
+    photos: finalPhotos,
+    photoWarning: addFailed ? addFailed + " photo" + (addFailed === 1 ? "" : "s") + " didn't upload. Try adding " + (addFailed === 1 ? "it" : "them") + " again." : undefined,
+  });
 }
 
 // Normalize photos from a request: prefer a `photos` array, fall back to a
