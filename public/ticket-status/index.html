@@ -317,7 +317,7 @@
       // All, or one exact status.
       var closed = CLOSED.indexOf(t.status) >= 0;
       if (status === "__all") { /* show all */ }
-      else if (status === "__review") { if (t.reviewed) return false; }
+      else if (status === "__review") { if (t.reviewed || closed) return false; }  // review queue = active tickets only
       else if (status === "__open") { if (closed) return false; }
       else if (status === "__closed") { if (!closed) return false; }
       else if (status === "__active") { if (t.status === "Archived") return false; }
@@ -338,10 +338,13 @@
     listEl.innerHTML = rows.map(function(t){
       var updated = (t.hasNote && t.lastActivity && t.lastActivity > t.created) ? ("Updated " + fmtDate(t.lastActivity)) : "";
       var meta = [t.category, t.asset ? ("⚙ "+t.asset) : "", t.location, t.assignedTo ? ("👤 "+t.assignedTo) : "", fmtDate(t.created), updated].filter(Boolean).map(esc).join(" · ");
+      // Review only applies to active tickets, not Complete/Archived ones.
+      var isClosedRow = (t.status === "Complete" || t.status === "Closed" || t.status === "Archived");
+      var needsReview = !t.reviewed && !isClosedRow;
       // Confirm (review), Start and Complete are admin-only; a client can only Archive (dismiss).
       var actions = "";
       if (!IS_CLIENT){
-        if (!t.reviewed) actions += reviewBtn(t.id);
+        if (needsReview) actions += reviewBtn(t.id);
         if (t.status === "Archived") actions += qbtn("Reopen", t.id, "Open");
         else if (t.status === "Complete" || t.status === "Closed") actions += qbtn("Reopen", t.id, "Open") + qbtn("Archive", t.id, "Archived");
         else actions += (t.status !== "In Progress" ? qbtn("Start", t.id, "In Progress") : "") + qbtn("Complete", t.id, "Complete") + qbtn("Archive", t.id, "Archived");
@@ -350,7 +353,7 @@
         if (t.status !== "Archived") actions += qbtn("Archive", t.id, "Archived");
       }
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
-      var reviewPill = (!t.reviewed) ? "<span class='pill p-review'>Needs review</span>" : "";
+      var reviewPill = needsReview ? "<span class='pill p-review'>Needs review</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
@@ -460,9 +463,12 @@
     var reviewed = !!t.reviewed;
     function renderReview(){
       var el = document.getElementById("e_review"); if(!el) return;
+      var isClosed = (t.status === "Complete" || t.status === "Closed" || t.status === "Archived");
       if (reviewed){
         el.innerHTML = "<span class='rev-pill ok'>✓ Reviewed</span><button class='qbtn' id='e_unreview' type='button'>Undo</button>";
         document.getElementById("e_unreview").addEventListener("click", function(){ setReviewed(false); });
+      } else if (isClosed){
+        el.innerHTML = "";  // closed tickets don't need review
       } else {
         el.innerHTML = "<span class='rev-pill need'>Needs review</span><button class='qbtn' id='e_doreview' type='button'>Mark reviewed</button>";
         document.getElementById("e_doreview").addEventListener("click", function(){ setReviewed(true); });
