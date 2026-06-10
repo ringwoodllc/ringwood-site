@@ -279,6 +279,17 @@
   }
   // Back from a ticket to the list: restore the chrome and clear the deep link.
   function backToTicketList(){ history.replaceState(null,"","/status"); render(); window.scrollTo(0,0); }
+  // Open a ticket straight from its id (used by deep links and the back gesture).
+  function openById(id, push){
+    for(var i=0;i<ALL_TICKETS.length;i++){ if(ALL_TICKETS[i].id===id){ openEdit(ALL_TICKETS[i], push); return true; } }
+    return false;
+  }
+  // The phone's back gesture / button fires popstate: show whatever the URL says.
+  window.addEventListener("popstate", function(){
+    var id = new URLSearchParams(location.search).get("id");
+    if(id && openById(id, false)) return;
+    render(); window.scrollTo(0,0);
+  });
 
   /* ---- tickets ---- */
   function loadAll(){
@@ -354,7 +365,7 @@
       }
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
       var reviewPill = needsReview ? "<span class='pill p-review'>Needs review</span>" : "";
-      return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ")'>" +
+      return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ", true)'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
         (t.description ? "<div class='t-meta'>" + esc(t.description) + "</div>" : "") +
@@ -379,7 +390,12 @@
       .then(function(r){return r.json();}).then(function(){ loadAll(); }).catch(function(){ loadAll(); });
   };
 
-  window.openEdit = function(t){
+  window.openEdit = function(t, push){
+    // Record the ticket in history so the phone's back/swipe returns to the list
+    // instead of leaving the app. push=true when the user taps into a ticket;
+    // deep links and the back gesture replace in place.
+    var url = "/status?id=" + encodeURIComponent(t.id);
+    if(push) history.pushState({ticket:t.id},"",url); else history.replaceState({ticket:t.id},"",url);
     listEl.innerHTML = "";
     countEl.textContent = "";
     showChrome(false);  // show the ticket on its own, at the top
@@ -667,7 +683,9 @@
       var noteEl = document.getElementById("e_note");
       var unsaved = newPhotos.length || notePhotos.length || (noteEl && noteEl.value.trim());
       if (unsaved && !confirm("You have unsaved photos or a note. Leave without saving them?")) return;
-      backToTicketList();
+      // Go back through history when we pushed an entry, so the swipe-back gesture stays in sync.
+      if (history.state && history.state.ticket) history.back();
+      else backToTicketList();
     };
     document.getElementById("e_back").addEventListener("click", window.__ticketBack);
     var delBtn = document.getElementById("e_del");

@@ -115,7 +115,7 @@
       var isTicket = s.kind==="ticket";
       var tag = isTicket ? "<span class='kind kt'>Ticket</span>" : "<span class='kind ks'>Service</span>";
       var meta=(s.date?"<b>"+esc(fdate(s.date))+"</b>":"")+[s.type, isTicket?s.status:null].filter(Boolean).map(esc).map(function(x){return " · "+x;}).join("");
-      var onclick = isTicket ? ("location.href='/status?id="+esc(s.id)+"'") : ("openRec('"+esc(s.id)+"')");
+      var onclick = isTicket ? ("location.href='/status?id="+esc(s.id)+"'") : ("openRec('"+esc(s.id)+"', true)");
       return "<div class='rec' onclick=\""+onclick+"\">"+
         "<div class='bd'><div class='top'>"+tag+" "+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
@@ -141,6 +141,12 @@
   var SERVICE_TYPES=["Install","Inspection","Maintenance","Repair","Replacement","Other"];
   var topEls=[document.querySelector(".filters"),document.getElementById("total"),document.getElementById("list")];
   function showList(show){ topEls.forEach(function(e){ if(e) e.style.display=show?"":"none"; }); }
+  // The phone's back gesture / button fires popstate: show whatever the URL says.
+  window.addEventListener("popstate", function(){
+    var id=new URLSearchParams(location.search).get("id");
+    if(id){ openRec(id, false); return; }
+    var ew=document.getElementById("editWrap"); if(ew) ew.innerHTML=""; showList(true); window.scrollTo(0,0);
+  });
   function processPhoto(file){
     return new Promise(function(res,rej){ var img=new Image(),u=URL.createObjectURL(file);
       img.onload=function(){ var max=1600,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
@@ -148,7 +154,11 @@
         var d=c.toDataURL("image/jpeg",0.82); res({base64:d.split(",")[1],contentType:"image/jpeg",preview:d}); };
       img.onerror=function(){ URL.revokeObjectURL(u); rej(new Error("bad")); }; img.src=u; });
   }
-  window.openRec=function(id){
+  window.openRec=function(id, push){
+    // Record the record in history so the phone's back/swipe returns to the list
+    // instead of leaving the app. push=true when the user taps a record.
+    var u="/services?id="+encodeURIComponent(id);
+    if(push) history.pushState({svc:id},"",u); else history.replaceState({svc:id},"",u);
     var rec=ALL.filter(function(x){return x.id===id;})[0]||{};
     var ew=document.getElementById("editWrap");
     showList(false);
@@ -180,13 +190,13 @@
       window.__ra=function(i){ add.splice(i,1); thumbs(); };
       thumbs();
       document.getElementById("s_file").addEventListener("change",function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; Promise.all(fs.map(processPhoto)).then(function(arr){ arr.forEach(function(p){add.push(p);}); thumbs(); }).catch(function(){}); });
-      window.__svcBack=function(){ ew.innerHTML=""; showList(true); window.scrollTo(0,0); };
+      window.__svcBack=function(){ if(history.state&&history.state.svc) history.back(); else { history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); window.scrollTo(0,0); } };
       document.getElementById("s_back").addEventListener("click", window.__svcBack);
       document.getElementById("s_save").addEventListener("click",function(){
         var b=this; b.disabled=true; b.textContent="Saving…";
         var payload={ id:id, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value, keepPhotos:keep, addPhotos:add.map(function(p){return {base64:p.base64,contentType:p.contentType};}) };
         fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ ew.innerHTML=""; showList(true); fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){ ALL=Array.isArray(rows)?rows:[]; fillFilters(); render(); }); }
+          if(d&&d.ok){ history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){ ALL=Array.isArray(rows)?rows:[]; fillFilters(); render(); }); }
           else { b.disabled=false; b.textContent="Save"; document.getElementById("s_msg").textContent=(d&&d.error)||"Save failed."; }
         }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("s_msg").textContent="Couldn't reach the server."; });
       });
