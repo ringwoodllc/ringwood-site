@@ -134,7 +134,15 @@
 
     <div class="field">
       <label for="technician">Technician</label>
-      <input id="technician" type="text" autocomplete="off" placeholder="Who did the work" />
+      <select id="technician"><option value="">— Select —</option><option value="__new">＋ New vendor…</option></select>
+      <div id="techNew" style="display:none;margin-top:8px">
+        <input id="techName" type="text" autocomplete="off" placeholder="New vendor or person name" style="margin-bottom:6px" />
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="techKind" style="flex:0 0 auto;width:auto"><option value="Vendor">Vendor (outside)</option><option value="Internal">Internal (Ringwood)</option></select>
+          <button type="button" id="techAdd" style="background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer">Add</button>
+          <a href="/vendors" style="font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage vendors</a>
+        </div>
+      </div>
     </div>
 
     <div class="field">
@@ -174,6 +182,35 @@
 
 <script src="/jsQR.js"></script>
 <script>
+  // ---- technician / vendor dropdown (same directory as the ticket "Assigned to") ----
+  var SVC_VENDORS = [];
+  function techOptions(cur){
+    var names={}; SVC_VENDORS.forEach(function(v){ if(v.name) names[v.name]=v; });
+    if(cur && !names[cur]) names[cur]={name:cur,trade:""};
+    var list=Object.keys(names).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
+    return "<option value=''>— Select —</option>"+list.map(function(n){ var v=names[n]; return "<option value='"+escapeHtml(n)+"'"+(cur===n?" selected":"")+">"+escapeHtml(n+(v.trade?" · "+v.trade:""))+"</option>"; }).join("");
+  }
+  (function(){
+    var sel = document.getElementById("technician");
+    if(!sel) return;
+    function addOpts(list){
+      var newOpt = sel.querySelector("option[value='__new']");
+      (list||[]).forEach(function(v){ if(!v.name) return; var o=document.createElement("option"); o.value=v.name; o.textContent=v.name+(v.trade?" · "+v.trade:""); sel.insertBefore(o, newOpt); });
+    }
+    fetch("/api/vendors",{cache:"no-store"}).then(function(r){return r.json();}).then(function(list){ SVC_VENDORS=Array.isArray(list)?list:[]; addOpts(SVC_VENDORS); }).catch(function(){});
+    sel.addEventListener("change", function(){ document.getElementById("techNew").style.display = sel.value==="__new" ? "block" : "none"; if(sel.value==="__new"){ document.getElementById("techName").focus(); } });
+    document.getElementById("techAdd").addEventListener("click", function(){
+      var nmEl=document.getElementById("techName"), nm=(nmEl.value||"").trim();
+      if(!nm){ nmEl.focus(); return; }
+      var btn=this; btn.disabled=true; btn.textContent="Adding…";
+      fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:nm,kind:document.getElementById("techKind").value})})
+        .then(function(r){return r.json();}).then(function(d){ btn.disabled=false; btn.textContent="Add";
+          if(d&&d.ok){ var o=document.createElement("option"); o.value=nm; o.textContent=nm; sel.insertBefore(o, sel.querySelector("option[value='__new']")); sel.value=nm; document.getElementById("techNew").style.display="none"; nmEl.value=""; }
+          else { alert((d&&d.error)||"Couldn't add the vendor."); } })
+        .catch(function(){ btn.disabled=false; btn.textContent="Add"; alert("Couldn't reach the server."); });
+    });
+  })();
+
   // ---- assets dropdown ----
   var assetSel = document.getElementById("asset");
   var assetFilter = document.getElementById("assetFilter");
@@ -409,7 +446,7 @@
         "<h3>Edit service</h3><div id='svcmsg' style='color:#8a3d1c;margin-bottom:8px'></div>"+
         "<div class='row'><div class='field'><label>Date</label><input id='s_date' type='date' value='"+escapeHtml(s.date)+"'/></div>"+
         "<div class='field'><label>Type</label><select id='s_type'><option value=''>Select…</option>"+typeOpts+"</select></div></div>"+
-        "<div class='field'><label>Technician</label><input id='s_tech' type='text' value='"+escapeHtml(s.technician)+"'/></div>"+
+        "<div class='field'><label>Technician</label><select id='s_tech'>"+techOptions(s.technician)+"</select></div>"+
         "<div class='field'><label>Notes</label><textarea id='s_notes'>"+escapeHtml(s.notes)+"</textarea></div>"+
         "<div class='field'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+escapeHtml(s.cost)+"'/></div>"+
         "<div style='display:flex;gap:10px;margin-bottom:20px'><button class='btn' id='svcSave' type='button' style='width:auto;padding:13px 22px'>Save</button>"+
@@ -509,7 +546,7 @@
       assetName: assetName,
       serviceDate: document.getElementById("serviceDate").value,
       serviceType: serviceTypeSel.value === "__add" ? "" : serviceTypeSel.value,
-      technician: document.getElementById("technician").value,
+      technician: (document.getElementById("technician").value === "__new" ? "" : document.getElementById("technician").value),
       notes: document.getElementById("notes").value,
       cost: document.getElementById("cost").value,
       photos: photos

@@ -121,6 +121,15 @@
   var clientSel=document.getElementById("clientSel"), typeSel=document.getElementById("typeSel");
   var ALL=[];      // service records (used by the inline editor)
   var ITEMS=[];    // combined: service records + asset-linked tickets
+  // Technician dropdown sourced from the Vendors directory (same as tickets).
+  var SVC_VENDORS=[];
+  fetch("/api/vendors",{cache:"no-store"}).then(function(r){return r.json();}).then(function(list){ SVC_VENDORS=Array.isArray(list)?list:[]; }).catch(function(){});
+  function techOptions(cur){
+    var names={}; SVC_VENDORS.forEach(function(v){ if(v.name) names[v.name]=v; });
+    if(cur && !names[cur]) names[cur]={name:cur,trade:""};
+    var list=Object.keys(names).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
+    return "<option value=''>— Select —</option>"+list.map(function(n){ var v=names[n]; return "<option value='"+esc(n)+"'"+(cur===n?" selected":"")+">"+esc(n+(v.trade?" · "+v.trade:""))+"</option>"; }).join("");
+  }
   // Build the combined work history: formal service records plus any ticket that
   // is tied to an asset (a repair is part of that asset's history too).
   function buildItems(services, tickets){
@@ -226,7 +235,7 @@
         "<div style='color:var(--muted);font-size:.9rem;margin-bottom:16px'>"+esc(rec.asset||"Asset")+(rec.assetId?(" · <a href='/a/?id="+esc(rec.assetId)+"' style='color:var(--green-deep)'>Open asset →</a>"):"")+"</div>"+
         "<div style='"+fld+"'><label>Date</label><input id='s_date' type='date' value='"+esc(s.date)+"'/></div>"+
         "<div style='"+fld+"'><label>Type</label><select id='s_type'>"+typeOpts+"</select></div>"+
-        "<div style='"+fld+"'><label>Technician</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
+        "<div style='"+fld+"'><label>Technician</label><select id='s_tech'>"+techOptions(s.technician)+"</select></div>"+
         "<div style='"+fld+"'><label>Notes</label><textarea id='s_notes' style='min-height:80px'>"+esc(s.notes)+"</textarea>"+
           "<button type='button' id='s_polish' style='margin-top:8px;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:7px 14px;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer'>✨ Clean up with AI</button>"+
           "<div id='s_polishWrap' style='display:none;margin-top:9px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>"+
