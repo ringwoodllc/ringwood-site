@@ -2029,6 +2029,7 @@ async function nicknameAllAssets(request, env) {
 // tickets into proper action-led titles. Only touches tickets that still have a
 // fallback-looking title and an actual description to work from.
 async function retitleTickets(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
   if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
   if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
   const rows = await sbSelect(env, "tickets?select=id,title,ref,description,category:ticket_categories(name)&order=created_at.desc");
