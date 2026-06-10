@@ -78,6 +78,7 @@ export default {
     if (url.pathname === "/api/tickets/delete" && request.method === "POST") return deleteTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/ai/polish" && request.method === "POST") return polishNote(request, env, session);
+    if (url.pathname === "/api/tickets/fold-notes" && request.method === "POST") return foldNotesIntoDescription(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
@@ -2805,6 +2806,55 @@ async function polishNote(request, env, session) {
     }
     const cleaned = (out.text || "").trim();
     return json({ ok: true, text: cleaned || text });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
+}
+
+// Admin-only: redraft a ticket's description so it folds in any new actionable
+// asks from the note thread (e.g. "bring extra paper"), keeping it scope-focused.
+// Returns { ok, description } to preview before saving. The thread stays intact.
+async function foldNotesIntoDescription(request, env, session) {
+  if (!can(session, "tickets", "edit") || (session && session.role === "client")) return deny("tickets");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No ticket id." }, 400);
+  if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
+  const trows = await sbSelect(env, `tickets?id=eq.${id}&select=description`);
+  const desc = (trows && trows[0] && trows[0].description) || "";
+  const crows = await sbSelect(env, `ticket_comments?ticket_id=eq.${id}&select=author,kind,body,created_at&order=created_at.asc`);
+  const notes = (crows || []).filter((c) => (c.kind || "note") === "note" || c.kind === "intake");
+  if (!notes.length) return json({ ok: false, error: "No notes to pull in yet." }, 400);
+  const thread = notes.map((c) => (c.author || "Note") + ": " + (c.body || "")).join("\n");
+  const schema = { type: "object", properties: { description: { type: "string" } }, required: ["description"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 500,
+        messages: [{ role: "user", content:
+          "You maintain the work description (job scope) for a facilities ticket. Rewrite the description so it includes every concrete action or requirement the worker needs, folding in any NEW actionable asks from the notes below (for example 'bring extra paper'). " +
+          "Keep it short and scope-focused: what needs to be done and where. Do NOT include conversational back-and-forth, names, greetings, thanks, or status chatter. Do NOT invent anything that isn't stated. No marketing words, no em dashes. Return only the updated description.\n\n" +
+          "Current description:\n" + (desc || "(none)") + "\n\nNotes (oldest first):\n" + thread }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out;
+    try { out = JSON.parse(block.text); } catch { return json({ ok: false, error: "Couldn't read the suggestion." }, 502); }
+    const next = (out.description || "").trim();
+    return json({ ok: true, description: next || desc });
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }

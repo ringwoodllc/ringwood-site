@@ -495,6 +495,13 @@
         ) +
         "<div class='field'><label>Description</label>" +
           "<textarea id='e_desc' style='min-height:120px'" + (IS_CLIENT ? " readonly" : "") + ">" + esc(t.description) + "</textarea>" +
+          (IS_CLIENT ? "" :
+            "<button type='button' class='qbtn' id='e_fold' style='margin-top:8px;border-color:var(--clay);color:var(--clay)'>✨ Pull updates into description</button>" +
+            "<div id='e_foldWrap' style='display:none;margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>" +
+              "<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Updated description</div>" +
+              "<div id='e_foldText' style='font-size:.95rem;white-space:pre-wrap'></div>" +
+              "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_foldUse'>Use this</button><button type='button' class='qbtn' id='e_foldKeep'>Keep mine</button></div>" +
+            "</div>") +
         "</div>" +
         "<div class='field'><label>Main photos <span style='font-weight:400;color:var(--muted);font-size:.86rem'>— the headline shots shown up top</span></label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
@@ -610,6 +617,25 @@
           } else { msg.textContent = (d&&d.error)||"The assistant couldn't respond."; }
         }).catch(function(){ b.disabled=false; b.textContent="✨ Rewrite with AI"; msg.textContent="Couldn't reach the assistant."; });
     });
+
+    // Pull updates into the description: fold actionable asks from the notes into
+    // the job scope. Preview before it replaces the description.
+    var foldBtn = document.getElementById("e_fold");
+    if (foldBtn) foldBtn.addEventListener("click", function(){
+      var fw=document.getElementById("e_foldWrap"), ft=document.getElementById("e_foldText"), de=document.getElementById("e_desc"), em=document.getElementById("e_msg");
+      if(em) em.textContent=""; fw.style.display="none";
+      foldBtn.disabled=true; foldBtn.textContent="Reading the notes…";
+      fetch("/api/tickets/fold-notes",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:t.id})})
+        .then(function(r){return r.json();}).then(function(d){
+          foldBtn.disabled=false; foldBtn.textContent="✨ Pull updates into description";
+          if(d&&d.ok&&d.description){ ft.textContent=d.description; fw.style.display="block"; }
+          else if(em){ em.textContent=(d&&d.error)||"The assistant couldn't respond."; }
+        }).catch(function(){ foldBtn.disabled=false; foldBtn.textContent="✨ Pull updates into description"; if(em) em.textContent="Couldn't reach the assistant."; });
+    });
+    var foldUse=document.getElementById("e_foldUse");
+    if(foldUse) foldUse.addEventListener("click", function(){ document.getElementById("e_desc").value=document.getElementById("e_foldText").textContent; document.getElementById("e_foldWrap").style.display="none"; });
+    var foldKeep=document.getElementById("e_foldKeep");
+    if(foldKeep) foldKeep.addEventListener("click", function(){ document.getElementById("e_foldWrap").style.display="none"; });
 
     /* ---- update log ---- */
     var logEl = document.getElementById("e_log");
