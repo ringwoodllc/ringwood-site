@@ -65,12 +65,16 @@ workflows:
       - name: Set up code signing (creates the certificate + profile if missing)
         script: |
           keychain initialize
+          cd "$CM_BUILD_DIR/mobile/ios/App"
+          # Force the App target's bundle id to match the registered App ID, so the
+          # provisioning profile actually attaches (otherwise the archive fails with
+          # "requires a provisioning profile").
+          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ai.ringwood.app;/g' App.xcodeproj/project.pbxproj
+          echo "Bundle id now set to:"; grep PRODUCT_BUNDLE_IDENTIFIER App.xcodeproj/project.pbxproj | head -3
           app-store-connect fetch-signing-files "ai.ringwood.app" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
-          # Apply the profile from inside the iOS project so it lands on the App target.
-          cd "$CM_BUILD_DIR/mobile/ios/App"
           xcode-project use-profiles
       - name: Build IPA
         script: |
