@@ -55,6 +55,7 @@ export default {
     if (url.pathname === "/api/asset" && request.method === "GET") return getAssetFull(url, env, session);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
+    if (url.pathname === "/api/asset/qr/generate" && request.method === "POST") return generateAssetQr(request, env, session);
     if (url.pathname === "/api/asset/delete" && request.method === "POST") return deleteAsset(request, env, session);
     if (url.pathname === "/api/assets/review" && request.method === "GET") return assetsForReview(request, env);
     if (url.pathname === "/api/asset/merge" && request.method === "POST") return mergeAssets(request, env, session);
@@ -1050,8 +1051,10 @@ async function handleCreateAsset(request, env, ctx, session) {
   if (serial) row.serial = serial;
   if (notes) row.notes = notes;
   // Every asset gets a QR key by default (or the one the submitter assigned).
+  // Only set a QR tag if one was provided (scanned/typed). Don't auto-generate —
+  // a code is assigned on demand from the asset page.
   const qrTag = clean(body.qrTag);
-  row.qr_tag = qrTag || (await genAssetKey(env));
+  if (qrTag) row.qr_tag = qrTag;
   const etId = findId(refs.equip, equipmentType);
   const locId = findId(refs.locs, location);
   const clId = findId(refs.clients, client);
@@ -1301,12 +1304,8 @@ async function getAssetFull(url, env, session) {
   const forced = scopeName(session);
   if (forced != null && ((a.client && a.client.name) || "") !== forced) return json({ ok: false }, 404);
 
-  // Backfill a QR key for assets created before keys existed.
-  if (!a.qr_tag) {
-    const key = await genAssetKey(env);
-    const up = await sbUpdate(env, "assets", id, { qr_tag: key });
-    if (up.ok) a.qr_tag = key;
-  }
+  // No QR auto-generation: an asset has no code until one is scanned/assigned or
+  // generated on demand from the asset page.
 
   const sr = await sbSelect(
     env,
@@ -1394,6 +1393,25 @@ async function analyzeAsset(request, env, session) {
   const up = await sbUpdate(env, "assets", id, patch);
   if (!up.ok) return json({ ok: false, error: "Could not save the result." }, 502);
   return json({ ok: true });
+}
+
+// Generate a Ringwood QR code for an asset, on demand (only when asked).
+async function generateAssetQr(request, env, session) {
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!can(session, "assets", "edit")) return deny("assets");
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return json({ ok: false, error: "No asset id." }, 400);
+  if (!(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
+  const key = await genAssetKey(env);
+  const res = await sbUpdate(env, "assets", id, { qr_tag: key });
+  if (!res.ok) return json({ ok: false, error: "Could not generate a code." }, 502);
+  return json({ ok: true, qr: key });
 }
 
 // Save manual edits; a human edit marks it Verified.
@@ -1811,7 +1829,7 @@ async function resolveTicketAsset(env, body, clientId, session) {
     return assetId;
   }
   if (newName) {
-    const row = { name: newName, nickname: await uniqueNickname(env, newName, clientId), verification: "Pending", qr_tag: await genAssetKey(env) };
+    const row = { name: newName, nickname: await uniqueNickname(env, newName, clientId), verification: "Pending" };
     if (clientId) row.client_id = clientId;
     const res = await sbInsert(env, "assets", row);
     if (res.ok && res.data) return res.data.id;
@@ -1855,7 +1873,7 @@ async function detectAndLinkAsset(ticketId, pics, clientId, env, photoUrls) {
     if (m && m[0]) assetId = m[0].id;
   }
   if (!assetId) {
-    const row = { name: c(read.assetName) || [make, model].filter(Boolean).join(" ") || "Asset", verification: "AI suggested", qr_tag: await genAssetKey(env), nameplate_reading: buildReadingNote(read) };
+    const row = { name: c(read.assetName) || [make, model].filter(Boolean).join(" ") || "Asset", verification: "AI suggested", nameplate_reading: buildReadingNote(read) };
     if (c(read.shortName)) row.nickname = await uniqueNickname(env, c(read.shortName), clientId);
     if (make) row.make = make;
     if (model) row.model = model;
@@ -2377,7 +2395,7 @@ async function updateTicket(request, env, session) {
   } else if (body.newAssetName) {
     const tr = await sbSelect(env, `tickets?id=eq.${id}&select=client_id`);
     const cid = tr && tr[0] ? tr[0].client_id : null;
-    const ar = await sbInsert(env, "assets", { name: body.newAssetName.toString().trim(), verification: "Pending", qr_tag: await genAssetKey(env), client_id: cid });
+    const ar = await sbInsert(env, "assets", { name: body.newAssetName.toString().trim(), verification: "Pending", client_id: cid });
     if (ar.ok && ar.data) patch.asset_id = ar.data.id;
   }
   // Only touch the photo columns when the photos actually changed. The editor

@@ -85,7 +85,8 @@
   .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
   .btn.ghost:hover{background:var(--bg-2)}
   .btn:disabled{opacity:.6;cursor:default}
-  .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 6px}
+  .btnrow{display:flex;flex-wrap:nowrap;gap:8px;margin:16px 0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .btnrow .btn{flex:0 0 auto;white-space:nowrap;padding:11px 15px;font-size:.94rem}
   .stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 22px}
   .stat{display:inline-flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:.92rem;font-weight:600;color:var(--green-deep);text-decoration:none;cursor:pointer}
   .stat:hover{border-color:var(--green)}
@@ -104,6 +105,7 @@
   .qrcard .qrurl{font-size:.8rem;color:var(--muted);word-break:break-all;margin-bottom:10px}
   .qrcard .qrbtns{display:flex;gap:8px;flex-wrap:wrap}
   .qrcard .qrbtns button{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:7px 14px;font:inherit;font-size:.84rem;font-weight:600;cursor:pointer}
+  .qrcard .qrbtns .qrscan{display:inline-block;background:var(--green);color:#f6f2e8;border:1px solid var(--green);border-radius:999px;padding:7px 14px;font:inherit;font-size:.84rem;font-weight:600}
   .qrcard .qrbtns button:hover{border-color:var(--green)}
   @media print{ body * {visibility:hidden} #printArea, #printArea * {visibility:visible} #printArea{position:absolute;left:0;top:0;width:100%;text-align:center} }
 </style>
@@ -331,6 +333,8 @@
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
     var pb=document.getElementById("qrPrint"); if(pb) pb.addEventListener("click", function(){ printQR(a); });
     var cb=document.getElementById("qrCopy"); if(cb) cb.addEventListener("click", function(){ copyText(assetUrl(a.id), cb); });
+    var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
+    var qg=document.getElementById("qrGen"); if(qg) qg.addEventListener("click", generateQrForAsset);
   }
 
   function loadAssetTickets(id){
@@ -394,23 +398,50 @@
   }
   function qrCard(a){
     var url=assetUrl(a.id);
-    // An assigned / store-bought sticker: show its code, not a generated image
-    // (the physical sticker is the QR). Still offer the Ringwood QR to print.
+    // Scan-to-assign lives right here on the asset, in every state.
+    var scanBtn = "<label class='qrscan' for='qrAssign' style='cursor:pointer'>📷 Scan a code</label>"+
+      "<input type='file' id='qrAssign' accept='image/*' capture='environment' style='display:none' />";
+    // A store-bought sticker already assigned: show its code (the sticker IS the QR).
     if (a.qr && !isOwnKey(a.qr)){
       return "<div class='qrcard'>"+
         "<div class='qrinfo'><div class='lbl'>QR code assigned</div>"+
         "<div style='font-weight:600;color:var(--green-deep);word-break:break-all;font-size:1.05rem'>"+esc(a.qr)+"</div>"+
-        "<div class='qrurl'>Scan this sticker with Asset lookup in the app to open this asset.</div>"+
-        "<div class='qrbtns'><button type='button' id='qrPrint'>Print Ringwood QR</button>"+
-        "<button type='button' id='qrCopy'>Copy link</button></div></div></div>";
+        "<div class='qrurl'>Scan this sticker with Asset lookup to open this asset.</div>"+
+        "<div class='qrbtns'>"+scanBtn+"<button type='button' id='qrCopy'>Copy link</button></div>"+
+        "<div id='qrCardMsg' style='font-size:.82rem;color:var(--muted);margin-top:6px'></div></div></div>";
     }
-    var tag=a.qr?(" <span class='acl'>("+esc(a.qr)+")</span>"):"";
+    // A generated Ringwood code: show the image to print.
+    if (a.qr){
+      return "<div class='qrcard'>"+
+        "<div class='qrimg'>"+qrSvg(url)+"</div>"+
+        "<div class='qrinfo'><div class='lbl'>QR code <span class='acl'>("+esc(a.qr)+")</span></div>"+
+        "<div class='qrurl'>"+esc(url)+"</div>"+
+        "<div class='qrbtns'><button type='button' id='qrPrint'>Print code</button>"+
+        "<button type='button' id='qrCopy'>Copy link</button>"+scanBtn+"</div>"+
+        "<div id='qrCardMsg' style='font-size:.82rem;color:var(--muted);margin-top:6px'></div></div></div>";
+    }
+    // No code yet: scan a sticker, or generate one on demand.
     return "<div class='qrcard'>"+
-      "<div class='qrimg'>"+qrSvg(url)+"</div>"+
-      "<div class='qrinfo'><div class='lbl'>QR code"+tag+"</div>"+
-      "<div class='qrurl'>"+esc(url)+"</div>"+
-      "<div class='qrbtns'><button type='button' id='qrPrint'>Print code</button>"+
-      "<button type='button' id='qrCopy'>Copy link</button></div></div></div>";
+      "<div class='qrinfo'><div class='lbl'>QR code</div>"+
+      "<div class='qrurl'>No code yet. Stick a code on the equipment and scan it, or generate one to print.</div>"+
+      "<div class='qrbtns'>"+scanBtn+"<button type='button' id='qrGen'>Generate a code</button></div>"+
+      "<div id='qrCardMsg' style='font-size:.82rem;color:var(--muted);margin-top:6px'></div></div></div>";
+  }
+  // Scan/decode a code and assign it to the current asset, or generate one.
+  function assignQrToAsset(file){
+    var m=document.getElementById("qrCardMsg"); if(m){ m.style.color="var(--muted)"; m.textContent="Reading the code…"; }
+    decodeQRFromImage(file).then(function(val){
+      if(m){ m.textContent="Saving…"; }
+      fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, qrTag:val })})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ load(curId); } else { if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save the code."; } } })
+        .catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
+    }).catch(function(err){ if(m){ m.style.color="#8a3d1c"; m.textContent=(err&&err.message)||"Couldn't read a QR code. Try a flat, close shot."; } });
+  }
+  function generateQrForAsset(){
+    var m=document.getElementById("qrCardMsg"); if(m){ m.style.color="var(--muted)"; m.textContent="Generating…"; }
+    fetch("/api/asset/qr/generate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId })})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ load(curId); } else { if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't generate."; } } })
+      .catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
   }
   // Our own auto key looks like RW-XXXXX or a /a/?id= link; anything else is a
   // store-bought code the user assigned.
