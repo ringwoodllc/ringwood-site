@@ -2,6 +2,15 @@
    every app page, and a "Filing as <client>" pill on the create forms. Safe to
    include anywhere: it does nothing when no one is signed in. */
 (function () {
+  // Install the service worker so the app is installable (Add to Home Screen /
+  // Install app) and works offline. Registered from here because this script is
+  // already on every signed-in app page.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    });
+  }
+
   function esc(s) { return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   var css =

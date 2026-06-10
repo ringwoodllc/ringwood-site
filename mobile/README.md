@@ -58,3 +58,46 @@ real tool (login, camera capture, AI nameplate reading, offline shell), which is
 the kind of functionality that clears that bar. If review pushes back, the usual
 fix is to lean on the native capabilities (camera, push) rather than presenting
 as a plain web view.
+
+---
+
+## Before the native build: the app is already an installable PWA
+
+The web app now ships a web manifest (`/manifest.json`) and a service worker
+(`/sw.js`), so it installs and runs offline-capable with no app store at all:
+
+- **Android (Chrome):** open https://app.ringwood.ai, menu -> "Install app" (or
+  the install prompt). It lands on the home screen, runs full screen, and
+  updates instantly with every web deploy.
+- **iPhone (Safari):** open the site, Share -> "Add to Home Screen".
+
+For internal crews and pilot clients this is the fastest path: zero review,
+instant updates, free. Use the native builds below when you want a store listing
+or TestFlight / Play distribution.
+
+## Accounts and tools you need for the store builds
+
+| Need | iOS | Android |
+|------|-----|---------|
+| Developer account | Apple Developer Program, **$99/year** | Google Play Console, **$25 one-time** |
+| Build machine | **Mac** with Xcode (or a cloud Mac like Codemagic) | Android Studio on **any OS**, free |
+| Review time | usually < 24h | usually a few hours to ~1 day |
+| Test track | TestFlight (100 internal, ~no review; 10k external, light review) | Play Internal Testing / Internal App Sharing (near-instant) |
+
+## Android-only options worth knowing
+
+- **Direct APK:** Android Studio -> Build -> Generate Signed Bundle/APK. You can
+  hand the APK/AAB straight to a client to sideload, no Play listing needed.
+- **TWA (Trusted Web Activity):** because the PWA is solid, you can wrap the PWA
+  into a Play-store app with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)
+  (`npx @bubblewrap/cli init --manifest https://app.ringwood.ai/manifest.json`).
+  Lighter, but Capacitor is the better choice if you want native camera/push
+  later, so stick with Capacitor unless you specifically want the TWA route.
+
+## Keeping the "instant deploy" flexibility
+
+Both shells load the live site (`server.url` in `capacitor.config.json`), so
+your normal push-to-main deploy updates the installed apps with no resubmission.
+You only resubmit for native changes: icon, name, permissions, plugins, or a new
+OS minimum. If you later bundle web assets in the binary, add an OTA layer
+(Capacitor Live Updates / Capgo) to keep that instant-update behavior.
