@@ -81,7 +81,7 @@
       <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
     </div>
     <div class="row2">
-      <div class="field" style="flex:0 0 auto"><label>Status</label><select id="n_status"><option>Active</option><option>Prospect</option><option>Churned</option></select></div>
+      <div class="field" style="flex:0 0 auto"><label>Status</label><select id="n_status"><option>Active</option><option>Archived</option></select></div>
     </div>
     <div class="field"><label>Color <span style="font-weight:400;color:var(--muted)">— each color is used by one client</span></label><div id="n_sw"></div></div>
     <button class="btn" id="n_add" type="button">Add client</button>
@@ -142,7 +142,8 @@
   function renderClient(c){
     var k=ukey(c.id);
     var sum=[c.status&&c.status!=="Active"?c.status:"",c.contact,c.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
-    var statusSel="<select id='st_"+k+"'>"+["Active","Prospect","Churned"].map(function(s){return "<option"+(c.status===s?" selected":"")+">"+s+"</option>";}).join("")+"</select>";
+    var stOpts=["Active","Archived"]; if(c.status && stOpts.indexOf(c.status)<0) stOpts.unshift(c.status);
+    var statusSel="<select id='st_"+k+"'>"+stOpts.map(function(s){return "<option"+(c.status===s?" selected":"")+">"+s+"</option>";}).join("")+"</select>";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' aria-expanded='false' onclick=\"tog('"+k+"')\">"+
         "<div><span class='chip' style='background:"+(c.color||clientColor(c.name))+"'>"+esc(c.name)+"</span><div class='cs'>"+esc(sum)+"</div></div>"+
@@ -153,8 +154,10 @@
         "<div class='row2'><div class='field'><label>Contact</label><input id='ct_"+k+"' value='"+esc(c.contact)+"'/></div>"+
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(c.phone)+"'/></div></div>"+
         "<div class='row2'><div class='field' style='flex:0 0 auto'><label>Status</label>"+statusSel+"</div></div>"+
+        "<div style='font-size:.82rem;color:var(--muted);margin:-4px 0 6px'>Archived hides this client and its tickets, assets, and service records from the admin, and blocks its logins.</div>"+
         "<div class='field'><label>Color</label>"+swatchesHtml("c"+k, c.color, c.id)+"</div>"+
-        "<div style='margin-top:6px'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button></div>"+
+        "<div style='margin-top:6px;display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
+          "<button class='btn sm' id='del_"+k+"' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Delete client</button></div>"+
         "<div class='msg' id='m_"+k+"'></div></div></div>";
   }
   window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var openNow=b.style.display!=="block"; b.style.display=openNow?"block":"none"; it.classList.toggle("open", openNow); var s=it.querySelector(".csum"); if(s) s.setAttribute("aria-expanded", openNow?"true":"false"); };
@@ -171,6 +174,16 @@
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); }
           else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
         .catch(function(){ b.disabled=false; b.textContent="Save"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+    });
+    var del=document.getElementById("del_"+k);
+    if(del) del.addEventListener("click", function(){
+      var m=document.getElementById("m_"+k); m.className="msg";
+      if(!confirm("Delete "+c.name+"? Its tickets, assets, and service records are kept but unlinked (shown as Unassigned), and its logins are removed. This can't be undone. To just hide it, set Status to Archived instead.")) return;
+      var b=this; b.disabled=true; b.textContent="Deleting…";
+      fetch("/api/admin/client/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id})})
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ load(); } else { b.disabled=false; b.textContent="Delete client"; m.className="msg err"; m.textContent=(d&&d.error)||"Could not delete."; } })
+        .catch(function(){ b.disabled=false; b.textContent="Delete client"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
     });
   }
   function addClient(){

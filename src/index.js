@@ -83,6 +83,7 @@ export default {
     // Master-only user management
     if (url.pathname === "/api/admin/clients" && request.method === "GET") return adminListClients(request, env);
     if (url.pathname === "/api/admin/client" && request.method === "POST") return adminSaveClient(request, env);
+    if (url.pathname === "/api/admin/client/delete" && request.method === "POST") return deleteClient(request, env);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -254,7 +255,7 @@ async function login(request, env) {
     if (!t || t.revoked === true || (t.expires_at && new Date(t.expires_at).getTime() < Date.now())) {
       return json({ ok: false, error: "This link is no longer valid. Ask for a new one." }, 401);
     }
-    const urows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(t.user_email)}&select=email,role,active,perms,client:clients(name)`);
+    const urows = await sbSelect(env, `app_users?email=eq.${encodeURIComponent(t.user_email)}&select=email,role,active,perms,client:clients(name,status)`);
     u = urows && urows[0];
     if (!u || u.active === false) return json({ ok: false, error: "This account is not active." }, 401);
   } else {
@@ -263,13 +264,17 @@ async function login(request, env) {
     const password = (body.password || "").toString();
     if (!idRaw || !password) return json({ ok: false, error: "Enter your email or username and password." }, 400);
     const enc = encodeURIComponent(idRaw);
-    const rows = await sbSelect(env, `app_users?or=(email.eq.${enc},username.eq.${enc})&select=email,username,password_hash,role,active,perms,client:clients(name)`);
+    const rows = await sbSelect(env, `app_users?or=(email.eq.${enc},username.eq.${enc})&select=email,username,password_hash,role,active,perms,client:clients(name,status)`);
     u = rows && rows[0];
     if (!u || u.active === false || !(await verifyPassword(password, u.password_hash))) {
       return json({ ok: false, error: "Wrong email/username or password." }, 401);
     }
   }
 
+  // A client whose account is Archived can't sign in (admin hid them for now).
+  if (u.role !== "master" && u.client && u.client.status === "Archived") {
+    return json({ ok: false, error: "This account is not active." }, 401);
+  }
   const role = u.role === "master" ? "master" : "client";
   const client = role === "client" ? (u.client && u.client.name) || "" : null;
   const perms = role === "client" ? u.perms || {} : null;
@@ -466,6 +471,32 @@ async function adminListClients(request, env) {
       notes: c.notes || "",
     })),
   });
+}
+
+// Permanently remove a client. Its tickets, assets, and service records are
+// unlinked (kept as Unassigned, not destroyed); its logins are removed.
+async function deleteClient(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No client id." }, 400);
+  // Unlink work records so history survives as Unassigned.
+  for (const tbl of ["tickets", "assets", "service_records"]) {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/${tbl}?client_id=eq.${id}`, {
+      method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ client_id: null }),
+    });
+  }
+  // Remove the client's logins (they belong to a client that's going away).
+  await fetch(`${env.SUPABASE_URL}/rest/v1/app_users?client_id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/clients?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete the client." }, 502);
+  clearRefsCache();
+  return json({ ok: true });
 }
 
 async function adminSaveClient(request, env) {
@@ -1031,11 +1062,18 @@ function clientColorFor(refs, name) {
 
 /* ===================== Lists / options ===================== */
 
+// An Archived client's records are hidden across the admin. Returns a PostgREST
+// clause (AND'd onto a query) that keeps unassigned rows and non-archived clients.
+function archivedClientClause(refs) {
+  const ids = (refs.clients || []).filter((c) => (c.status || "") === "Archived").map((c) => c.id);
+  return ids.length ? `&or=(client_id.is.null,client_id.not.in.(${ids.join(",")}))` : "";
+}
+
 async function getLists(env, session) {
   const out = { clients: [], types: [], locations: [], serviceTypes: [] };
   if (!sbReady(env)) return out;
   const refs = await getRefs(env);
-  out.clients = refs.clients.filter((c) => (c.status || "") !== "Churned").map((c) => c.name).sort((a, b) => a.localeCompare(b));
+  out.clients = refs.clients.filter((c) => (c.status || "") !== "Churned" && (c.status || "") !== "Archived").map((c) => c.name).sort((a, b) => a.localeCompare(b));
   // A client login only sees its own client in pickers.
   const forced = scopeName(session);
   if (forced != null) out.clients = out.clients.filter((n) => n === forced);
@@ -1752,10 +1790,12 @@ async function listAssets(env, session) {
   if (!sbReady(env) || !can(session, "assets", "view")) return json([]);
   let filter = "";
   const forced = scopeName(session);
+  const refsA = await getRefs(env);
   if (forced != null) {
-    const refs = await getRefs(env);
-    const cid = findId(refs.clients, forced);
+    const cid = findId(refsA.clients, forced);
     filter = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
+  } else {
+    filter += archivedClientClause(refsA);  // hide Archived clients' assets from admin
   }
   let rows = await sbSelect(
     env,
@@ -1795,10 +1835,12 @@ async function listAllServices(url, env, session) {
   if (!can(session, "service", "view") || !sbReady(env)) return json([]);
   let filter = "";
   const forced = scopeName(session);
+  const refsS = await getRefs(env);
   if (forced != null) {
-    const refs = await getRefs(env);
-    const cid = findId(refs.clients, forced);
+    const cid = findId(refsS.clients, forced);
     filter = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
+  } else {
+    filter += archivedClientClause(refsS);  // hide Archived clients' service records
   }
   const rows = await sbSelect(
     env,
@@ -2365,6 +2407,7 @@ async function listTickets(url, env, session) {
   }
   const assetId = url.searchParams.get("assetId") || "";
   if (assetId) filter += `&asset_id=eq.${assetId}`;
+  if (forced == null) filter += archivedClientClause(refs);  // hide Archived clients' tickets from admin
   // Archived tickets are master-only. Clients see Open and Closed (Complete), but
   // never Archived, no matter what the filter asks for.
   const isClient = session && session.role === "client";
