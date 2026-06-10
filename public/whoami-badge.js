@@ -12,7 +12,7 @@
   function esc(s) { return (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
   var css =
-    ".rw-idstrip{background:var(--bg-2,#efe8d8);border-bottom:1px solid var(--line,rgba(35,40,42,.14));font-size:.8rem;color:var(--muted,#5f5d52);padding:7px 22px;text-align:right;font-family:inherit}" +
+    ".rw-idstrip{background:var(--bg-2,#efe8d8);border-bottom:1px solid var(--line,rgba(35,40,42,.14));font-size:.8rem;color:var(--muted,#5f5d52);padding:7px 22px;padding-top:calc(7px + env(safe-area-inset-top, 0px));text-align:right;font-family:inherit}" +
     ".rw-idstrip a{color:var(--green-deep,#21443a);text-decoration:none;font-weight:600}" +
     ".rw-idstrip a:hover{text-decoration:underline}" +
     ".rw-idwrap{position:relative;display:inline-block;vertical-align:middle}" +
