@@ -62,19 +62,24 @@ workflows:
           # doesn't ask the export-compliance question on every build.
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
-      - name: Set up code signing (creates the certificate + profile if missing)
+      - name: Set up code signing (certificate + profile)
         script: |
+          set -e
           keychain initialize
-          cd "$CM_BUILD_DIR/mobile/ios/App"
-          # Force the App target's bundle id to match the registered App ID, so the
-          # provisioning profile actually attaches (otherwise the archive fails with
-          # "requires a provisioning profile").
-          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ai.ringwood.app;/g' App.xcodeproj/project.pbxproj
-          echo "Bundle id now set to:"; grep PRODUCT_BUNDLE_IDENTIFIER App.xcodeproj/project.pbxproj | head -3
+          # A fresh Apple account has no distribution certificate. fetch-signing-files
+          # can make the profile but not the certificate, so create one first (the
+          # profile then has an identity to pair with). Safe to reuse if it exists.
+          app-store-connect create-certificate --type IOS_DISTRIBUTION --save \
+            || echo "Reusing an existing distribution certificate."
           app-store-connect fetch-signing-files "ai.ringwood.app" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
+          cd "$CM_BUILD_DIR/mobile/ios/App"
+          # Keep the App target's bundle id aligned with the registered App ID.
+          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ai.ringwood.app;/g' App.xcodeproj/project.pbxproj
+          echo "=== bundle ids in project ==="; grep PRODUCT_BUNDLE_IDENTIFIER App.xcodeproj/project.pbxproj | sort -u
+          echo "=== installed provisioning profiles ==="; ls -1 ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || true
           xcode-project use-profiles
       - name: Build IPA
         script: |
