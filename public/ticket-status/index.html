@@ -278,7 +278,14 @@
     if(toolbarEl) toolbarEl.style.display = d;
   }
   // Back from a ticket to the list: restore the chrome and clear the deep link.
-  function backToTicketList(){ history.replaceState(null,"","/status"); render(); window.scrollTo(0,0); }
+  function backToTicketList(){ history.replaceState(null,"","/status"); render(); refreshTickets(); window.scrollTo(0,0); }
+  // Re-fetch the tickets and re-render the list, so edits made on a ticket show
+  // up when you come back. Keeps the current list visible until the data lands.
+  function refreshTickets(){
+    return fetch("/api/tickets/list?archived=1",{cache:"no-store"}).then(function(r){return r.json();}).then(function(rows){
+      ALL_TICKETS = rows || []; render();
+    }).catch(function(){});
+  }
   // Open a ticket straight from its id (used by deep links and the back gesture).
   function openById(id, push){
     for(var i=0;i<ALL_TICKETS.length;i++){ if(ALL_TICKETS[i].id===id){ openEdit(ALL_TICKETS[i], push); return true; } }
@@ -288,8 +295,10 @@
   window.addEventListener("popstate", function(){
     var id = new URLSearchParams(location.search).get("id");
     if(id && openById(id, false)) return;
-    render(); window.scrollTo(0,0);
+    render(); refreshTickets(); window.scrollTo(0,0);
   });
+  // Returning to the list from a full page nav (browser back): refresh it too.
+  window.addEventListener("pageshow", function(e){ if(e.persisted && !editWrap.innerHTML) refreshTickets(); });
 
   /* ---- tickets ---- */
   function loadAll(){

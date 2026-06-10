@@ -169,15 +169,20 @@
   document.querySelector("main").insertAdjacentHTML("beforeend","<div id='editWrap'></div>");
   clientSel.addEventListener("change", render);
   typeSel.addEventListener("change", render);
-  Promise.all([
-    fetch("/api/services/all").then(function(r){return r.json();}).catch(function(){return [];}),
-    fetch("/api/tickets/list?archived=1").then(function(r){return r.json();}).catch(function(){return [];})
-  ]).then(function(res){
-    ALL = Array.isArray(res[0])?res[0]:[];
-    var tix = Array.isArray(res[1])?res[1]:[];
-    ITEMS = buildItems(ALL, tix);
-    fillFilters(); render();
-  }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Could not load records.</div>"; });
+  // Re-fetch the records and rebuild the list, so an edit made on a record shows
+  // up when you come back. Keeps the current list visible until the data lands.
+  function refreshRecords(){
+    return Promise.all([
+      fetch("/api/services/all",{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return [];}),
+      fetch("/api/tickets/list?archived=1",{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return [];})
+    ]).then(function(res){
+      ALL = Array.isArray(res[0])?res[0]:[];
+      var tix = Array.isArray(res[1])?res[1]:[];
+      ITEMS = buildItems(ALL, tix);
+      fillFilters(); render();
+    });
+  }
+  refreshRecords().catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Could not load records.</div>"; });
 
   var SERVICE_TYPES=["Install","Inspection","Maintenance","Repair","Replacement","Other"];
   var topEls=[document.querySelector(".filters"),document.getElementById("total"),document.getElementById("list")];
@@ -186,8 +191,10 @@
   window.addEventListener("popstate", function(){
     var id=new URLSearchParams(location.search).get("id");
     if(id){ openRec(id, false); return; }
-    var ew=document.getElementById("editWrap"); if(ew) ew.innerHTML=""; showList(true); window.scrollTo(0,0);
+    var ew=document.getElementById("editWrap"); if(ew) ew.innerHTML=""; showList(true); refreshRecords(); window.scrollTo(0,0);
   });
+  // Returning to the list from a full page nav (browser back): refresh it too.
+  window.addEventListener("pageshow", function(e){ var ew=document.getElementById("editWrap"); if(e.persisted && (!ew||!ew.innerHTML)) refreshRecords(); });
   function processPhoto(file){
     return new Promise(function(res,rej){ var img=new Image(),u=URL.createObjectURL(file);
       img.onload=function(){ var max=1600,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
@@ -231,7 +238,7 @@
       window.__ra=function(i){ add.splice(i,1); thumbs(); };
       thumbs();
       document.getElementById("s_file").addEventListener("change",function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; Promise.all(fs.map(processPhoto)).then(function(arr){ arr.forEach(function(p){add.push(p);}); thumbs(); }).catch(function(){}); });
-      window.__svcBack=function(){ if(history.state&&history.state.svc) history.back(); else { history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); window.scrollTo(0,0); } };
+      window.__svcBack=function(){ if(history.state&&history.state.svc) history.back(); else { history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); refreshRecords(); window.scrollTo(0,0); } };
       document.getElementById("s_back").addEventListener("click", window.__svcBack);
       document.getElementById("s_save").addEventListener("click",function(){
         var b=this; b.disabled=true; b.textContent="Saving…";

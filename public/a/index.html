@@ -183,9 +183,15 @@
   loadLists();
   setInterval(function(){ loadLists(); }, 6*3600*1000);
 
-  fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){
-    allAssets = Array.isArray(list)?list:[];
-    renderList();
+  // Re-fetch the asset list and re-render it. Called on load and whenever we
+  // return to the list, so edits (new client, verified status, etc.) show up.
+  function refreshAssets(){
+    return fetch("/api/assets/list",{cache:"no-store"}).then(function(r){return r.json();}).then(function(list){
+      allAssets = Array.isArray(list)?list:[];
+      renderList();
+    });
+  }
+  refreshAssets().then(function(){
     // Deep link: ?id=<uuid> loads directly; a QR tag resolves to its asset.
     var raw = new URLSearchParams(location.search).get("id") || new URLSearchParams(location.search).get("qr") || location.pathname.replace(/^\/a\//,"");
     var id = resolveRef(raw);
@@ -273,6 +279,7 @@
     if(lk) lk.style.display=""; if(eb) eb.style.display="";
     view.innerHTML=""; curId=""; curAsset=null;
     window.scrollTo(0,0);
+    refreshAssets();  // pull in any edits made on the detail screen
   }
   // load(id, push): push=true adds a history entry so the phone's back/swipe
   // returns to the list instead of leaving the app.
@@ -301,6 +308,8 @@
     if (id && /^rec|^[0-9a-f]{8}-/.test(id)) { load(id, false); }
     else { showListView(); }
   });
+  // Returning to the list from a full page nav (browser back): refresh it too.
+  window.addEventListener("pageshow", function(e){ if(e.persisted && !curId) refreshAssets(); });
   function statusClass(s){ return s==="AI suggested"?"ai":(s==="Verified"?"verified":"pending"); }
 
   function assetPhotoList(a){ if(a.photos && a.photos.length) return a.photos; return [a.overallPhoto,a.nameplatePhoto,a.serialPhoto].filter(Boolean); }

@@ -148,6 +148,12 @@
 
     <div class="field">
       <label for="asset">Asset <span class="hint">— optional, the equipment this is about</span></label>
+      <button type="button" id="assetScanBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;cursor:pointer;padding:13px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);background:var(--bg-2);font:inherit;font-weight:600;margin:0 0 10px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7"/></svg>
+        <span>Scan a QR code</span>
+      </button>
+      <input type="file" id="assetScanInput" accept="image/*" capture="environment" style="display:none" />
+      <div id="assetScanMsg" style="font-size:.85rem;margin-bottom:8px"></div>
       <select id="asset"><option value="">— None —</option></select>
       <div id="newAssetRow" style="display:none;margin-top:10px">
         <input id="newAssetName" type="text" autocomplete="off" placeholder="New asset name (e.g. Lobby TV)" />
@@ -378,12 +384,37 @@ function tryAutoLinkAsset(file) {
     if (!val) return;
     var a = assetFromQR(val);
     if (!a) return;
-    if (a.client && !CLIENT_LOCK) { for (var i = 0; i < clientEl.options.length; i++) { if (clientEl.options[i].text === a.client) { clientEl.value = a.client; break; } } renderAssetOptions(); }
-    assetEl.value = a.id;
-    document.getElementById("assetAutoNote").textContent = "✓ Linked to asset: " + (a.name || "Asset");
-    refresh();
+    selectScannedAsset(a.id, a.name, a.client);
   });
 }
+// Select an asset by id (adding the option if it isn't in the list), set its
+// client, and note the link.
+function selectScannedAsset(id, name, client) {
+  if (client && !CLIENT_LOCK) { for (var i = 0; i < clientEl.options.length; i++) { if (clientEl.options[i].text === client) { clientEl.value = client; break; } } renderAssetOptions(); }
+  if (!assetEl.querySelector('option[value="' + id + '"]')) { var o = document.createElement("option"); o.value = id; o.textContent = name || "Asset"; assetEl.appendChild(o); }
+  assetEl.value = id;
+  newAssetRow.style.display = "none";
+  document.getElementById("assetAutoNote").textContent = "✓ Linked to asset: " + (name || "Asset");
+  refresh();
+}
+// Dedicated "Scan a QR code" button by the asset field: decode, then resolve the
+// asset (locally, or via the server for store-bought stickers).
+function scanAssetForTicket(file) {
+  var m = document.getElementById("assetScanMsg");
+  m.style.color = "var(--muted)"; m.textContent = "Reading the code…";
+  decodeQR(file).then(function (val) {
+    if (!val) { m.style.color = "#8a3d1c"; m.textContent = "Couldn't read a QR code. Try a flat, close shot."; return; }
+    var a = assetFromQR(val);
+    if (a) { m.textContent = ""; selectScannedAsset(a.id, a.name, a.client); return; }
+    m.textContent = "Looking up the asset…";
+    fetch("/api/asset/resolve?code=" + encodeURIComponent(val)).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.ok) { m.textContent = ""; selectScannedAsset(d.id, d.name, ""); }
+      else { m.style.color = "#8a3d1c"; m.textContent = (d && d.error) || "No asset matches that code."; }
+    }).catch(function () { m.style.color = "#8a3d1c"; m.textContent = "Couldn't reach the server."; });
+  });
+}
+document.getElementById("assetScanBtn").addEventListener("click", function () { document.getElementById("assetScanInput").click(); });
+document.getElementById("assetScanInput").addEventListener("change", function (e) { var f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) scanAssetForTicket(f); });
 
 // ---- add a client without leaving the form ----
 var addClientRow = document.getElementById("addClientRow");

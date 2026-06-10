@@ -73,13 +73,18 @@
   }).catch(function(){});
 
   function load(){
-    fetch("/api/assets/review").then(function(r){return r.json();}).then(function(d){
+    fetch("/api/assets/review",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var el=document.getElementById("list"), a=(d&&d.assets)||[];
       if(!a.length){ el.innerHTML="<div class='lead'>Nothing to review. All assets are confirmed.</div>"; return; }
       el.innerHTML = a.map(renderCard).join("");
       a.forEach(wire);
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='lead'>Could not load.</div>"; });
   }
+  // Returning from an asset's Open / edit (a full page nav) can restore a stale
+  // cached page. Re-load when the page is shown again so confirmed/edited assets
+  // drop off and changes show.
+  window.addEventListener("pageshow", function(e){ if(e.persisted) load(); });
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) load(); });
   function renderCard(a){
     var k=a.id;
     var meta=[a.make,a.model,a.serial?("SN "+a.serial):""].filter(Boolean).map(esc).join(" · ");
