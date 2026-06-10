@@ -9,5 +9,16 @@
   "ios": {
     "contentInset": "always"
   },
-  "backgroundColor": "#1f3d2b"
+  "android": {
+    "allowMixedContent": false
+  },
+  "backgroundColor": "#1f3d2b",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#1f3d2b",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    }
+  }
 }

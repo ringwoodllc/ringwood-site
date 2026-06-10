@@ -4,6 +4,7 @@
   "private": true,
   "description": "Native iOS + Android shell that wraps the Ringwood field-ops web app.",
   "scripts": {
+    "assets": "capacitor-assets generate --assetPath assets --iconBackgroundColor '#1f3d2b' --splashBackgroundColor '#1f3d2b'",
     "sync": "cap sync",
     "ios": "cap open ios",
     "android": "cap open android",
@@ -18,6 +19,7 @@
     "@capacitor/splash-screen": "^6.0.2"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.1.2"
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/assets": "^3.0.5"
   }
 }
