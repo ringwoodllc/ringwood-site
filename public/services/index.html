@@ -36,8 +36,10 @@
   .rec{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:10px;display:flex;gap:12px;align-items:flex-start;cursor:pointer}
   .rec:hover{border-color:var(--green)}
   .rec .bd{flex:1;min-width:0}
-  .rec .top{font-weight:600;color:var(--green-deep)}
+  .rec .top{font-weight:600;color:var(--green-deep);font-size:1.14rem;line-height:1.2}
   .rec .meta{color:var(--muted);font-size:.85rem;margin-top:3px}
+  .rec .meta b{color:var(--green-deep)}
+  .rchev{flex:0 0 auto;align-self:center;color:var(--muted);font-size:1.3rem;line-height:1}
   .rec .notes{color:var(--muted);font-size:.85rem;margin-top:3px;word-break:break-word}
   .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
   .cost{font-weight:700;color:var(--green-deep);white-space:nowrap}
@@ -93,12 +95,13 @@
     var el=document.getElementById("list");
     if(!rows.length){ el.innerHTML="<div class='empty'>No service records"+(ALL.length?" match.":" yet.")+"</div>"; return; }
     el.innerHTML=rows.map(function(s){
-      var meta=[fdate(s.date), s.type, s.technician].filter(Boolean).map(esc).join(" · ");
+      var meta=(s.date?"<b>"+esc(fdate(s.date))+"</b>":"")+[s.type,s.technician].filter(Boolean).map(esc).map(function(x){return " · "+x;}).join("");
       return "<div class='rec' onclick=\"openRec('"+esc(s.id)+"')\">"+
         "<div class='bd'><div class='top'>"+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
         (s.notes?"<div class='notes'>"+esc(s.notes)+"</div>":"")+"</div>"+
         "<div class='rcol'>"+(s.client?"<span class='client-chip' style='background:"+(s.clientColor||clientColor(s.client))+"'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
+        "<span class='rchev'>›</span>"+
       "</div>";
     }).join("");
   }
