@@ -137,6 +137,7 @@
     <label class="qrchip" for="scanInput" style="margin-top:10px;display:inline-block">Scan a QR code</label>
     <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
     <div id="scanMsg" style="font-size:.84rem;color:var(--muted);margin-top:6px"></div>
+    <div id="scanAssign" style="display:none;margin-top:8px"></div>
   </div>
   <div id="view"></div>
 </main>
@@ -230,14 +231,39 @@
   qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=resolveRef(qrInput.value); if(id) load(id); } });
   document.getElementById("scanInput").addEventListener("change", function(e){
     var file=e.target.files&&e.target.files[0]; e.target.value="";
-    var sm=document.getElementById("scanMsg"); if(!file) return;
+    var sm=document.getElementById("scanMsg"), sa=document.getElementById("scanAssign"); if(!file) return;
+    sa.style.display="none"; sa.innerHTML="";
     sm.style.color="var(--muted)"; sm.textContent="Reading the code…";
     decodeQRFromImage(file).then(function(val){
       var id=resolveRef(val);
       if(id && (/^rec|^[0-9a-f]{8}-/.test(id) || allAssets.some(function(a){return a.id===id;}))){ sm.textContent=""; load(id); }
-      else { sm.style.color="#8a3d1c"; sm.textContent="Scanned "+val+", but no matching asset. Assign it to an asset first."; }
+      else { offerAssign(val); }
     }).catch(function(err){ sm.style.color="#8a3d1c"; sm.textContent=(err&&err.message)||"Couldn't read a QR code."; });
   });
+
+  // Unknown (store-bought) code: let the user link it to an asset right here.
+  function offerAssign(code){
+    var sm=document.getElementById("scanMsg"), sa=document.getElementById("scanAssign");
+    sm.style.color="var(--muted)"; sm.textContent="This code isn't linked yet. Assign it to an asset:";
+    var opts=allAssets.slice().sort(function(a,b){ return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); })
+      .map(function(a){ return "<option value='"+esc(a.id)+"'>"+esc(a.name||"Asset")+(a.client?(" — "+esc(a.client)):"")+"</option>"; }).join("");
+    sa.innerHTML="<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center'>"+
+      "<select id='asgSel' style='flex:1;min-width:160px'>"+opts+"</select>"+
+      "<button class='gobtn' id='asgBtn' type='button' style='padding:11px 16px'>Assign</button></div>"+
+      "<div id='asgMsg' style='font-size:.84rem;margin-top:6px'></div>";
+    sa.style.display="block";
+    document.getElementById("asgBtn").addEventListener("click", function(){
+      var aid=document.getElementById("asgSel").value; if(!aid) return;
+      var b=this; b.disabled=true; b.textContent="Saving…";
+      fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:aid, qrTag:code })})
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){
+            // Refresh the local list so the new code resolves, then open the asset.
+            fetch("/api/assets/list").then(function(r){return r.json();}).then(function(list){ allAssets=Array.isArray(list)?list:allAssets; sm.textContent=""; sa.style.display="none"; load(aid); }).catch(function(){ sm.textContent=""; sa.style.display="none"; load(aid); });
+          } else { b.disabled=false; b.textContent="Assign"; document.getElementById("asgMsg").style.color="#8a3d1c"; document.getElementById("asgMsg").textContent=(d&&d.error)||"Couldn't assign."; }
+        }).catch(function(){ b.disabled=false; b.textContent="Assign"; document.getElementById("asgMsg").style.color="#8a3d1c"; document.getElementById("asgMsg").textContent="Couldn't reach the server."; });
+    });
+  }
 
   function load(id){
     curId=id; view.innerHTML="<div class='state'>Loading asset…</div>";
