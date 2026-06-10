@@ -183,7 +183,12 @@
   // Client field in the editor.
   var IS_CLIENT = false, IS_MASTER = false;
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
-    if (w && w.ok && w.role === "client"){ IS_CLIENT = true; var f = clientSel.closest(".field"); if (f) f.style.display = "none"; }
+    if (w && w.ok && w.role === "client"){
+      IS_CLIENT = true;
+      var f = clientSel.closest(".field"); if (f) f.style.display = "none";
+      // Archived tickets are master-only, so drop the Archived filter for clients.
+      Array.prototype.slice.call(statusSel.options).forEach(function(o){ if(o.value === "Archived"){ o.remove(); } });
+    }
     if (w && w.ok && w.role === "master"){ IS_MASTER = true; }
   }).catch(function(){});
   var listEl = document.getElementById("list");

@@ -2105,7 +2105,10 @@ async function listTickets(url, env, session) {
   }
   const assetId = url.searchParams.get("assetId") || "";
   if (assetId) filter += `&asset_id=eq.${assetId}`;
-  if (!showArchived) filter += "&status=neq.Archived";
+  // Archived tickets are master-only. Clients see Open and Closed (Complete), but
+  // never Archived, no matter what the filter asks for.
+  const isClient = session && session.role === "client";
+  if (!showArchived || isClient) filter += "&status=neq.Archived";
 
   let rows = await sbSelect(
     env,
