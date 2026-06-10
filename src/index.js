@@ -81,6 +81,8 @@ export default {
     // Master-only user management
     if (url.pathname === "/api/admin/clients" && request.method === "GET") return adminListClients(request, env);
     if (url.pathname === "/api/admin/client" && request.method === "POST") return adminSaveClient(request, env);
+    if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
+    if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
     if (url.pathname === "/api/admin/user" && request.method === "POST") return adminSaveUser(request, env);
     if (url.pathname === "/api/admin/user/password" && request.method === "POST") return adminSetPassword(request, env);
@@ -478,6 +480,99 @@ async function adminSaveClient(request, env) {
   return json({ ok: true });
 }
 
+// Walk the photos bucket and add up every file's size and count. Storage has no
+// "total size" API, so we descend folder by folder. A subrequest budget keeps a
+// huge library from blowing the Worker's request limit: if we hit it, we return
+// what we have and flag the number as a floor (approx=true).
+async function storageUsage(env) {
+  let bytes = 0, files = 0, calls = 0, approx = false;
+  const BUDGET = 45;
+  async function listFolder(prefix) {
+    let offset = 0, out = [];
+    while (true) {
+      if (calls >= BUDGET) { approx = true; break; }
+      calls++;
+      let page;
+      try {
+        const r = await fetchT(`${env.SUPABASE_URL}/storage/v1/object/list/photos`, {
+          method: "POST",
+          headers: sbHeaders(env),
+          body: JSON.stringify({ prefix, limit: 1000, offset, sortBy: { column: "name", order: "asc" } }),
+        });
+        if (!r.ok) break;
+        page = await r.json();
+      } catch { break; }
+      if (!Array.isArray(page) || !page.length) break;
+      out = out.concat(page);
+      if (page.length < 1000) break;
+      offset += 1000;
+    }
+    return out;
+  }
+  async function walk(prefix) {
+    if (approx) return;
+    const items = await listFolder(prefix);
+    for (const it of items) {
+      if (!it || !it.name || it.name === ".emptyFolderPlaceholder") continue;
+      if (it.id && it.metadata && typeof it.metadata.size === "number") {
+        bytes += it.metadata.size; files++;        // a file
+      } else {
+        await walk(prefix + it.name + "/");          // a subfolder
+        if (approx) return;
+      }
+    }
+  }
+  // Skip the diag/ folder (a tiny self-test file) so the photo count stays clean.
+  const top = await listFolder("");
+  for (const it of top) {
+    if (!it || !it.name || it.name === "diag" || it.name === ".emptyFolderPlaceholder") continue;
+    if (it.id && it.metadata && typeof it.metadata.size === "number") { bytes += it.metadata.size; files++; }
+    else { await walk(it.name + "/"); if (approx) break; }
+  }
+  return { bytes, files, approx };
+}
+
+// Master dashboard numbers: storage used, photo count, and how many assets,
+// clients, and logins exist.
+async function adminStats(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected to Supabase." }, 503);
+  const [assets, clients, users, store] = await Promise.all([
+    sbCount(env, "assets"),
+    sbCount(env, "clients"),
+    sbCount(env, "app_users"),
+    storageUsage(env),
+  ]);
+  return noStore({
+    ok: true,
+    storageBytes: store.bytes,
+    storageApprox: store.approx,
+    photos: store.files,
+    assets,
+    clients,
+    users,
+  });
+}
+
+// Clear the QR code off every asset (wipe sample codes). Assets, photos, and
+// history are untouched; only qr_tag is set back to null.
+async function adminClearQr(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected to Supabase." }, 503);
+  const before = await sbCount(env, "assets?qr_tag=not.is.null");
+  try {
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/assets?qr_tag=not.is.null`, {
+      method: "PATCH",
+      headers: sbHeaders(env, { Prefer: "return=minimal" }),
+      body: JSON.stringify({ qr_tag: null }),
+    });
+    if (!r.ok) return json({ ok: false, error: "Could not clear the QR codes." }, 502);
+  } catch {
+    return json({ ok: false, error: "Couldn't reach Supabase." }, 502);
+  }
+  return json({ ok: true, cleared: before });
+}
+
 async function adminListUsers(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
   const rows = await sbSelect(env, "app_users?select=id,email,username,role,active,perms,client:clients(name,color)&order=role.desc,email");
@@ -749,6 +844,22 @@ async function sbSelect(env, path) {
     return await r.json();
   } catch {
     return null;
+  }
+}
+
+// Exact row count for a table (or filtered path), via PostgREST's Content-Range.
+// Cheap: asks for a single row but reads the total off the header.
+async function sbCount(env, path) {
+  try {
+    const sep = path.indexOf("?") >= 0 ? "&" : "?";
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${path}${sep}select=id`, {
+      headers: sbHeaders(env, { Prefer: "count=exact", Range: "0-0", "Range-Unit": "items" }),
+    });
+    const cr = r.headers.get("content-range") || "";
+    const total = cr.split("/")[1];
+    return total && total !== "*" ? parseInt(total, 10) : 0;
+  } catch {
+    return 0;
   }
 }
 

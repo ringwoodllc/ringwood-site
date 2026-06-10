@@ -28,6 +28,13 @@
   input,select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 12px;-webkit-appearance:none;appearance:none}
   input:focus,select:focus{outline:none;border-color:var(--green)}
   .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:18px 16px;margin-bottom:14px}
+  .statgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:520px){.statgrid{grid-template-columns:repeat(4,1fr)}}
+  .stile{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 13px}
+  .stile .num{font-family:"Spectral",serif;font-size:1.5rem;font-weight:600;color:var(--green-deep);line-height:1.1}
+  .stile .lab{font-size:.8rem;color:var(--muted);margin-top:3px}
+  .stile .sub{font-size:.72rem;color:var(--muted);margin-top:2px}
+  .stile.wide{grid-column:1/-1}
   .row3{display:flex;gap:10px;flex-wrap:wrap}
   .row3 .field{flex:1;min-width:120px;margin-bottom:0}
   .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.98rem;padding:12px 16px;border-radius:6px}
@@ -68,7 +75,12 @@
   </header>
 
   <h1>Logins &amp; access</h1>
-  <div class="lead">Create and manage who can sign in, which client they see, and what they can do. Passwords are stored encrypted, so they can't be shown — you can reset one or send a no-password magic link.</div>
+  <div class="lead">Create and manage who can sign in, which client they see, and what they can do. Passwords are stored encrypted, so they can't be shown. You can reset one or send a no-password magic link.</div>
+
+  <h2>System overview</h2>
+  <div class="panel">
+    <div id="stats" class="statgrid"><div class="lead" style="margin:0">Loading…</div></div>
+  </div>
 
   <h2>Add a login</h2>
   <div class="panel">
@@ -92,6 +104,13 @@
   <h2>Existing logins</h2>
   <input id="filter" type="text" autocomplete="off" placeholder="Search email, username, or client…" style="margin-bottom:12px" />
   <div id="list"><div class="lead">Loading…</div></div>
+
+  <h2>Maintenance</h2>
+  <div class="panel">
+    <div class="lead" style="margin:-6px 0 12px">Clear the QR code off every asset. Use this to wipe sample codes so assets start fresh. This can't be undone. The assets, photos, and history stay; only the codes are removed.</div>
+    <button class="btn ghost" id="clearQr" type="button">Clear all QR codes</button>
+    <div class="msg" id="clearQrMsg" style="margin-top:8px"></div>
+  </div>
 </div>
 <script>
   var PERM_OPTS = "<option value='none'>None</option><option value='view'>View</option><option value='edit'>Edit</option>";
@@ -121,7 +140,46 @@
     });
     document.getElementById("n_add").addEventListener("click", addLogin);
     document.getElementById("filter").addEventListener("input", renderList);
+    document.getElementById("clearQr").addEventListener("click", clearQr);
     loadUsers();
+    loadStats();
+  }
+
+  function fmtSize(b){
+    b = Number(b) || 0;
+    if (b < 1024) return b + " B";
+    if (b < 1024*1024) return (b/1024).toFixed(b<10*1024?1:0) + " KB";
+    if (b < 1024*1024*1024) return (b/(1024*1024)).toFixed(b<10*1024*1024?1:0) + " MB";
+    return (b/(1024*1024*1024)).toFixed(2) + " GB";
+  }
+  // Free Supabase storage is 1 GB; show how much of it is in use.
+  var STORAGE_LIMIT = 1024*1024*1024;
+  function loadStats(){
+    var el = document.getElementById("stats");
+    fetch("/api/admin/stats").then(function(r){return r.json();}).then(function(d){
+      if(!d || !d.ok){ el.innerHTML = "<div class='lead' style='margin:0'>Couldn't load the overview.</div>"; return; }
+      var pct = Math.min(100, Math.round((d.storageBytes / STORAGE_LIMIT) * 100));
+      function tile(num, lab, sub, wide){
+        return "<div class='stile"+(wide?" wide":"")+"'><div class='num'>"+num+"</div><div class='lab'>"+lab+"</div>"+(sub?"<div class='sub'>"+sub+"</div>":"")+"</div>";
+      }
+      el.innerHTML =
+        tile(fmtSize(d.storageBytes)+(d.storageApprox?"+":""), "Storage used", pct+"% of 1 GB free tier"+(d.storageApprox?" (at least)":""), true) +
+        tile(d.photos+(d.storageApprox?"+":""), "Photos", "") +
+        tile(d.assets, "Assets", "") +
+        tile(d.clients, "Clients", "") +
+        tile(d.users, "Logins", "");
+    }).catch(function(){ el.innerHTML = "<div class='lead' style='margin:0'>Couldn't load the overview.</div>"; });
+  }
+
+  function clearQr(){
+    if(!confirm("Clear the QR code off EVERY asset? This wipes all codes (sample or real) and can't be undone. Assets, photos, and history stay.")) return;
+    var b = document.getElementById("clearQr"), m = document.getElementById("clearQrMsg");
+    b.disabled = true; b.textContent = "Clearing…"; m.style.color = "var(--muted)"; m.textContent = "";
+    fetch("/api/admin/qr/clear", { method:"POST" }).then(function(r){return r.json();}).then(function(d){
+      b.disabled = false; b.textContent = "Clear all QR codes";
+      if(d && d.ok){ m.style.color = "var(--green)"; m.textContent = "Cleared "+d.cleared+" QR code"+(d.cleared===1?"":"s")+"."; }
+      else { m.style.color = "#a9633a"; m.textContent = (d && d.error) || "Couldn't clear the codes."; }
+    }).catch(function(){ b.disabled = false; b.textContent = "Clear all QR codes"; m.style.color = "#a9633a"; m.textContent = "Couldn't reach the server."; });
   }
 
   function clientOpts(sel){ return "<option value=''>Select…</option>" + CLIENTS.map(function(c){ return "<option"+(c===sel?" selected":"")+">"+esc(c)+"</option>"; }).join(""); }
