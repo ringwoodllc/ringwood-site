@@ -32,6 +32,7 @@
   .nm{font-weight:600;color:var(--green-deep);font-size:1.05rem;word-break:break-word}
   .full{color:var(--muted);font-size:.84rem;word-break:break-word}
   .meta{color:var(--muted);font-size:.84rem;margin-top:3px}
+  .cchip{display:inline-block;font-size:.74rem;font-weight:700;color:#f6f2e8;padding:3px 11px;border-radius:999px;margin-top:6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
   .tag{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;margin-top:6px}
   .tag.ai{background:#dfe9f4;color:#274a73}.tag.pending{background:#f6eccf;color:#7a5a12}
   .dup{margin-top:8px;font-size:.82rem;color:#8a5a36;background:#f0e0d4;border-radius:6px;padding:6px 9px}
@@ -81,7 +82,8 @@
   }
   function renderCard(a){
     var k=a.id;
-    var meta=[a.client,a.make,a.model,a.serial?("SN "+a.serial):""].filter(Boolean).map(esc).join(" · ");
+    var meta=[a.make,a.model,a.serial?("SN "+a.serial):""].filter(Boolean).map(esc).join(" · ");
+    var chip=a.client?"<span class='cchip' style='background:"+esc(a.clientColor||"#21443a")+"'>"+esc(a.client)+"</span> ":"";
     var tag=a.verification==="AI suggested"?"<span class='tag ai'>AI suggested</span>":"<span class='tag pending'>Pending</span>";
     var photo=a.photo?"<img src='"+esc(a.photo)+"' alt='' />":"<div class='nob'>no photo</div>";
     var dup=a.dup?"<div class='dup'>Looks like a duplicate of <strong>"+esc(a.dup.name)+"</strong></div>":"";
@@ -89,7 +91,8 @@
     return "<div class='card' id='c_"+k+"'>"+photo+
       "<div class='bd'><div class='nm'>"+esc(a.name)+"</div>"+
       (a.fullName&&a.fullName!==a.name?"<div class='full'>"+esc(a.fullName)+"</div>":"")+
-      (meta?"<div class='meta'>"+meta+"</div>":"")+tag+dup+
+      (meta?"<div class='meta'>"+meta+"</div>":"")+
+      "<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap'>"+chip+tag+"</div>"+dup+
       "<div class='btns'><a class='go' href='/a/?id="+esc(k)+"'>Open / edit</a>"+
         "<span class='spacer'></span>"+
         "<button data-confirm='"+esc(k)+"'>Confirm</button>"+

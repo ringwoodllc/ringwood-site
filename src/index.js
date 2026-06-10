@@ -1580,7 +1580,7 @@ async function updateAsset(request, env, session) {
 // confirm, with a likely-duplicate flag so they can be merged.
 async function assetsForReview(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const all = await sbSelect(env, "assets?select=id,name,nickname,make,model,serial,verification,photo_urls,overall_photo_url,nameplate_photo_url,serial_photo_url,client_id,client:clients(name)&order=logged_at.desc");
+  const all = await sbSelect(env, "assets?select=id,name,nickname,make,model,serial,verification,photo_urls,overall_photo_url,nameplate_photo_url,serial_photo_url,client_id,client:clients(name,color)&order=logged_at.desc");
   const baseOf = (s) => (s || "").replace(/\s+\d+$/, "").trim().toLowerCase(); // "Ice Machine 2" -> "ice machine"
   const list = (all || []).filter((a) => (a.verification || "Pending") !== "Verified");
   const assets = list.map((a) => {
@@ -1598,6 +1598,7 @@ async function assetsForReview(request, env) {
       name: a.nickname || a.name || "Asset",
       fullName: a.name || "",
       client: (a.client && a.client.name) || "",
+      clientColor: (a.client && a.client.color) || (a.client && a.client.name ? hashColor(a.client.name) : ""),
       make: a.make || "",
       model: a.model || "",
       serial: a.serial || "",
