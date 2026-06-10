@@ -69,6 +69,8 @@ export default {
     if (url.pathname === "/api/tickets/asset" && request.method === "GET") return getTicketAsset(url, env, session);
     if (url.pathname === "/api/tickets/comments" && request.method === "GET") return listTicketComments(url, env, session);
     if (url.pathname === "/api/tickets/comment" && request.method === "POST") return addTicketComment(request, env, session);
+    if (url.pathname === "/api/tickets/comment/update" && request.method === "POST") return updateTicketComment(request, env, session);
+    if (url.pathname === "/api/tickets/comment/delete" && request.method === "POST") return deleteTicketComment(request, env, session);
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
@@ -2028,6 +2030,49 @@ async function addTicketComment(request, env, session) {
   const a = authorOf(session);
   const res = await sbInsert(env, "ticket_comments", { ticket_id: id, author: a.author, role: a.role, kind: "note", body: text.slice(0, 4000) });
   if (!res.ok) return json({ ok: false, error: "Could not add the note." }, 502);
+  return json({ ok: true });
+}
+
+// Master-only: edit the text of a note on a ticket.
+async function updateTicketComment(request, env, session) {
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const cid = (body.commentId || "").trim();
+  const text = (body.body || "").toString().trim();
+  if (!cid || !text) return json({ ok: false, error: "Nothing to save." }, 400);
+  const rows = await sbSelect(env, `ticket_comments?id=eq.${cid}&select=id,kind`);
+  const row = rows && rows[0];
+  if (!row) return json({ ok: false, error: "Not found." }, 404);
+  if (row.kind === "event") return json({ ok: false, error: "Status events can't be edited." }, 400);
+  const res = await sbUpdate(env, "ticket_comments", cid, { body: text.slice(0, 4000) });
+  if (!res.ok) return json({ ok: false, error: "Could not save the change." }, 502);
+  return json({ ok: true });
+}
+
+// Master-only: delete a comment (note or event) from a ticket.
+async function deleteTicketComment(request, env, session) {
+  if (!sbReady(env)) return json({ ok: false, error: "Database not connected." }, 503);
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const cid = (body.commentId || "").trim();
+  if (!cid) return json({ ok: false, error: "Bad request." }, 400);
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/ticket_comments?id=eq.${cid}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  } catch {
+    return json({ ok: false, error: "Could not delete." }, 502);
+  }
   return json({ ok: true });
 }
 

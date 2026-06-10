@@ -81,8 +81,16 @@
   .logsec h4{font-family:"Spectral",serif;font-weight:600;font-size:1.06rem;color:var(--green-deep);margin-bottom:12px}
   .log{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
   .lg{display:flex;flex-direction:column;gap:3px}
-  .lg .who{font-weight:700;font-size:.84rem;color:#f6f2e8;background:var(--green-deep);align-self:flex-start;padding:2px 10px;border-radius:999px}
+  .lg .lghead{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .lg .who{font-weight:700;font-size:.84rem;color:#f6f2e8;background:var(--green-deep);padding:2px 10px;border-radius:999px}
   .lg .meta{font-size:.78rem;color:var(--muted)}
+  .lgctrl{margin-left:auto;display:flex;gap:6px}
+  .lgbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:3px 11px;font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
+  .lgbtn:hover{border-color:var(--green)}
+  .lgbtn.del{color:#8a3d1c}
+  .lgedit{margin-top:6px}
+  .lgedit textarea{min-height:56px}
+  .lgeditbar{display:flex;gap:8px;margin-top:6px}
   .lg .text{font-size:.98rem;color:var(--ink);white-space:pre-wrap;word-break:break-word}
   .lg.event .text{color:var(--muted);font-style:italic;font-size:.9rem}
   .lg.event .who{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
@@ -151,9 +159,10 @@
   var statusSel = document.getElementById("status");
   // A client login only sees its own tickets, so hide the client filter and the
   // Client field in the editor.
-  var IS_CLIENT = false;
+  var IS_CLIENT = false, IS_MASTER = false;
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if (w && w.ok && w.role === "client"){ IS_CLIENT = true; var f = clientSel.closest(".field"); if (f) f.style.display = "none"; }
+    if (w && w.ok && w.role === "master"){ IS_MASTER = true; }
   }).catch(function(){});
   var listEl = document.getElementById("list");
   var editWrap = document.getElementById("editWrap");
@@ -409,16 +418,27 @@
     /* ---- update log ---- */
     var logEl = document.getElementById("e_log");
     var noteCol = (t.clientColor || clientColor(t.client || "")) ;
+    var LOG_ROWS = {};
     function fmtWhen(s){ if(!s) return ""; try{ var d=new Date(s); return d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); }catch(e){ return ""; } }
     function renderLog(rows){
+      LOG_ROWS = {};
       if(!rows || !rows.length){ logEl.innerHTML = "<div class='empty-log'>No updates yet. Add the first note below.</div>"; return; }
       logEl.innerHTML = rows.map(function(c){
+        LOG_ROWS[c.id] = c;
         var isEvent = c.kind === "event";
         var col = c.role === "client" ? noteCol : "var(--green-deep)";
         var whoStyle = (isEvent || c.role !== "client") ? "" : (" style='background:" + col + "'");
-        return "<div class='lg " + (isEvent?"event":"note") + "'>" +
-          "<span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
-          "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" +
+        // Master can clean up the log: edit notes, delete anything.
+        var ctrls = "";
+        if (IS_MASTER){
+          ctrls = "<span class='lgctrl'>" +
+            (isEvent ? "" : "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button>") +
+            "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" +
+          "</span>";
+        }
+        return "<div class='lg " + (isEvent?"event":"note") + "' data-cid='" + esc(c.id) + "'>" +
+          "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" +
+          "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
           "<div class='text'>" + esc(c.body) + "</div>" +
         "</div>";
       }).join("");
@@ -428,6 +448,39 @@
         .then(function(r){return r.json();}).then(renderLog)
         .catch(function(){ logEl.innerHTML = "<div class='empty-log'>Couldn't load the log.</div>"; });
     }
+    // Master edit/delete, via delegation so it survives re-renders.
+    logEl.addEventListener("click", function(e){
+      var btn = e.target.closest ? e.target.closest(".lgbtn") : null;
+      if(!btn) return;
+      var cid = btn.getAttribute("data-cid"), act = btn.getAttribute("data-act");
+      var row = LOG_ROWS[cid]; if(!row) return;
+      if(act === "del"){
+        if(!confirm("Delete this entry? This can't be undone.")) return;
+        fetch("/api/tickets/comment/delete", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ commentId:cid }) })
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ loadLog(); } else { alert((d&&d.error)||"Couldn't delete."); } })
+          .catch(function(){ alert("Couldn't reach the server."); });
+        return;
+      }
+      if(act === "edit"){
+        var lg = btn.closest(".lg"); var textEl = lg.querySelector(".text");
+        if(lg.querySelector(".lgedit")) return;  // already editing
+        var wrap = document.createElement("div"); wrap.className = "lgedit";
+        var ta = document.createElement("textarea"); ta.value = row.body || "";
+        var bar = document.createElement("div"); bar.className = "lgeditbar";
+        var save = document.createElement("button"); save.type="button"; save.className="lgbtn"; save.textContent="Save";
+        var cancel = document.createElement("button"); cancel.type="button"; cancel.className="lgbtn"; cancel.textContent="Cancel";
+        bar.appendChild(save); bar.appendChild(cancel); wrap.appendChild(ta); wrap.appendChild(bar);
+        textEl.style.display = "none"; lg.appendChild(wrap); ta.focus();
+        cancel.addEventListener("click", function(){ wrap.remove(); textEl.style.display=""; });
+        save.addEventListener("click", function(){
+          var nv = (ta.value||"").trim(); if(!nv){ ta.focus(); return; }
+          save.disabled = true; save.textContent = "Saving…";
+          fetch("/api/tickets/comment/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ commentId:cid, body:nv }) })
+            .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ loadLog(); } else { save.disabled=false; save.textContent="Save"; alert((d&&d.error)||"Couldn't save."); } })
+            .catch(function(){ save.disabled=false; save.textContent="Save"; alert("Couldn't reach the server."); });
+        });
+      }
+    });
     loadLog();
     document.getElementById("e_addnote").addEventListener("click", function(){
       var ta = document.getElementById("e_note");
