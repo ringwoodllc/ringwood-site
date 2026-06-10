@@ -38,6 +38,12 @@
   select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235f5d52' stroke-width='1.6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
   select:focus,input:focus,textarea:focus{outline:none;border-color:var(--green)}
   .or{text-align:center;color:var(--muted);font-size:.85rem;margin:14px 0}
+  .sortrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:2px 0 10px}
+  .sorts{display:flex;gap:7px}
+  .sortb{background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .sortb:hover{border-color:var(--green)}
+  .sortb.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
+  .sortb .dir{font-size:.74rem;opacity:.85}
   .assetlist{max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
   .arow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line);cursor:pointer}
   .arow:last-child{border-bottom:none}
@@ -168,9 +174,14 @@
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <div class="field" style="flex:1;min-width:120px;margin-bottom:10px"><label for="clientFilter">Client</label><select id="clientFilter"><option value="">All clients</option></select></div>
       <div class="field" style="flex:2;min-width:150px;margin-bottom:10px"><label for="searchInput">Search</label><input id="searchInput" type="text" autocomplete="off" placeholder="Name, model, serial…" /></div>
-      <div class="field" style="flex:0 0 auto;width:118px;margin-bottom:10px"><label for="sortSel">Sort</label><select id="sortSel" style="padding-left:11px"><option value="alpha">A – Z</option><option value="new">Newest</option><option value="old">Oldest</option></select></div>
     </div>
-    <div id="assetCount" style="color:var(--muted);font-size:.86rem;margin-bottom:8px"></div>
+    <div class="sortrow">
+      <div class="sorts">
+        <button type="button" class="sortb" id="sortName">Name <span class="dir">A→Z</span></button>
+        <button type="button" class="sortb" id="sortDate">Date <span class="dir">Newest</span></button>
+      </div>
+      <div id="assetCount" style="color:var(--muted);font-size:.84rem"></div>
+    </div>
     <div id="assetList" class="assetlist"><div class="empty">Loading assets…</div></div>
     <div class="or">— or paste an ID / link —</div>
     <div class="qrrow"><input id="qrInput" type="text" autocomplete="off" placeholder="QR-1, rec…, or a scanned link" /><button class="gobtn" id="goBtn" type="button">View</button></div>
@@ -251,7 +262,7 @@
 
   function renderList(){
     renderClientFilter();
-    var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase(), sort=document.getElementById("sortSel").value;
+    var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase(), sort=curSort;
     var arr=allAssets.filter(function(a){
       if(client==="__unassigned"){ if(a.client) return false; }
       else if(client && a.client!==client) return false;
@@ -261,6 +272,7 @@
     arr.sort(function(a,b){
       if(sort==="new") return (b.loggedAt||"").localeCompare(a.loggedAt||"");
       if(sort==="old") return (a.loggedAt||"").localeCompare(b.loggedAt||"");
+      if(sort==="za") return (b.name||"").toLowerCase().localeCompare((a.name||"").toLowerCase());  // Z–A
       return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase());  // A–Z default
     });
     assetCount.textContent = allAssets.length ? (arr.length+" of "+allAssets.length+" asset"+(allAssets.length===1?"":"s")) : "";
@@ -276,7 +288,19 @@
   }
   clientFilter.addEventListener("change", renderList);
   searchInput.addEventListener("input", renderList);
-  document.getElementById("sortSel").addEventListener("change", renderList);
+  // Sort toggles: Name (A→Z / Z→A) and Date (Newest / Oldest). Tapping the active
+  // one flips its direction; tapping the other switches to it.
+  var curSort = "az";
+  function syncSort(){
+    var nb=document.getElementById("sortName"), db=document.getElementById("sortDate");
+    var nameActive = (curSort==="az"||curSort==="za"), dateActive=(curSort==="new"||curSort==="old");
+    nb.classList.toggle("on", nameActive); db.classList.toggle("on", dateActive);
+    nb.querySelector(".dir").textContent = curSort==="za" ? "Z→A" : "A→Z";
+    db.querySelector(".dir").textContent = curSort==="old" ? "Oldest" : "Newest";
+  }
+  document.getElementById("sortName").addEventListener("click", function(){ curSort = (curSort==="az") ? "za" : "az"; syncSort(); renderList(); });
+  document.getElementById("sortDate").addEventListener("click", function(){ curSort = (curSort==="new") ? "old" : "new"; syncSort(); renderList(); });
+  syncSort();
   document.getElementById("goBtn").addEventListener("click", function(){ var id=resolveRef(qrInput.value); if(id) load(id, true); });
   qrInput.addEventListener("keydown", function(e){ if(e.key==="Enter"){ var id=resolveRef(qrInput.value); if(id) load(id, true); } });
   document.getElementById("scanInput").addEventListener("change", function(e){
