@@ -61,6 +61,7 @@ export default {
     if (url.pathname === "/api/asset/verify" && request.method === "POST") return setVerified(request, env, session);
     if (url.pathname === "/api/service" && request.method === "POST") return createService(request, env, ctx, session);
     if (url.pathname === "/api/service/list" && request.method === "GET") return listServices(url, env, session);
+    if (url.pathname === "/api/services/all" && request.method === "GET") return listAllServices(url, env, session);
     if (url.pathname === "/api/contact" && request.method === "POST") return createContact(request, env);
     if (url.pathname === "/api/categories" && request.method === "GET") return getCategories(env);
     if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx, session);
@@ -95,6 +96,7 @@ export default {
       "/account": "/account/",
       "/users": "/users/",
       "/review": "/review/",
+      "/services": "/services/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -1365,6 +1367,35 @@ async function listAssets(env, session) {
 }
 
 /* ===================== Service records ===================== */
+
+// All service records (scoped to the client for client logins) — the global view.
+async function listAllServices(url, env, session) {
+  if (!can(session, "service", "view") || !sbReady(env)) return json([]);
+  let filter = "";
+  const forced = scopeName(session);
+  if (forced != null) {
+    const refs = await getRefs(env);
+    const cid = findId(refs.clients, forced);
+    filter = cid ? `&client_id=eq.${cid}` : "&id=eq.00000000-0000-0000-0000-000000000000";
+  }
+  const rows = await sbSelect(
+    env,
+    `service_records?select=id,service_date,technician,notes,cost,asset_id,asset:assets(id,name,nickname),client:clients(name),service_type:service_types(name)${filter}&order=service_date.desc`
+  );
+  return json(
+    (rows || []).map((s) => ({
+      id: s.id,
+      date: s.service_date || "",
+      type: (s.service_type && s.service_type.name) || "",
+      asset: (s.asset && (s.asset.nickname || s.asset.name)) || "",
+      assetId: s.asset_id || "",
+      client: (s.client && s.client.name) || "",
+      technician: s.technician || "",
+      notes: s.notes || "",
+      cost: s.cost != null ? s.cost : "",
+    }))
+  );
+}
 
 async function listServices(url, env, session) {
   if (!can(session, "service", "view")) return json([]);

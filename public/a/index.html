@@ -45,6 +45,7 @@
   .arow .am{color:var(--muted);font-size:.82rem;margin-top:2px}
   .svc-tag{display:inline-block;margin-top:5px;font-size:.74rem;font-weight:700;color:#274a73;background:#dfe9f4;padding:2px 9px;border-radius:999px}
   .arow .acl{flex:0 0 auto;color:var(--muted);font-size:.78rem;text-align:right;white-space:nowrap}
+  .client-chip{flex:0 0 auto;align-self:flex-start;font-size:.78rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:3px 11px;border-radius:999px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
   .assetlist .empty{color:var(--muted);padding:14px 13px;font-size:.92rem}
   .qrchip{display:inline-block;background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font-size:.85rem;font-weight:600;cursor:pointer;margin:0 6px 6px 0}
   .qrchip:hover{border-color:var(--green)}
@@ -215,7 +216,7 @@
       return "<div class='arow' onclick=\"load('"+esc(a.id)+"')\">"+
         "<div><div class='an'>"+esc(a.name)+(a.qr?" <span class='acl'>("+esc(a.qr)+")</span>":"")+"</div>"+
         (meta?"<div class='am'>"+meta+"</div>":"")+svc+"</div>"+
-        (a.client?"<div class='acl'>"+esc(a.client)+"</div>":"")+"</div>";
+        (a.client?"<span class='client-chip'>"+esc(a.client)+"</span>":"")+"</div>";
     }).join("");
   }
   function renderSamples(){

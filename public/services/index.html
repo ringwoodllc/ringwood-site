@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Service records" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Service records</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin:8px 0 10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.7rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 18px}
+  label{display:block;font-weight:600;font-size:.9rem;color:var(--green-deep);margin-bottom:6px}
+  select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .filters .f{flex:1;min-width:150px}
+  .total{color:var(--muted);font-size:.92rem;margin-bottom:10px}
+  .rec{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:10px;display:flex;gap:12px;align-items:flex-start;cursor:pointer}
+  .rec:hover{border-color:var(--green)}
+  .rec .bd{flex:1;min-width:0}
+  .rec .top{font-weight:600;color:var(--green-deep)}
+  .rec .meta{color:var(--muted);font-size:.85rem;margin-top:3px}
+  .rec .notes{color:var(--muted);font-size:.85rem;margin-top:3px;word-break:break-word}
+  .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .cost{font-weight:700;color:var(--green-deep);white-space:nowrap}
+  .client-chip{font-size:.76rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:3px 10px;border-radius:999px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:var(--muted);padding:18px 4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="display:flex;align-items:center;justify-content:space-between">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Home</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="eyebrow">Service records</div>
+  <h1>Maintenance</h1>
+  <p class="lead">Every service event, newest first. Filter by client or type. Tap one to open its asset.</p>
+  <div class="filters">
+    <div class="f" id="clientWrap"><label for="clientSel">Client</label><select id="clientSel"><option value="">All clients</option></select></div>
+    <div class="f"><label for="typeSel">Type</label><select id="typeSel"><option value="">All types</option></select></div>
+  </div>
+  <div class="total" id="total"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function money(v){ return (v===""||v==null)?"":("$"+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})); }
+  function fdate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return s; } }
+  var clientSel=document.getElementById("clientSel"), typeSel=document.getElementById("typeSel");
+  var ALL=[];
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if(w && w.ok && w.role==="client"){ document.getElementById("clientWrap").style.display="none"; }
+  }).catch(function(){});
+
+  function fillFilters(){
+    var clients={}, types={};
+    ALL.forEach(function(s){ if(s.client) clients[s.client]=1; if(s.type) types[s.type]=1; });
+    var ck=clientSel.value; clientSel.innerHTML="<option value=''>All clients</option>"+Object.keys(clients).sort().map(function(c){return "<option>"+esc(c)+"</option>";}).join(""); clientSel.value=ck;
+    var tk=typeSel.value; typeSel.innerHTML="<option value=''>All types</option>"+Object.keys(types).sort().map(function(t){return "<option>"+esc(t)+"</option>";}).join(""); typeSel.value=tk;
+  }
+  function render(){
+    var c=clientSel.value, t=typeSel.value;
+    var rows=ALL.filter(function(s){ if(c && s.client!==c) return false; if(t && s.type!==t) return false; return true; });
+    var total=rows.reduce(function(a,s){ var n=Number(s.cost); return a+(isNaN(n)?0:n); },0);
+    document.getElementById("total").textContent = rows.length+" record"+(rows.length===1?"":"s")+(total?(" · "+money(total)+" total"):"");
+    var el=document.getElementById("list");
+    if(!rows.length){ el.innerHTML="<div class='empty'>No service records"+(ALL.length?" match.":" yet.")+"</div>"; return; }
+    el.innerHTML=rows.map(function(s){
+      var meta=[fdate(s.date), s.type, s.technician].filter(Boolean).map(esc).join(" · ");
+      var go = s.assetId ? ("location.href='/a/?id="+esc(s.assetId)+"'") : "";
+      return "<div class='rec'"+(go?(" onclick=\""+go+"\""):"")+">"+
+        "<div class='bd'><div class='top'>"+esc(s.asset||"Asset")+"</div>"+
+        (meta?"<div class='meta'>"+meta+"</div>":"")+
+        (s.notes?"<div class='notes'>"+esc(s.notes)+"</div>":"")+"</div>"+
+        "<div class='rcol'>"+(s.client?"<span class='client-chip'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
+      "</div>";
+    }).join("");
+  }
+  clientSel.addEventListener("change", render);
+  typeSel.addEventListener("change", render);
+  fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){
+    ALL=Array.isArray(rows)?rows:[]; fillFilters(); render();
+  }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Could not load service records.</div>"; });
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
