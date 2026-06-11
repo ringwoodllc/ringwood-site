@@ -64,6 +64,7 @@
   .expbanner.bad{background:rgba(138,61,28,.12);border:1px solid rgba(138,61,28,.4);color:var(--red)}
   .up{display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:10px;background:var(--bg);border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;padding:9px 14px;color:var(--green-deep);font-weight:600;font-size:.88rem}
   .up:hover{border-color:var(--green)}
+  .up.drag{border-color:var(--green);border-style:solid;background:rgba(47,93,80,.1)}
   .umsg{font-size:.82rem;color:var(--muted);margin-top:6px}
   .empty{color:var(--muted);padding:8px 0;font-size:.9rem}
   .coming{margin-top:22px}
@@ -112,7 +113,7 @@
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   var SECTIONS = ["Permits & Inspections","Food Safety Certifications","Employee Health","Pest Management","Chemical Safety (SDS / HazCom)","Monthly Self-Assessments","Cleaning & Sanitation","Temperature & Calibration","Receiving","Crisis / Recovery","Other / Supporting Documents"];
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[], EXPIRY_ON=true;
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[], EXPIRY_ON=true, lastSecIndex=null, pasteWired=false;
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/redbook"); return; }
@@ -187,21 +188,28 @@
           (CAN_EDIT?"<button type='button' class='ddel' data-id='"+esc(x.id)+"' title='Remove'>×</button>":"")+
         "</div>";
       }).join("") : "<div class='empty'>No documents yet.</div>";
-      var up = CAN_EDIT ? "<label class='up' for='up_"+i+"'>＋ Upload PDF or photo</label><input type='file' id='up_"+i+"' accept='application/pdf,image/*' data-sec='"+esc(sec)+"' style='display:none'/><div class='umsg' id='umsg_"+i+"'></div>" : "";
+      var up = CAN_EDIT ? "<label class='up' for='up_"+i+"' data-sec='"+esc(sec)+"' data-msg='umsg_"+i+"'>＋ Upload, paste, or drop a PDF or photo</label><input type='file' id='up_"+i+"' accept='application/pdf,image/*' data-sec='"+esc(sec)+"' style='display:none'/><div class='umsg' id='umsg_"+i+"'></div>" : "";
       return "<div class='sec'><div class='sechead' data-i='"+i+"'><span class='sectitle'>"+esc(sec)+"</span><span class='seccount"+(ds.length?" has":"")+"'>"+ds.length+"</span></div>"+
         "<div class='secbody' id='sb_"+i+"' style='display:none'>"+docHtml+up+"</div></div>";
     }).join("");
     document.getElementById("sections").innerHTML=html;
     // restore open sections
     Object.keys(openSet).forEach(function(id){ var b=document.getElementById(id); if(b) b.style.display="block"; });
-    // wire toggles
-    Array.prototype.slice.call(document.querySelectorAll(".sechead")).forEach(function(h){ h.addEventListener("click", function(){ var b=document.getElementById("sb_"+h.getAttribute("data-i")); b.style.display = b.style.display==="block"?"none":"block"; }); });
+    // wire toggles (remember the last opened section so a pasted screenshot knows where to land)
+    Array.prototype.slice.call(document.querySelectorAll(".sechead")).forEach(function(h){ h.addEventListener("click", function(){ var i=h.getAttribute("data-i"); var b=document.getElementById("sb_"+i); var willOpen=b.style.display!=="block"; b.style.display=willOpen?"block":"none"; if(willOpen) lastSecIndex=i; }); });
     // wire deletes
     Array.prototype.slice.call(document.querySelectorAll(".ddel")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); if(!confirm("Remove this document?")) return; fetch("/api/redbook/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
     // wire renames (inline)
     Array.prototype.slice.call(document.querySelectorAll(".dedit")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); startRename(b); }); });
-    // wire uploads
-    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) doUpload(f, inp.getAttribute("data-sec"), inp.id.replace("up_","umsg_")); }); });
+    // wire uploads (file picker)
+    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var fs=e.target.files; var sec=inp.getAttribute("data-sec"), msg=inp.id.replace("up_","umsg_"); e.target.value=""; if(fs&&fs.length) uploadList(fs, sec, msg); }); });
+    // wire drag-and-drop onto each section's upload box
+    Array.prototype.slice.call(document.querySelectorAll(".up[data-sec]")).forEach(function(lbl){
+      lbl.addEventListener("dragover", function(e){ e.preventDefault(); lbl.classList.add("drag"); });
+      lbl.addEventListener("dragleave", function(){ lbl.classList.remove("drag"); });
+      lbl.addEventListener("drop", function(e){ e.preventDefault(); lbl.classList.remove("drag"); var fs=e.dataTransfer&&e.dataTransfer.files; if(fs&&fs.length) uploadList(fs, lbl.getAttribute("data-sec"), lbl.getAttribute("data-msg")); });
+    });
+    wirePaste();
   }
 
   function startRename(btn){
@@ -240,14 +248,47 @@
     }
   }
 
-  function doUpload(file, section, msgId){
+  // Upload one file. Resolves {ok} / {ok:false,error} and never reloads (the
+  // caller reloads once after the whole batch).
+  function uploadOne(file, section){
+    return new Promise(function(resolve){
+      var title=((file.name||"Document").replace(/\.[^.]+$/,"")||"Document");
+      readFile(file, function(base64, ct){
+        if(!base64){ resolve({ok:false,error:"Couldn't read the file."}); return; }
+        fetch("/api/redbook/upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,section:section,title:title,fileBase64:base64,contentType:ct})})
+          .then(function(r){return r.json();}).then(function(d){ resolve(d&&d.ok?{ok:true}:{ok:false,error:(d&&d.error)||"Upload failed."}); })
+          .catch(function(){ resolve({ok:false,error:"Couldn't reach the server."}); });
+      });
+    });
+  }
+
+  // Upload a list of files (picker, drop, or paste) one at a time, then reload.
+  function uploadList(files, section, msgId){
+    var arr=Array.prototype.slice.call(files); if(!arr.length) return;
     var m=document.getElementById(msgId); if(m){ m.style.color="var(--muted)"; m.textContent="Uploading…"; }
-    var title=(file.name||"Document").replace(/\.[^.]+$/,"");
-    readFile(file, function(base64, ct){
-      if(!base64){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't read the file."; } return; }
-      fetch("/api/redbook/upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,section:section,title:title,fileBase64:base64,contentType:ct})})
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(m) m.textContent=""; load(); } else { if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Upload failed."; } } })
-        .catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
+    var i=0, fails=0;
+    (function next(){
+      if(i>=arr.length){ if(m){ if(fails){ m.style.color="#8a3d1c"; m.textContent=fails+" file"+(fails===1?"":"s")+" couldn't upload."; } else m.textContent=""; } load(); return; }
+      uploadOne(arr[i++], section).then(function(r){ if(!r.ok) fails++; if(m && arr.length>1) m.textContent="Uploading "+i+" of "+arr.length+"…"; next(); });
+    })();
+  }
+
+  // Paste a screenshot (or any image) straight into the last opened section.
+  function wirePaste(){
+    if(pasteWired || !CAN_EDIT) return; pasteWired=true;
+    document.addEventListener("paste", function(e){
+      if(!CAN_EDIT) return;
+      var items=e.clipboardData && e.clipboardData.items; if(!items) return;
+      var imgs=[]; for(var k=0;k<items.length;k++){ if(items[k].type && items[k].type.indexOf("image")===0){ var f=items[k].getAsFile(); if(f) imgs.push(f); } }
+      if(!imgs.length) return;   // not an image on the clipboard: let normal paste happen
+      e.preventDefault();
+      if(lastSecIndex==null){ alert("Open the section you want first, then paste your screenshot into it."); return; }
+      var b=document.getElementById("sb_"+lastSecIndex);
+      if(!b || b.style.display!=="block"){ alert("Open the section you want first, then paste your screenshot into it."); return; }
+      var sec=SECTIONS[lastSecIndex];
+      var stamp=new Date().toISOString().slice(0,16).replace("T"," ");
+      var named=imgs.map(function(bl){ try{ return new File([bl], "Screenshot "+stamp+".png", {type:bl.type||"image/png"}); }catch(_){ return bl; } });
+      uploadList(named, sec, "umsg_"+lastSecIndex);
     });
   }
 </script>
