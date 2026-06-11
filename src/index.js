@@ -90,6 +90,7 @@ export default {
     if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/rename" && request.method === "POST") return renameRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
+    if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
@@ -3097,6 +3098,58 @@ async function tidyRedbookTitle(request, env, session) {
     try { out = JSON.parse(block.text); } catch { return json({ ok: false, error: "Couldn't read the suggestion." }, 502); }
     const cleaned = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 200);
     return json({ ok: true, title: cleaned || title });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
+}
+
+// Batch version of Tidy: clean every document title for a client in one pass and
+// return only the ones that changed, as { id, old, title } for the user to review
+// and approve. Saves nothing; the page applies the ones the user keeps.
+async function tidyAllRedbook(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const docs = await sbSelect(env, `redbook_docs?client_id=eq.${who.id}&select=id,section,title&order=created_at.desc`);
+  if (docs === null) return json({ ok: true, items: [] });
+  const list = (docs || []).filter((d) => (d.title || "").trim());
+  if (!list.length) return json({ ok: true, items: [] });
+  // Send a numbered list and map results back by index (never trust model ids).
+  const payload = list.map((d, i) => ({ i, section: d.section || "", title: d.title || "" }));
+  const schema = { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { i: { type: "integer" }, title: { type: "string" } }, required: ["i", "title"], additionalProperties: false } } }, required: ["items"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: Math.min(4000, 120 + list.length * 60),
+        messages: [{ role: "user", content:
+          "These are food-safety document titles, each with an index i and the section it is filed under. " +
+          "For each, fix spelling and capitalization (correct brand names like EcoSure and ServSafe) and tidy it into a short, professional document title. " +
+          "House style you may apply only when the information is already present: write any date in ISO form (YYYY-MM-DD or YYYY-MM), and write an expiry already in the title as \"exp YYYY-MM\". " +
+          "Do NOT add dates, names, locations, or facts not already in the title, and do not change meaning. Keep each a concise title with no surrounding quotes and no trailing period. " +
+          "Return items as an array of { i, title } using the same index i for each.\n\n" + JSON.stringify(payload) }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out;
+    try { out = JSON.parse(block.text); } catch { return json({ ok: false, error: "Couldn't read the suggestion." }, 502); }
+    const items = [];
+    for (const r of (out.items || [])) {
+      const d = list[r.i];
+      if (!d) continue;
+      const cleaned = (r.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 200);
+      if (cleaned && cleaned !== (d.title || "").trim()) items.push({ id: d.id, section: d.section || "", old: d.title || "", title: cleaned });
+    }
+    return json({ ok: true, items });
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }

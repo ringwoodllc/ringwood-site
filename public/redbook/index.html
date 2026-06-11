@@ -65,6 +65,26 @@
   .expbanner{border-radius:8px;padding:11px 14px;font-size:.9rem;font-weight:600;margin-bottom:14px}
   .expbanner.warn{background:rgba(169,99,58,.12);border:1px solid rgba(169,99,58,.4);color:#7a4a26}
   .expbanner.bad{background:rgba(138,61,28,.12);border:1px solid rgba(138,61,28,.4);color:var(--red)}
+  #rbtools{margin-bottom:14px}
+  .tidyall{background:transparent;border:1px solid var(--green);color:var(--green-deep);border-radius:8px;padding:9px 15px;font:inherit;font-weight:600;font-size:.9rem;cursor:pointer}
+  .tidyall:hover{background:rgba(47,93,80,.08)}
+  .modal{position:fixed;inset:0;background:rgba(20,25,22,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 14px;z-index:50;overflow:auto}
+  .modalbox{background:var(--bg);border:1px solid var(--line);border-radius:12px;max-width:640px;width:100%;padding:18px;margin:auto}
+  .modalhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+  .modalttl{font-family:"Spectral",serif;font-size:1.3rem;color:var(--green-deep)}
+  .modalx{background:transparent;border:none;font-size:1.4rem;line-height:1;color:var(--muted);cursor:pointer}
+  .modalsub{color:var(--muted);font-size:.86rem;margin-bottom:12px}
+  .tidyrow{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .tidyrow:last-child{border-bottom:none}
+  .tidychk{flex:0 0 auto;padding-top:3px}
+  .tidymain{flex:1;min-width:0}
+  .tidysec{font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--clay);font-weight:600}
+  .tidyold{color:var(--muted);font-size:.82rem;text-decoration:line-through;margin:2px 0 5px;word-break:break-word}
+  .tidynew{width:100%;font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg-2);border:1px solid var(--green);border-radius:5px;padding:7px 9px}
+  .modalft{display:flex;align-items:center;gap:9px;margin-top:14px}
+  .tidyapply{background:var(--green);color:#f6f2e8;border:none;border-radius:7px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
+  .tidycancel{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
+  .tidystatus{font-size:.82rem;font-weight:600;color:var(--muted)}
   .up{display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:10px;background:var(--bg);border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;padding:9px 14px;color:var(--green-deep);font-weight:600;font-size:.88rem}
   .up:hover{border-color:var(--green)}
   .up.drag{border-color:var(--green);border-style:solid;background:rgba(47,93,80,.1)}
@@ -99,7 +119,17 @@
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
   <div id="note" class="note" style="display:none"></div>
   <div id="expSummary" class="expbanner" style="display:none"></div>
+  <div id="rbtools" style="display:none"><button type="button" class="tidyall" id="tidyAllBtn">✨ Tidy all titles</button></div>
   <div id="sections"><div class="empty">Loading…</div></div>
+
+  <div id="tidyModal" class="modal" style="display:none">
+    <div class="modalbox">
+      <div class="modalhd"><span class="modalttl">Review title cleanup</span><button type="button" class="modalx" id="tidyClose">×</button></div>
+      <div class="modalsub" id="tidySub"></div>
+      <div id="tidyList"></div>
+      <div class="modalft"><button type="button" class="tidyapply" id="tidyApply">Apply</button><button type="button" class="tidycancel" id="tidyCancel">Cancel</button><span class="tidystatus" id="tidyStatus"></span></div>
+    </div>
+  </div>
 
   <div class="coming">
     <h1 style="font-size:1.4rem;margin-bottom:6px">Logs</h1>
@@ -177,6 +207,7 @@
       var parts=[]; if(nBad) parts.push(nBad+" expired"); if(nSoon) parts.push(nSoon+" expiring soon");
       sb.className="expbanner "+(nBad?"bad":"warn"); sb.textContent="⚠ "+parts.join(" · ")+". Open the section to renew."; sb.style.display="block";
     } else sb.style.display="none";
+    document.getElementById("rbtools").style.display = (CAN_EDIT && DOCS.length) ? "block" : "none";
     var bySec={}; DOCS.forEach(function(x){ (bySec[x.section]=bySec[x.section]||[]).push(x); });
     var html = SECTIONS.map(function(sec, i){
       var ds=(bySec[sec]||[]).slice().sort(function(a,b){ return (a.title||"").toLowerCase().localeCompare((b.title||"").toLowerCase()); });
@@ -248,6 +279,59 @@
     inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); commit(); } else if(e.key==="Escape"){ render(); } });
     main.querySelector(".dsave").addEventListener("click", commit);
     main.querySelector(".dcancel").addEventListener("click", function(){ render(); });
+  }
+
+  /* ---- Bulk Tidy: clean every title at once, review, then apply ---- */
+  var TIDY_ITEMS=[];
+  document.getElementById("tidyAllBtn").addEventListener("click", runTidyAll);
+  document.getElementById("tidyCancel").addEventListener("click", closeTidy);
+  document.getElementById("tidyClose").addEventListener("click", closeTidy);
+  document.getElementById("tidyApply").addEventListener("click", applyTidy);
+  document.getElementById("tidyModal").addEventListener("click", function(e){ if(e.target.id==="tidyModal") closeTidy(); });
+
+  function runTidyAll(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var b=document.getElementById("tidyAllBtn"); b.disabled=true; var old=b.textContent; b.textContent="Thinking…";
+    fetch("/api/redbook/tidy-all",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent=old;
+        if(!d||!d.ok){ alert((d&&d.error)||"Couldn't run cleanup."); return; }
+        TIDY_ITEMS=d.items||[];
+        if(!TIDY_ITEMS.length){ alert("All titles already look clean."); return; }
+        renderTidy(); document.getElementById("tidyModal").style.display="flex";
+      }).catch(function(){ b.disabled=false; b.textContent=old; alert("Couldn't reach the assistant."); });
+  }
+  function renderTidy(){
+    document.getElementById("tidySub").textContent = TIDY_ITEMS.length+" title"+(TIDY_ITEMS.length===1?"":"s")+" to clean up. Untick any to leave as is, or edit any suggestion before applying.";
+    document.getElementById("tidyList").innerHTML = TIDY_ITEMS.map(function(it,idx){
+      return "<div class='tidyrow'>"+
+        "<label class='tidychk'><input type='checkbox' data-i='"+idx+"' checked /></label>"+
+        "<div class='tidymain'>"+
+          (it.section?"<div class='tidysec'>"+esc(it.section)+"</div>":"")+
+          "<div class='tidyold'>"+esc(it.old)+"</div>"+
+          "<input class='tidynew' data-i='"+idx+"' type='text' value='"+esc(it.title)+"' />"+
+        "</div></div>";
+    }).join("");
+  }
+  function closeTidy(){ document.getElementById("tidyModal").style.display="none"; document.getElementById("tidyStatus").textContent=""; document.getElementById("tidyApply").disabled=false; }
+  function applyTidy(){
+    var jobs=[];
+    Array.prototype.slice.call(document.querySelectorAll("#tidyList .tidyrow")).forEach(function(row){
+      var chk=row.querySelector("input[type=checkbox]"); if(!chk.checked) return;
+      var it=TIDY_ITEMS[chk.getAttribute("data-i")];
+      var nv=(row.querySelector(".tidynew").value||"").trim(); if(!it||!nv) return;
+      jobs.push({id:it.id, title:nv});
+    });
+    if(!jobs.length){ closeTidy(); return; }
+    var ap=document.getElementById("tidyApply"), st=document.getElementById("tidyStatus");
+    ap.disabled=true; st.style.color="var(--muted)";
+    var k=0, fails=0;
+    (function next(){
+      if(k>=jobs.length){ closeTidy(); load(); return; }
+      var j=jobs[k++]; st.textContent="Saving "+k+" of "+jobs.length+"…";
+      fetch("/api/redbook/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:j.id,title:j.title})})
+        .then(function(r){return r.json();}).then(function(d){ if(!(d&&d.ok)) fails++; next(); })
+        .catch(function(){ fails++; next(); });
+    })();
   }
 
   function readFile(file, cb){
