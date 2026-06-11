@@ -367,12 +367,22 @@
     var secHtml = "<label class='dexplbl' for='dsec_"+esc(id)+"'>Section (move it)</label><select id='dsec_"+esc(id)+"' class='dsec-edit'>"+SECTIONS.map(function(s){ return "<option"+(s===curSec?" selected":"")+">"+esc(s)+"</option>"; }).join("")+"</select>";
     var ddHtml = DATE_ON ? "<label class='dexplbl' for='ddd_"+esc(id)+"'>Document date (when it was performed)</label><input id='ddd_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curDD)+"' />" : "";
     var expHtml = EXPIRY_ON ? "<label class='dexplbl' for='dexp_"+esc(id)+"'>Expires (optional)</label><input id='dexp_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curExp)+"' />" : "";
-    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+secHtml+ddHtml+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
+    var readHtml = doc.url ? "<button type='button' class='dread'>✨ Read from file</button>" : "";
+    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+secHtml+ddHtml+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button>"+readHtml+"<button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
     var inp=main.querySelector(".dtitle-edit"); inp.focus(); inp.select();
     var expInp=document.getElementById("dexp_"+id);
     var ddInp=document.getElementById("ddd_"+id);
     var secInp=main.querySelector(".dsec-edit");
     var tidyBtn=main.querySelector(".dtidy"), tidyMsg=main.querySelector(".dtidymsg");
+    var readBtn=main.querySelector(".dread");
+    if(readBtn) readBtn.addEventListener("click", function(){
+      readBtn.disabled=true; var ro=readBtn.textContent; readBtn.textContent="Reading…"; tidyMsg.textContent="";
+      fetch("/api/redbook/read-doc",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})})
+        .then(function(r){return r.json();}).then(function(d){ readBtn.disabled=false; readBtn.textContent=ro;
+          if(d&&d.ok){ if(d.title) inp.value=d.title; if(ddInp&&d.docDate) ddInp.value=d.docDate; if(expInp&&d.expires) expInp.value=d.expires; tidyMsg.style.color="var(--green)"; tidyMsg.textContent="Read from the file. Review and Save"; inp.focus(); }
+          else { tidyMsg.style.color="var(--red)"; tidyMsg.textContent=(d&&d.error)||"Couldn't read it."; } })
+        .catch(function(){ readBtn.disabled=false; readBtn.textContent=ro; tidyMsg.style.color="var(--red)"; tidyMsg.textContent="No connection"; });
+    });
     tidyBtn.addEventListener("click", function(){
       var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
       tidyBtn.disabled=true; tidyBtn.textContent="…"; tidyMsg.textContent="";

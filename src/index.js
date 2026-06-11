@@ -89,6 +89,7 @@ export default {
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/rename" && request.method === "POST") return renameRedbookDoc(request, env, session);
+    if (url.pathname === "/api/redbook/read-doc" && request.method === "POST") return readRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
     if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
     if (url.pathname === "/api/checklist" && request.method === "GET") return listChecklist(url, env, session);
@@ -3059,6 +3060,50 @@ async function listRedbook(url, env, session) {
   return noStore({ ok: true, client: who.name, expiry, dateOn, docs: (rows || []).map((d) => ({ id: d.id, section: d.section || "Other", title: d.title || "", url: d.file_url || "", type: d.file_type || "", uploadedBy: d.uploaded_by || "", created: d.created_at || "", expires: d.expires_at || "", docDate: d.doc_date || "" })) });
 }
 
+// A filename-ish title we should replace with what the AI reads off the document
+// (e.g. "Image", "IMG_6186", "Scan 2", "photo"), versus a real title to keep.
+function looksGenericTitle(t) {
+  const s = (t || "").trim().toLowerCase();
+  if (!s || s.length < 3) return true;
+  return /^(image|img|photo|pic|picture|scan|scanned|document|doc|untitled|file|screenshot|capture|new)([-_ ]?\d+)?$/.test(s);
+}
+
+// Read a Red Book document (image or PDF) with Claude and propose a clean title,
+// plus the document date and expiry when they're visible. `source` is an
+// Anthropic content source: { type:"base64", media_type, data } or { type:"url", url }.
+// Conservative: only what's visible, nothing invented. Returns {title,date,expiry} or null.
+async function readDocFields(source, ct, section, env) {
+  if (!env.ANTHROPIC_API_KEY) return null;
+  const isPdf = (ct || "").indexOf("pdf") >= 0;
+  const block = isPdf ? { type: "document", source } : { type: "image", source };
+  const prompt =
+    "You are filing a document into a food business's Red Book (the binder a health inspector reviews)" +
+    (section ? ", under the section \"" + section + "\"" : "") + ". Read the document shown and return:\n" +
+    "- title: a short, professional document title an inspector would expect. If it is a personal certificate, license, " +
+    "permit, or ID (for example a NYC Food Protection Certificate or a food handler card), include the person's name, like " +
+    "\"NYC Food Protection Certificate - Tamer\". Use the real agency or brand name shown (NYC Health, ServSafe, EcoSure). " +
+    "No surrounding quotes and no trailing period.\n" +
+    "- date: the issue or performed date as YYYY-MM-DD if clearly shown, otherwise an empty string.\n" +
+    "- expiry: the expiration date as YYYY-MM-DD if shown, otherwise an empty string.\n" +
+    "Only use what is visible on the document. Do not invent names, dates, or facts.";
+  const schema = { type: "object", properties: { title: { type: "string" }, date: { type: "string" }, expiry: { type: "string" } }, required: ["title", "date", "expiry"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 700, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return null;
+    const out = JSON.parse(tb.text);
+    const okd = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? s : "");
+    const title = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 200);
+    return { title, date: okd(out.date), expiry: okd(out.expiry) };
+  } catch { return null; }
+}
+
 async function uploadRedbookDoc(request, env, session) {
   if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
@@ -3077,9 +3122,41 @@ async function uploadRedbookDoc(request, env, session) {
   const fileUrl = await uploadToStorage(env, path, base64, ct);
   if (!fileUrl) return json({ ok: false, error: "Upload failed." }, 502);
   const a = authorOf(session);
-  const res = await sbInsert(env, "redbook_docs", { client_id: who.id, section, title, file_url: fileUrl, file_type: ct, uploaded_by: a.author });
+  const patch = { client_id: who.id, section, title, file_url: fileUrl, file_type: ct, uploaded_by: a.author };
+  // Read the document to name it (and pull its date/expiry). We override a
+  // filename-ish title; a real title the user typed is kept.
+  const isReadable = ct.indexOf("image") >= 0 || ct.indexOf("pdf") >= 0;
+  if (isReadable) {
+    const read = await readDocFields({ type: "base64", media_type: ct.indexOf("pdf") >= 0 ? "application/pdf" : ct, data: base64 }, ct, section, env);
+    if (read) {
+      if (read.title && (looksGenericTitle(title) || body.autoName === true)) patch.title = read.title;
+      if (read.date) patch.doc_date = read.date;
+      if (read.expiry) patch.expires_at = read.expiry;
+    }
+  }
+  let res = await sbInsert(env, "redbook_docs", patch);
+  // Pre-migration fallback if doc_date / expires_at columns don't exist yet.
+  if (!res.ok && (patch.doc_date || patch.expires_at)) { delete patch.doc_date; delete patch.expires_at; res = await sbInsert(env, "redbook_docs", patch); }
   if (!res.ok) return json({ ok: false, error: ("Saved the file, but couldn't record it. " + (res.error || "")).slice(0, 200) }, 502);
   return json({ ok: true, doc: res.data || null });
+}
+
+// Re-read an already-filed document and suggest a title/date/expiry (for docs
+// uploaded before auto-naming, or to refresh a guess). Saves nothing.
+async function readRedbookDoc(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const rows = await sbSelect(env, `redbook_docs?id=eq.${id}&select=file_url,file_type,section`);
+  const doc = rows && rows[0];
+  if (!doc || !doc.file_url) return json({ ok: false, error: "No file to read." }, 404);
+  const ct = (doc.file_type || "").indexOf("pdf") >= 0 || /\.pdf(\?|$)/i.test(doc.file_url) ? "application/pdf" : (doc.file_type || "image/jpeg");
+  const read = await readDocFields({ type: "url", url: doc.file_url }, ct, doc.section || "", env);
+  if (!read || !read.title) return json({ ok: false, error: "Couldn't read the document." }, 502);
+  return json({ ok: true, title: read.title, docDate: read.date, expires: read.expiry });
 }
 
 async function deleteRedbookDoc(request, env, session) {
