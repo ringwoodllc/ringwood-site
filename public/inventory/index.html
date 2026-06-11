@@ -172,6 +172,7 @@
       <label class="btn" for="photoInput" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="11" cy="13" r="3.2"/></svg> Add photos</label>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none" />
       <button type="button" class="btn ghost" id="addItemBtn">＋ Add item by hand</button>
+      <button type="button" class="btn ghost" id="refreshItemsBtn">↻ Refresh</button>
       <span class="msg" id="photoMsg"></span>
     </div>
     <div id="photos" class="photos"></div>
@@ -461,6 +462,7 @@
     });
   }
 
+  document.getElementById("refreshItemsBtn").addEventListener("click", function(){ if(CUR) openCount(CUR.id); });
   document.getElementById("addItemBtn").addEventListener("click", function(){
     if(!CUR) return;
     fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,product:"",kind:"tub",qty:1})})
@@ -480,14 +482,21 @@
     files=Array.prototype.slice.call(files||[]).filter(function(f){ return f && (f.type||"").indexOf("image")===0; });
     if(!CUR){ return; }
     if(!files.length) return;
-    var msg=document.getElementById("photoMsg"); var i=0, added=0; UPLOADING++;
+    var msg=document.getElementById("photoMsg"); var i=0, ok=0, cid=CUR.id; UPLOADING++;
     (function next(){
-      if(i>=files.length){ UPLOADING--; msg.style.color="var(--ok)"; msg.textContent="Read "+added+" item"+(added===1?"":"s")+" from "+files.length+" photo"+(files.length===1?"":"s")+". All saved."; openCount(CUR.id); return; }
-      var f=files[i++]; msg.style.color="var(--muted)"; msg.textContent="Reading photo "+i+" of "+files.length+"…";
+      if(i>=files.length){
+        UPLOADING--;
+        msg.style.color="var(--ok)"; msg.textContent="Uploaded "+ok+" photo"+(ok===1?"":"s")+". The AI is reading them in the background — flavors fill in shortly. You can keep working or leave.";
+        if(CUR&&CUR.id===cid) openCount(cid);                 // show the photos now
+        setTimeout(function(){ if(CUR&&CUR.id===cid) openCount(cid); }, 6000);   // flavors start landing
+        setTimeout(function(){ if(CUR&&CUR.id===cid) openCount(cid); }, 16000);  // the rest
+        return;
+      }
+      var f=files[i++]; msg.style.color="var(--muted)"; msg.textContent="Uploading photo "+i+" of "+files.length+"…";
       downscale(f, function(b64, ct){
         if(!b64){ next(); return; }
-        fetch("/api/inventory/photo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,imageBase64:b64,contentType:ct,catalog:ALL_PRODUCTS})})
-          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ added+=(d.read||0); } else if(d&&d.error){ msg.style.color="var(--red)"; msg.textContent=d.error; } next(); })
+        fetch("/api/inventory/photo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:cid,imageBase64:b64,contentType:ct,catalog:ALL_PRODUCTS})})
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ok++; } else if(d&&d.error){ msg.style.color="var(--red)"; msg.textContent=d.error; } next(); })
           .catch(function(){ next(); });
       });
     })();

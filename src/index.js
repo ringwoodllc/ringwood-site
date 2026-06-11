@@ -94,7 +94,7 @@ export default {
     if (url.pathname === "/api/inventory/count" && request.method === "POST") return createInventoryCount(request, env, session);
     if (url.pathname === "/api/inventory/count/close" && request.method === "POST") return closeInventoryCount(request, env, session);
     if (url.pathname === "/api/inventory/count/delete" && request.method === "POST") return deleteInventoryCount(request, env, session);
-    if (url.pathname === "/api/inventory/photo" && request.method === "POST") return addInventoryPhoto(request, env, session);
+    if (url.pathname === "/api/inventory/photo" && request.method === "POST") return addInventoryPhoto(request, env, session, ctx);
     if (url.pathname === "/api/inventory/photo/delete" && request.method === "POST") return deleteInventoryPhoto(request, env, session);
     if (url.pathname === "/api/inventory/item" && request.method === "POST") return saveInventoryItem(request, env, session);
     if (url.pathname === "/api/inventory/orders" && request.method === "GET") return listInventoryOrders(url, env, session);
@@ -3460,7 +3460,25 @@ async function deleteInventoryCount(request, env, session) {
   return json({ ok: true });
 }
 
-async function addInventoryPhoto(request, env, session) {
+// Read one inventory photo with Claude and insert its line items. Runs in the
+// background (after the upload response) so the browser doesn't wait and you can
+// navigate away — the flavors fill in on the server and show on the next reload.
+async function readInventoryPhotoInBackground(env, who, count, photo, base64, ct, catalog) {
+  if (!env.ANTHROPIC_API_KEY) return;
+  let read = null;
+  try { read = await claudeReadSheet(base64, ct, inventoryPrompt(catalog || []), INVENTORY_SCHEMA, env); } catch { read = null; }
+  if (!read || !Array.isArray(read.items)) return;
+  const rows = [];
+  for (const it of read.items) {
+    const kind = INV_KINDS[(it.kind || "").toLowerCase()] ? (it.kind || "").toLowerCase() : "tub";
+    const qty = kind === "cabinet" ? 1 : Math.max(1, Math.round(parseFloat(it.count) || 1));
+    const fullness = kind === "cabinet" ? (["full", "half", "low"].indexOf((it.fullness || "").toLowerCase()) >= 0 ? (it.fullness || "").toLowerCase() : "half") : null;
+    rows.push({ count_id: count.id, client_id: who.id, photo_id: photo.id || null, product: (it.product || "").toString().slice(0, 160), label: (it.label || "").toString().slice(0, 160), kind, qty, fullness, placement: (it.placement || "").toString().slice(0, 160) });
+  }
+  if (rows.length) await sbInsert(env, "inventory_items", rows);
+}
+
+async function addInventoryPhoto(request, env, session, ctx) {
   if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
   let body;
@@ -3477,26 +3495,13 @@ async function addInventoryPhoto(request, env, session) {
   const pRes = await sbInsert(env, "inventory_photos", { count_id: s.count.id, client_id: s.who.id, url: fileUrl, kind: (body.kind || "").toString().slice(0, 20) || null });
   if (!pRes.ok) return json({ ok: false, error: "Saved the photo, but couldn't record it." }, 502);
   const photo = pRes.data || {};
-  // Read the photo with Claude into line items, matched to the client's catalog.
-  let items = [];
-  if (env.ANTHROPIC_API_KEY) {
-    const catalog = Array.isArray(body.catalog) ? body.catalog.slice(0, 500) : [];
-    const read = await claudeReadSheet(base64, ct, inventoryPrompt(catalog), INVENTORY_SCHEMA, env);
-    if (read && Array.isArray(read.items)) {
-      const rows = [];
-      for (const it of read.items) {
-        const kind = INV_KINDS[(it.kind || "").toLowerCase()] ? (it.kind || "").toLowerCase() : "tub";
-        const qty = kind === "cabinet" ? 1 : Math.max(1, Math.round(parseFloat(it.count) || 1));
-        const fullness = kind === "cabinet" ? (["full", "half", "low"].indexOf((it.fullness || "").toLowerCase()) >= 0 ? (it.fullness || "").toLowerCase() : "half") : null;
-        rows.push({ count_id: s.count.id, client_id: s.who.id, photo_id: photo.id || null, product: (it.product || "").toString().slice(0, 160), label: (it.label || "").toString().slice(0, 160), kind, qty, fullness, placement: (it.placement || "").toString().slice(0, 160) });
-      }
-      if (rows.length) {
-        const iRes = await sbInsert(env, "inventory_items", rows);
-        items = (iRes.ok && Array.isArray(iRes.data)) ? iRes.data : rows;
-      }
-    }
-  }
-  return json({ ok: true, photo, items, read: items.length });
+  // Kick off the AI read AFTER returning, so the upload is fast and the browser
+  // is free to move on. Fall back to inline if no execution context is available.
+  const catalog = Array.isArray(body.catalog) ? body.catalog.slice(0, 500) : [];
+  const job = readInventoryPhotoInBackground(env, s.who, s.count, photo, base64, ct, catalog);
+  if (ctx && ctx.waitUntil) { ctx.waitUntil(job); return json({ ok: true, photo, reading: true }); }
+  await job;
+  return json({ ok: true, photo, read: true });
 }
 
 async function deleteInventoryPhoto(request, env, session) {
