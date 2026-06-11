@@ -30,32 +30,34 @@
   label{display:block;font-weight:600;font-size:.86rem;color:var(--green-deep);margin-bottom:6px}
   select,input[type=date],input[type=text],input[type=number]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
   .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
-  .row2{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-  .row2>div{flex:1;min-width:160px}
-  .daterow{display:flex;gap:8px;align-items:center}
-  .daterow input{flex:1;min-width:0}
-  .dstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
-  .dstep:hover{border-color:var(--green)}
+  .weekrow{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+  .wstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
+  .wstep:hover{border-color:var(--green)}
+  .wlabel{flex:1;text-align:center;font-weight:600;color:var(--green-deep);font-size:.98rem}
+  .wlabel small{display:block;color:var(--muted);font-weight:400;font-size:.76rem}
   .card{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 15px;margin-bottom:16px}
   .cardhd{font-family:"Spectral",serif;font-weight:500;font-size:1.05rem;color:var(--green-deep);margin-bottom:10px}
-  .frow{display:flex;gap:10px;flex-wrap:wrap}
-  .frow>div{flex:1;min-width:140px}
-  .frow.tight>div{min-width:120px}
+  .frow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .frow>div{flex:1;min-width:130px}
   .yn{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-  .yn button{background:var(--bg);border:none;font:inherit;font-weight:700;font-size:.84rem;color:var(--muted);padding:11px 14px;cursor:pointer}
-  .yn button.acc.on{background:var(--green);color:#f6f2e8}
-  .yn button.rej.on{background:var(--red);color:#f6f2e8}
+  .yn button{background:var(--bg);border:none;font:inherit;font-weight:700;font-size:.82rem;color:var(--muted);padding:11px 12px;cursor:pointer}
+  .yn button.on{background:var(--green);color:#f6f2e8}
+  .yn button.rej.on{background:var(--red)}
   .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:11px 17px;font:inherit;font-weight:600;font-size:.92rem;margin-top:12px}
   .savemsg{font-size:.84rem;font-weight:600;color:var(--muted);margin-left:10px}
-  .entry{display:flex;gap:10px;align-items:flex-start;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:11px 13px;margin-bottom:9px}
-  .entry .bd{flex:1;min-width:0}
-  .etitle{font-weight:600;color:var(--green-deep)}
-  .emeta{color:var(--muted);font-size:.82rem;margin-top:2px}
-  .enotes{color:var(--muted);font-size:.85rem;margin-top:3px;word-break:break-word}
-  .badge{flex:0 0 auto;font-size:.7rem;font-weight:700;border-radius:999px;padding:2px 10px;align-self:flex-start}
-  .badge.acc{background:rgba(47,93,80,.14);color:var(--ok)}
-  .badge.rej{background:rgba(138,61,28,.14);color:var(--red)}
-  .edel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .tlogwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow-x:auto;margin-bottom:14px}
+  table.rl{width:100%;border-collapse:collapse}
+  table.rl th{text-align:left;font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 10px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05);white-space:nowrap}
+  table.rl th.t{text-align:center}
+  table.rl td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.rl tr:last-child td{border-bottom:none}
+  .d-cell{white-space:nowrap;font-weight:600;color:var(--green-deep);font-size:.9rem}
+  .v-cell{min-width:170px}
+  .vname{font-weight:600;color:var(--ink);font-size:.93rem}
+  .vnotes{color:var(--muted);font-size:.78rem;margin-top:1px}
+  .rejchip{display:inline-block;font-size:.62rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(138,61,28,.14);color:var(--red);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .t-cell{text-align:center;font-weight:700;font-size:.95rem;min-width:74px}
+  .edel{background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:24px;height:24px;font:inherit;font-size:.8rem;cursor:pointer}
   .empty{color:var(--muted);padding:10px 0;font-size:.9rem}
 </style>
 </head>
@@ -73,27 +75,28 @@
   <div class="intro">
     <div class="eyebrow">Food safety · Logs</div>
     <h1>Receiving Log</h1>
-    <p class="lead">Log each delivery as it arrives: vendor, item, temperature, and whether it was accepted or rejected.</p>
+    <p class="lead">Log each delivery as it arrives. The week's deliveries lay out like the paper sheet: date, vendor, and the product temperature under Refrigerated or Frozen.</p>
   </div>
 
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
-  <div class="row2">
-    <div><label for="dateSel">Date</label>
-      <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
-    </div>
+  <div class="weekrow">
+    <button type="button" class="wstep" id="wPrev" title="Previous week">◀</button>
+    <div class="wlabel" id="wLabel"></div>
+    <button type="button" class="wstep" id="wNext" title="Next week">▶</button>
   </div>
   <div id="note" class="note" style="display:none"></div>
 
   <div class="card" id="addCard" style="display:none">
     <div class="cardhd">Add a delivery</div>
     <div class="frow">
-      <div><label for="aVendor">Vendor / supplier</label><input type="text" id="aVendor" autocomplete="off" placeholder="e.g. Sysco" /></div>
-      <div><label for="aItem">Item / product</label><input type="text" id="aItem" autocomplete="off" placeholder="e.g. Chicken" /></div>
+      <div style="max-width:170px"><label for="aDate">Date</label><input type="date" id="aDate" /></div>
+      <div><label for="aVendor">Vendor — product</label><input type="text" id="aVendor" autocomplete="off" placeholder="e.g. DCP (Refrigerated) - Dairy" list="vendorList" /><datalist id="vendorList"></datalist></div>
     </div>
-    <div class="frow tight" style="margin-top:10px;align-items:flex-end">
-      <div style="max-width:140px"><label for="aTemp">Temp °F</label><input type="number" inputmode="decimal" step="0.1" id="aTemp" placeholder="—" /></div>
-      <div style="flex:0 0 auto"><label>Condition</label><span class="yn"><button type="button" class="acc on" id="stAcc">Accepted</button><button type="button" class="rej" id="stRej">Rejected</button></span></div>
-      <div><label for="aNotes">Notes (optional)</label><input type="text" id="aNotes" autocomplete="off" placeholder="Corrective action, condition…" /></div>
+    <div class="frow" style="margin-top:10px">
+      <div style="flex:0 0 auto"><label>Storage</label><span class="yn"><button type="button" class="on" id="sgRef">Refrigerated</button><button type="button" id="sgFrz">Frozen</button></span></div>
+      <div style="max-width:120px"><label for="aTemp">Temp °F</label><input type="number" inputmode="decimal" step="0.1" id="aTemp" placeholder="—" /></div>
+      <div style="flex:0 0 auto"><label>Condition</label><span class="yn"><button type="button" class="on" id="stAcc">Accepted</button><button type="button" class="rej" id="stRej">Rejected</button></span></div>
+      <div><label for="aNotes">Notes (optional)</label><input type="text" id="aNotes" autocomplete="off" placeholder="Condition, corrective action…" /></div>
     </div>
     <button type="button" class="btn" id="addBtn">＋ Add delivery</button><span class="savemsg" id="addMsg"></span>
   </div>
@@ -102,9 +105,14 @@
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", ENTRIES=[], MISSING=false, STATUS="Accepted";
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", WSTART=null, ENTRIES=[], MISSING=false, STATUS="Accepted", STORAGE="refrigerated";
+  var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   function pad(n){ return String(n).padStart(2,"0"); }
-  function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function iso(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function fromIso(s){ var p=s.split("-"); return new Date(+p[0],+p[1]-1,+p[2]); }
+  function weekStart(d){ var x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }   // Sunday
+  function weekEnd(){ var e=new Date(WSTART); e.setDate(e.getDate()+6); return e; }
+  function fmt(d){ return (d.getMonth()+1)+"/"+d.getDate(); }
   function timeOf(s){ return s?new Date(s).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""; }
   function val(id){ return (document.getElementById(id).value||"").trim(); }
 
@@ -114,11 +122,13 @@
     var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
     if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
     CAN_EDIT = IS_MASTER || lvl==="edit";
-    DATE = today(); document.getElementById("dateSel").value = DATE;
-    document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
-    document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
-    document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
+    WSTART = weekStart(new Date());
+    document.getElementById("aDate").value = iso(new Date());
+    document.getElementById("wPrev").addEventListener("click", function(){ shiftWeek(-7); });
+    document.getElementById("wNext").addEventListener("click", function(){ shiftWeek(7); });
     if(CAN_EDIT) document.getElementById("addCard").style.display="block";
+    document.getElementById("sgRef").addEventListener("click", function(){ STORAGE="refrigerated"; this.classList.add("on"); document.getElementById("sgFrz").classList.remove("on"); });
+    document.getElementById("sgFrz").addEventListener("click", function(){ STORAGE="frozen"; this.classList.add("on"); document.getElementById("sgRef").classList.remove("on"); });
     document.getElementById("stAcc").addEventListener("click", function(){ STATUS="Accepted"; this.classList.add("on"); document.getElementById("stRej").classList.remove("on"); });
     document.getElementById("stRej").addEventListener("click", function(){ STATUS="Rejected"; this.classList.add("on"); document.getElementById("stAcc").classList.remove("on"); });
     document.getElementById("addBtn").addEventListener("click", addEntry);
@@ -129,46 +139,69 @@
           onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to see deliveries.</div>"; } else load(); } });
       }).catch(function(){});
     } else { CLIENT=d.client||""; load(); }
+    syncWeekLabel();
   }).catch(function(){});
 
-  function shiftDate(n){ var p=DATE.split("-"); var d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); DATE=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); document.getElementById("dateSel").value=DATE; load(); }
+  function syncWeekLabel(){
+    var e=weekEnd();
+    document.getElementById("wLabel").innerHTML = "Week of "+fmt(WSTART)+" – "+fmt(e)+"<small>"+WSTART.getFullYear()+"</small>";
+  }
+  function shiftWeek(n){ WSTART.setDate(WSTART.getDate()+n); syncWeekLabel(); load(); }
 
   function load(){
     if(IS_MASTER && !CLIENT){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to see deliveries.</div>"; return; }
     document.getElementById("list").innerHTML="<div class='empty'>Loading…</div>";
-    fetch("/api/receiving?client="+encodeURIComponent(CLIENT)+"&date="+encodeURIComponent(DATE),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+    fetch("/api/receiving?client="+encodeURIComponent(CLIENT)+"&from="+iso(WSTART)+"&to="+iso(weekEnd()),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var note=document.getElementById("note");
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       MISSING=!!d.missing;
-      if(MISSING){ note.style.display="block"; note.textContent="The receiving log table isn't set up yet. Add it in Supabase (one-time), then entries save."; } else note.style.display="none";
+      if(MISSING){ note.style.display="block"; note.textContent="The receiving log table isn't set up yet. Add it in Supabase (one-time), then entries save."; }
+      else if(d.storageOn===false){ note.style.display="block"; note.textContent="Run the storage-column SQL (one-time) so Refrigerated and Frozen land in their own columns."; }
+      else note.style.display="none";
       ENTRIES=d.entries||[]; render();
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
   function render(){
     var el=document.getElementById("list");
-    if(!ENTRIES.length){ el.innerHTML="<div class='empty'>No deliveries logged for this date.</div>"; return; }
-    el.innerHTML=ENTRIES.map(function(e){
+    // Vendor suggestions from what's already been logged.
+    var seen={}; ENTRIES.forEach(function(e){ var v=(e.vendor||e.item||"").trim(); if(v) seen[v]=1; });
+    document.getElementById("vendorList").innerHTML=Object.keys(seen).map(function(v){ return "<option value='"+esc(v)+"'>"; }).join("");
+    if(!ENTRIES.length){ el.innerHTML="<div class='empty'>No deliveries logged this week.</div>"; return; }
+    var rows=ENTRIES.map(function(e){
+      var d=fromIso(e.date);
+      var label=fmt(d)+" - "+DAYS[d.getDay()];
+      var name=esc(e.vendor||e.item||"Delivery")+(e.item&&e.vendor?(" - "+esc(e.item)):"");
       var rej=e.status==="Rejected";
-      var title=esc(e.item||e.vendor||"Delivery");
-      var meta=[e.vendor&&e.item?esc(e.vendor):"", (e.temp!=null?esc(e.temp)+"°F":""), timeOf(e.at), e.by].filter(Boolean).join(" · ");
-      return "<div class='entry'><div class='bd'><div class='etitle'>"+title+"</div>"+
-        (meta?"<div class='emeta'>"+esc(meta)+"</div>":"")+
-        (e.notes?"<div class='enotes'>"+esc(e.notes)+"</div>":"")+"</div>"+
-        "<span class='badge "+(rej?"rej":"acc")+"'>"+(rej?"Rejected":"Accepted")+"</span>"+
-        (CAN_EDIT?"<button type='button' class='edel' data-id='"+esc(e.id)+"' title='Remove'>×</button>":"")+
-      "</div>";
+      var ref = e.storage!=="frozen" && e.temp!=null ? esc(e.temp) : "";
+      var frz = e.storage==="frozen" && e.temp!=null ? esc(e.temp) : "";
+      return "<tr>"+
+        "<td class='d-cell'>"+esc(label)+"</td>"+
+        "<td class='v-cell'><span class='vname'>"+name+"</span>"+(rej?"<span class='rejchip'>Rejected</span>":"")+
+          ((e.notes||e.by)?"<div class='vnotes'>"+esc([e.notes, timeOf(e.at), e.by].filter(Boolean).join(" · "))+"</div>":"")+"</td>"+
+        "<td class='t-cell'>"+ref+"</td>"+
+        "<td class='t-cell'"+(frz!==""?" style='color:var(--green-deep)'":"")+">"+frz+"</td>"+
+        (CAN_EDIT?"<td><button type='button' class='edel' data-id='"+esc(e.id)+"' title='Remove'>×</button></td>":"")+
+      "</tr>";
     }).join("");
+    el.innerHTML="<div class='tlogwrap'><table class='rl'><thead><tr><th>Date</th><th>Vendor</th><th class='t'>Walk-in<br/>Refrigerator</th><th class='t'>Walk-in<br/>Freezer</th>"+(CAN_EDIT?"<th></th>":"")+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
     Array.prototype.slice.call(el.querySelectorAll(".edel")).forEach(function(b){ b.addEventListener("click", function(){ if(!confirm("Remove this delivery?")) return; fetch("/api/receiving/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
   }
 
   function addEntry(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
-    var vendor=val("aVendor"), item=val("aItem");
-    if(!vendor && !item){ setMsg("Enter a vendor or item.","var(--red)"); return; }
+    var vendor=val("aVendor");
+    if(!vendor){ setMsg("Enter the vendor / product.","var(--red)"); return; }
+    var date=val("aDate")||iso(new Date());
     var b=document.getElementById("addBtn"); b.disabled=true;
-    fetch("/api/receiving/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,vendor:vendor,item:item,temp:val("aTemp"),status:STATUS,notes:val("aNotes")})})
-      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; if(d&&d.ok){ document.getElementById("aVendor").value=""; document.getElementById("aItem").value=""; document.getElementById("aTemp").value=""; document.getElementById("aNotes").value=""; setMsg("Added ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1400); load(); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
+    fetch("/api/receiving/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:date,vendor:vendor,temp:val("aTemp"),storage:STORAGE,status:STATUS,notes:val("aNotes")})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false;
+        if(d&&d.ok){
+          document.getElementById("aVendor").value=""; document.getElementById("aTemp").value=""; document.getElementById("aNotes").value="";
+          setMsg("Added ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1400);
+          // Jump the view to the week that delivery belongs to.
+          WSTART=weekStart(fromIso(date)); syncWeekLabel(); load();
+        } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
       .catch(function(){ b.disabled=false; setMsg("No connection","var(--red)"); });
   }
   function setMsg(t,c){ var m=document.getElementById("addMsg"); if(m){ m.textContent=t; m.style.color=c||"var(--muted)"; } }

@@ -18,7 +18,7 @@
   :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);--red:#8a3d1c;--ok:#2f5d50}
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
-  .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 22px 56px}
   header{padding:24px 0}
   .bar{display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
@@ -28,34 +28,48 @@
   h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
   .lead{color:var(--muted);font-size:1rem;margin:10px 0 14px}
   label{display:block;font-weight:600;font-size:.86rem;color:var(--green-deep);margin-bottom:6px}
-  select,input[type=date],input[type=text],input[type=number]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  select,input[type=text],input[type=number]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
   .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
-  .row2{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-  .row2>div{flex:1;min-width:160px}
-  .daterow{display:flex;gap:8px;align-items:center}
-  .daterow input{flex:1;min-width:0}
-  .dstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
-  .dstep:hover{border-color:var(--green)}
-  .card{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 15px;margin-bottom:16px}
-  .cardhd{font-family:"Spectral",serif;font-weight:500;font-size:1.05rem;color:var(--green-deep);margin-bottom:10px}
-  .frow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
-  .frow>div{flex:1;min-width:130px}
-  .yn{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-  .yn button{background:var(--bg);border:none;font:inherit;font-weight:700;font-size:.84rem;color:var(--muted);padding:11px 14px;cursor:pointer}
-  .yn button.on{background:var(--green);color:#f6f2e8}
-  .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:11px 17px;font:inherit;font-weight:600;font-size:.92rem;margin-top:12px}
-  .savemsg{font-size:.84rem;font-weight:600;color:var(--muted);margin-left:10px}
-  .reqhint{color:var(--muted);font-size:.8rem;margin-top:8px}
-  .entry{display:flex;gap:10px;align-items:flex-start;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:11px 13px;margin-bottom:9px}
-  .entry .bd{flex:1;min-width:0}
-  .etitle{font-weight:600;color:var(--green-deep)}
-  .emeta{color:var(--muted);font-size:.82rem;margin-top:2px}
-  .enotes{color:var(--muted);font-size:.85rem;margin-top:3px;word-break:break-word}
-  .etemp{flex:0 0 auto;font-weight:700;font-size:1.05rem;min-width:60px;text-align:right}
-  .etemp.out{color:var(--red)}
-  .kindtag{display:inline-block;font-size:.62rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:4px;padding:1px 6px;margin-right:6px;background:rgba(33,68,58,.1);color:var(--green-deep)}
-  .edel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .weekrow{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+  .wstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
+  .wstep:hover{border-color:var(--green)}
+  .wlabel{flex:1;text-align:center;font-weight:600;color:var(--green-deep);font-size:.98rem}
+  .wlabel small{display:block;color:var(--muted);font-weight:400;font-size:.76rem}
+  .tlogwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow-x:auto;margin-bottom:14px}
+  table.hh{width:100%;border-collapse:collapse}
+  table.hh th{font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:8px 8px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05);white-space:nowrap;text-align:center}
+  table.hh th.grp{font-family:"Spectral",serif;font-size:.86rem;letter-spacing:0;text-transform:none;color:#f6f2e8;background:var(--green-deep)}
+  table.hh th .imin{display:block;color:var(--clay);font-size:.64rem;letter-spacing:0;text-transform:none;font-weight:700}
+  table.hh td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle;text-align:center}
+  table.hh tr:last-child td{border-bottom:none}
+  .d-cell{white-space:nowrap;font-weight:600;color:var(--green-deep);font-size:.88rem;text-align:left !important;position:sticky;left:0;background:var(--bg-2);z-index:1}
+  table.hh th:first-child{position:sticky;left:0;background:rgba(238,231,217,.98);z-index:2;text-align:left}
+  .gcell{width:62px;font:inherit;font-size:.98rem;font-weight:600;text-align:center;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 4px;-webkit-appearance:none;appearance:none}
+  .gcell:focus{border-color:var(--green);outline:none}
+  .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep)}
+  .gcell.logged.out{color:var(--red);background:rgba(138,61,28,.1)}
+  .saverow{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:12px 20px;font:inherit;font-weight:600;font-size:.95rem}
+  .savemsg{font-size:.86rem;font-weight:600;color:var(--muted)}
   .empty{color:var(--muted);padding:10px 0;font-size:.9rem}
+  .manage{margin-top:8px}
+  .secwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
+  .sechead:hover{background:rgba(33,68,58,.04)}
+  .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .admincrown{display:inline-flex;align-items:center;gap:4px;background:rgba(33,68,58,.1);color:var(--green-deep);border-radius:999px;padding:1px 8px 1px 7px;font-size:.62rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle;margin-left:7px}
+  .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .hint{color:var(--muted);font-size:.82rem;margin:8px 0}
+  .mgrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--line)}
+  .mgrow:last-child{border-bottom:none}
+  .mgname{flex:1 1 140px;font:inherit;font-size:.9rem;padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .mgmin{flex:0 0 86px;font:inherit;font-size:.9rem;padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .modetoggle{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .modetoggle button{background:var(--bg);border:none;font:inherit;font-size:.78rem;font-weight:600;color:var(--muted);padding:7px 10px;cursor:pointer}
+  .modetoggle button.on{background:var(--green);color:#f6f2e8}
+  .mgdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:28px;height:28px;font:inherit;cursor:pointer}
+  .addrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+  .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -72,39 +86,42 @@
   <div class="intro">
     <div class="eyebrow">Food safety · Logs</div>
     <h1>Hot Holding / Cooking</h1>
-    <p class="lead">Log cooking and hot-holding temperatures. Cooking flags below 165°F, hot holding below 135°F.</p>
+    <p class="lead">A week at a glance: each food item is a column with its minimum, each day a row. Type the temps and save; anything below minimum flags red.</p>
   </div>
 
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
-  <div class="row2">
-    <div><label for="dateSel">Date</label>
-      <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
-    </div>
+  <div class="weekrow">
+    <button type="button" class="wstep" id="wPrev" title="Previous week">◀</button>
+    <div class="wlabel" id="wLabel"></div>
+    <button type="button" class="wstep" id="wNext" title="Next week">▶</button>
   </div>
   <div id="note" class="note" style="display:none"></div>
 
-  <div class="card" id="addCard" style="display:none">
-    <div class="cardhd">Add a reading</div>
-    <div class="frow">
-      <div style="flex:0 0 auto"><label>Type</label><span class="yn"><button type="button" class="kh on" id="kHold">Hot holding</button><button type="button" class="kc" id="kCook">Cooking</button></span></div>
-      <div><label for="aItem">Food item</label><input type="text" id="aItem" autocomplete="off" placeholder="e.g. Soup" /></div>
-      <div style="max-width:130px"><label for="aTemp">Temp °F</label><input type="number" inputmode="decimal" step="0.1" id="aTemp" placeholder="—" /></div>
-    </div>
-    <div style="margin-top:10px"><label for="aNotes">Notes (optional)</label><input type="text" id="aNotes" autocomplete="off" placeholder="Corrective action…" /></div>
-    <div class="reqhint" id="reqHint">Hot holding must be 135°F or above.</div>
-    <button type="button" class="btn" id="addBtn">＋ Add reading</button><span class="savemsg" id="addMsg"></span>
-  </div>
+  <div id="grid"><div class="empty">Loading…</div></div>
+  <div class="saverow" id="saveBar" style="display:none"><button type="button" class="btn" id="saveBtn">✓ Save readings</button><span class="savemsg" id="saveMsg"></span></div>
 
-  <div id="list"><div class="empty">Loading…</div></div>
+  <div class="manage" id="manageWrap" style="display:none">
+    <div class="secwrap">
+      <div class="sechead" id="mgToggle"><span class="sectitle">Edit items <span class="admincrown" title="Admin only. Clients do not see this."><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span></span><span class="back">Edit ▾</span></div>
+      <div class="secbody" id="mgBody" style="display:none">
+        <div class="hint">Each item is a column in the grid. Set whether it's a Cooking or Hot-holding check and its minimum °F (cooking falls back to 165, holding to 135).</div>
+        <div id="mgList"><div class="empty">Loading…</div></div>
+        <div class="addrow"><input type="text" id="nName" class="mgname" placeholder="New item (e.g. Bacon)" /><input type="number" id="nMin" class="mgmin" placeholder="Min °F" /><button type="button" class="btn ghost" id="addItem">＋ Add</button></div>
+      </div>
+    </div>
+  </div>
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", ENTRIES=[], MISSING=false, KIND="holding";
-  var MIN={holding:135, cooking:165};
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", WSTART=null, ITEMS=[], ENTRIES=[], MISSING=false, ITEMS_ON=true;
+  var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   function pad(n){ return String(n).padStart(2,"0"); }
-  function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
-  function timeOf(s){ return s?new Date(s).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""; }
-  function val(id){ return (document.getElementById(id).value||"").trim(); }
+  function iso(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function fromIso(s){ var p=s.split("-"); return new Date(+p[0],+p[1]-1,+p[2]); }
+  function weekStart(d){ var x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x; }
+  function weekEnd(){ var e=new Date(WSTART); e.setDate(e.getDate()+6); return e; }
+  function fmt(d){ return (d.getMonth()+1)+"/"+d.getDate(); }
+  function minOf(it){ return it.min!=null ? it.min : (it.kind==="cooking"?165:135); }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/hotholding"); return; }
@@ -112,65 +129,113 @@
     var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
     if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
     CAN_EDIT = IS_MASTER || lvl==="edit";
-    DATE = today(); document.getElementById("dateSel").value = DATE;
-    document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
-    document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
-    document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
-    if(CAN_EDIT) document.getElementById("addCard").style.display="block";
-    document.getElementById("kHold").addEventListener("click", function(){ setKind("holding"); });
-    document.getElementById("kCook").addEventListener("click", function(){ setKind("cooking"); });
-    document.getElementById("addBtn").addEventListener("click", addEntry);
+    WSTART = weekStart(new Date());
+    document.getElementById("wPrev").addEventListener("click", function(){ shiftWeek(-7); });
+    document.getElementById("wNext").addEventListener("click", function(){ shiftWeek(7); });
+    document.getElementById("saveBtn").addEventListener("click", saveGrid);
+    if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
+    document.getElementById("mgToggle").addEventListener("click", function(){ var b=document.getElementById("mgBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; this.querySelector(".back").textContent=open?"Hide ▴":"Edit ▾"; });
+    document.getElementById("addItem").addEventListener("click", addItem);
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
         RWClientPins.mount({ selectEl: document.getElementById("clientSel"), clients:(o&&o.clients)||[], placeholder:"Select a client…",
-          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to see readings.</div>"; } else load(); } });
+          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("grid").innerHTML="<div class='empty'>Pick a client to see the week.</div>"; document.getElementById("saveBar").style.display="none"; } else load(); } });
       }).catch(function(){});
     } else { CLIENT=d.client||""; load(); }
+    syncWeekLabel();
   }).catch(function(){});
 
-  function setKind(k){ KIND=k; document.getElementById("kHold").classList.toggle("on",k==="holding"); document.getElementById("kCook").classList.toggle("on",k==="cooking"); document.getElementById("reqHint").textContent = k==="cooking"?"Cooking must reach 165°F or above.":"Hot holding must be 135°F or above."; }
-  function shiftDate(n){ var p=DATE.split("-"); var d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); DATE=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); document.getElementById("dateSel").value=DATE; load(); }
+  function syncWeekLabel(){ var e=weekEnd(); document.getElementById("wLabel").innerHTML="Week of "+fmt(WSTART)+" – "+fmt(e)+"<small>"+WSTART.getFullYear()+"</small>"; }
+  function shiftWeek(n){ WSTART.setDate(WSTART.getDate()+n); syncWeekLabel(); load(); }
 
   function load(){
-    if(IS_MASTER && !CLIENT){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to see readings.</div>"; return; }
-    document.getElementById("list").innerHTML="<div class='empty'>Loading…</div>";
-    fetch("/api/hotholding?client="+encodeURIComponent(CLIENT)+"&date="+encodeURIComponent(DATE),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+    if(IS_MASTER && !CLIENT){ document.getElementById("grid").innerHTML="<div class='empty'>Pick a client to see the week.</div>"; return; }
+    document.getElementById("grid").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/hotholding?client="+encodeURIComponent(CLIENT)+"&from="+iso(WSTART)+"&to="+iso(weekEnd()),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var note=document.getElementById("note");
-      if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
-      MISSING=!!d.missing;
-      if(MISSING){ note.style.display="block"; note.textContent="The hot holding table isn't set up yet. Add it in Supabase (one-time), then readings save."; } else note.style.display="none";
-      ENTRIES=d.entries||[]; render();
-    }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+      if(!d||!d.ok){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      MISSING=!!d.missing; ITEMS_ON=d.itemsOn!==false;
+      if(MISSING){ note.style.display="block"; note.textContent="The hot holding table isn't set up yet. Add it in Supabase (one-time), then readings save."; }
+      else if(!ITEMS_ON){ note.style.display="block"; note.textContent="Run the hotholding_items SQL (one-time) to get the item columns."; }
+      else note.style.display="none";
+      ITEMS=d.items||[]; ENTRIES=d.entries||[]; render(); renderManage();
+    }).catch(function(){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
   function render(){
-    var el=document.getElementById("list");
-    if(!ENTRIES.length){ el.innerHTML="<div class='empty'>No readings logged for this date.</div>"; return; }
-    el.innerHTML=ENTRIES.map(function(e){
-      var out = e.temp!=null && e.temp < (MIN[e.kind]||135);
-      var meta=[timeOf(e.at), e.by].filter(Boolean).join(" · ");
-      return "<div class='entry'><div class='bd'><div class='etitle'><span class='kindtag'>"+(e.kind==="cooking"?"Cooking":"Hot holding")+"</span>"+esc(e.item||"Item")+"</div>"+
-        (meta?"<div class='emeta'>"+esc(meta)+"</div>":"")+
-        (e.notes?"<div class='enotes'>"+esc(e.notes)+"</div>":"")+"</div>"+
-        "<span class='etemp"+(out?" out":"")+"'>"+esc(e.temp)+"°F</span>"+
-        (CAN_EDIT?"<button type='button' class='edel' data-id='"+esc(e.id)+"' title='Remove'>×</button>":"")+
-      "</div>";
-    }).join("");
-    Array.prototype.slice.call(el.querySelectorAll(".edel")).forEach(function(b){ b.addEventListener("click", function(){ if(!confirm("Remove this reading?")) return; fetch("/api/hotholding/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
+    var el=document.getElementById("grid");
+    if(!ITEMS.length){ el.innerHTML="<div class='empty'>No items yet."+(IS_MASTER?" Add a few in Edit items below.":"")+"</div>"; document.getElementById("saveBar").style.display="none"; return; }
+    var cook=ITEMS.filter(function(i){return i.kind==="cooking";}), hold=ITEMS.filter(function(i){return i.kind!=="cooking";});
+    var ordered=cook.concat(hold);
+    // latest reading per item+date
+    var latest={};
+    ENTRIES.forEach(function(e){ latest[e.item+"|"+e.date]=e; });
+    var grpRow="<tr><th></th>"+(cook.length?"<th class='grp' colspan='"+cook.length+"'>Cooking</th>":"")+(hold.length?"<th class='grp' colspan='"+hold.length+"'>Hot Holding</th>":"")+"</tr>";
+    var headRow="<tr><th>Date</th>"+ordered.map(function(it){ return "<th>"+esc(it.name)+"<span class='imin'>Min "+esc(minOf(it))+"°F</span></th>"; }).join("")+"</tr>";
+    var body="";
+    for(var di=0; di<7; di++){
+      var d=new Date(WSTART); d.setDate(d.getDate()+di); var ds=iso(d);
+      var cells=ordered.map(function(it){
+        var e=latest[it.name+"|"+ds];
+        if(e){ var out=e.temp!=null && e.temp<minOf(it); return "<td><input type='number' class='gcell logged"+(out?" out":"")+"' value='"+esc(e.temp)+"' disabled /></td>"; }
+        return "<td>"+(CAN_EDIT?"<input type='number' inputmode='decimal' step='0.1' class='gcell tinput' data-item='"+esc(it.name)+"' data-kind='"+esc(it.kind)+"' data-date='"+ds+"' placeholder='—' />":"<span style='color:var(--muted)'>—</span>")+"</td>";
+      }).join("");
+      body+="<tr><td class='d-cell'>"+fmt(d)+" - "+DAYS[d.getDay()]+"</td>"+cells+"</tr>";
+    }
+    el.innerHTML="<div class='tlogwrap'><table class='hh'><thead>"+grpRow+headRow+"</thead><tbody>"+body+"</tbody></table></div>";
+    document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
+    Array.prototype.slice.call(el.querySelectorAll(".gcell.tinput")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveGrid(); } }); });
   }
 
-  function addEntry(){
-    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
-    var item=val("aItem"), temp=val("aTemp");
-    if(!item){ setMsg("Enter a food item.","var(--red)"); return; }
-    if(temp===""||isNaN(parseFloat(temp))){ setMsg("Enter a temperature.","var(--red)"); return; }
-    var b=document.getElementById("addBtn"); b.disabled=true;
-    fetch("/api/hotholding/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,kind:KIND,item:item,temp:temp,notes:val("aNotes")})})
-      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; if(d&&d.ok){ document.getElementById("aItem").value=""; document.getElementById("aTemp").value=""; document.getElementById("aNotes").value=""; setMsg("Added ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1400); load(); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
-      .catch(function(){ b.disabled=false; setMsg("No connection","var(--red)"); });
+  function saveGrid(){
+    var inputs=Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput"));
+    var cells=[];
+    inputs.forEach(function(i){ var v=parseFloat(i.value); if(!isNaN(v)) cells.push({item:i.getAttribute("data-item"), kind:i.getAttribute("data-kind"), date:i.getAttribute("data-date"), temp:v}); });
+    var msg=document.getElementById("saveMsg");
+    if(!cells.length){ if(msg){ msg.style.color="var(--muted)"; msg.textContent="Enter a temperature first."; } return; }
+    var btn=document.getElementById("saveBtn"); btn.disabled=true; var old=btn.textContent; btn.textContent="Saving…";
+    var k=0, fails=0;
+    (function next(){
+      if(k>=cells.length){ btn.disabled=false; btn.textContent=old; if(msg){ if(fails){ msg.style.color="var(--red)"; msg.textContent=fails+" couldn't save."; } else { msg.style.color="var(--ok)"; msg.textContent="Saved "+cells.length+" reading"+(cells.length===1?"":"s")+" ✓"; } } load(); return; }
+      var c=cells[k++];
+      fetch("/api/hotholding/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:c.date,kind:c.kind,item:c.item,temp:c.temp})})
+        .then(function(r){return r.json();}).then(function(d){ if(!(d&&d.ok)) fails++; next(); })
+        .catch(function(){ fails++; next(); });
+    })();
   }
-  function setMsg(t,c){ var m=document.getElementById("addMsg"); if(m){ m.textContent=t; m.style.color=c||"var(--muted)"; } }
+
+  /* ---- Edit items (admin) ---- */
+  function renderManage(){
+    if(!IS_MASTER) return;
+    var box=document.getElementById("mgList");
+    if(!CLIENT){ box.innerHTML="<div class='empty'>Pick a client first.</div>"; return; }
+    if(!ITEMS.length){ box.innerHTML="<div class='empty'>No items. Add one below.</div>"; return; }
+    box.innerHTML=ITEMS.map(function(it){
+      return "<div class='mgrow' data-id='"+esc(it.id)+"'>"+
+        "<input class='mgname' value='"+esc(it.name)+"' />"+
+        "<span class='modetoggle'><button type='button' data-kind='cooking' class='"+(it.kind==='cooking'?'on':'')+"'>Cooking</button><button type='button' data-kind='holding' class='"+(it.kind!=='cooking'?'on':'')+"'>Holding</button></span>"+
+        "<input type='number' class='mgmin' value='"+(it.min==null?"":esc(it.min))+"' placeholder='Min °F' />"+
+        "<button type='button' class='mgdel' title='Remove'>×</button>"+
+      "</div>";
+    }).join("");
+    Array.prototype.slice.call(box.querySelectorAll(".mgrow")).forEach(function(row){
+      var id=row.getAttribute("data-id");
+      function kindOf(){ var on=row.querySelector(".modetoggle button.on"); return on?on.getAttribute("data-kind"):"holding"; }
+      function save(){ fetch("/api/hotholding/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,name:row.querySelector(".mgname").value,kind:kindOf(),min:row.querySelector(".mgmin").value})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't save."); }); }
+      row.querySelector(".mgname").addEventListener("change", save);
+      row.querySelector(".mgmin").addEventListener("change", save);
+      Array.prototype.slice.call(row.querySelectorAll(".modetoggle button")).forEach(function(b){ b.addEventListener("click", function(){ Array.prototype.slice.call(row.querySelectorAll(".modetoggle button")).forEach(function(x){ x.classList.remove("on"); }); b.classList.add("on"); save(); }); });
+      row.querySelector(".mgdel").addEventListener("click", function(){ if(!confirm("Remove this item?")) return; fetch("/api/hotholding/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't remove."); }); });
+    });
+  }
+  function addItem(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var name=(document.getElementById("nName").value||"").trim(); if(!name) return;
+    var sort=(ITEMS.length?ITEMS[ITEMS.length-1].sort:0)+10;
+    fetch("/api/hotholding/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,name:name,kind:"holding",min:(document.getElementById("nMin").value||""),sort:sort})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ document.getElementById("nName").value=""; document.getElementById("nMin").value=""; load(); } else alert((d&&d.error)||"Couldn't add."); });
+  }
 </script>
 <script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>

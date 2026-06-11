@@ -107,6 +107,7 @@ export default {
     if (url.pathname === "/api/hotholding" && request.method === "GET") return listHotHolding(url, env, session);
     if (url.pathname === "/api/hotholding/add" && request.method === "POST") return addHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/delete" && request.method === "POST") return deleteHotHolding(request, env, session);
+    if (url.pathname === "/api/hotholding/item" && request.method === "POST") return saveHotHoldingItem(request, env, session);
     if (url.pathname === "/api/foodsafety/summary" && request.method === "GET") return foodSafetySummary(url, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
@@ -3733,16 +3734,37 @@ async function uploadAssessmentPhoto(request, env, session) {
 }
 
 /* ===================== Receiving Log ===================== */
-// Per-delivery entries: vendor, item, temperature, accepted/rejected, notes.
-// Lives in `receiving_logs`; degrades gracefully until the table exists.
+// Per-delivery entries, laid out weekly like the paper sheet: Date | Vendor |
+// Walk-in Refrigerator temp | Walk-in Freezer temp. `storage` says which column
+// the temp belongs in ('refrigerated' or 'frozen'). Lives in `receiving_logs`;
+// degrades gracefully until the table (and the storage column) exist.
+function weekRange(url) {
+  const okDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  let from = url.searchParams.get("from") || "", to = url.searchParams.get("to") || "";
+  if (!okDate(from) || !okDate(to)) {
+    const d = (url.searchParams.get("date") || "").slice(0, 10);
+    from = to = okDate(d) ? d : new Date().toISOString().slice(0, 10);
+  }
+  if (from > to) { const t = from; from = to; to = t; }
+  return { from, to };
+}
+
 async function listReceiving(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
-  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
-  if (!who.id) return noStore({ ok: true, client: who.name, date, entries: [] });
-  const rows = await sbSelect(env, `receiving_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,vendor,item,temp,status,notes,logged_by,created_at&order=created_at.asc`);
-  if (rows === null) return noStore({ ok: true, client: who.name, date, entries: [], missing: true });
-  return noStore({ ok: true, client: who.name, date, entries: (rows || []).map((r) => ({ id: r.id, vendor: r.vendor || "", item: r.item || "", temp: r.temp, status: r.status || "Accepted", notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+  const { from, to } = weekRange(url);
+  if (!who.id) return noStore({ ok: true, client: who.name, from, to, entries: [], storageOn: true });
+  const base = `receiving_logs?client_id=eq.${who.id}&log_date=gte.${from}&log_date=lte.${to}`;
+  // Try with the storage column; fall back without it so the page still works
+  // before the one-time migration.
+  let storageOn = true;
+  let rows = await sbSelect(env, `${base}&select=id,log_date,vendor,item,temp,status,storage,notes,logged_by,created_at&order=log_date.asc,created_at.asc`);
+  if (rows === null) {
+    storageOn = false;
+    rows = await sbSelect(env, `${base}&select=id,log_date,vendor,item,temp,status,notes,logged_by,created_at&order=log_date.asc,created_at.asc`);
+    if (rows === null) return noStore({ ok: true, client: who.name, from, to, entries: [], missing: true, storageOn: false });
+  }
+  return noStore({ ok: true, client: who.name, from, to, storageOn, entries: (rows || []).map((r) => ({ id: r.id, date: r.log_date || "", vendor: r.vendor || "", item: r.item || "", temp: r.temp, status: r.status || "Accepted", storage: r.storage === "frozen" ? "frozen" : "refrigerated", notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
 }
 
 async function addReceiving(request, env, session) {
@@ -3758,8 +3780,11 @@ async function addReceiving(request, env, session) {
   if (!vendor && !item) return json({ ok: false, error: "Enter a vendor or item." }, 400);
   const tp = parseFloat(body.temp); const temp = isNaN(tp) ? null : tp;
   const status = c(body.status) === "Rejected" ? "Rejected" : "Accepted";
+  const storage = c(body.storage) === "frozen" ? "frozen" : "refrigerated";
   const a = authorOf(session);
-  const res = await sbInsert(env, "receiving_logs", { client_id: who.id, log_date: date, vendor, item, temp, status, notes, logged_by: a.author });
+  const row = { client_id: who.id, log_date: date, vendor, item, temp, status, storage, notes, logged_by: a.author };
+  let res = await sbInsert(env, "receiving_logs", row);
+  if (!res.ok) { delete row.storage; res = await sbInsert(env, "receiving_logs", row); } // pre-migration fallback
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
   return json({ ok: true });
 }
@@ -3769,17 +3794,69 @@ async function deleteReceiving(request, env, session) {
 }
 
 /* ===================== Hot Holding / Cooking Temps ===================== */
-// Per-check entries: kind (cooking or hot holding), food item, temperature, notes.
-// Cooking flags below 165°F; hot holding flags below 135°F. Lives in
-// `hotholding_logs`; degrades gracefully until the table exists.
+// A weekly grid like the paper sheet: a few food items as columns (each with
+// its own minimum), days of the week as rows. The item list is a per-client
+// template in `hotholding_items` (admin-edited, seeded with defaults); the
+// readings live in `hotholding_logs` keyed by item name. Cooking defaults to a
+// 165°F minimum and hot holding to 135°F when an item has none.
+const HOTHOLDING_DEFAULTS = [
+  ["Hash Brown", "cooking", 165],
+  ["Single Egg", "cooking", 135],
+  ["Batch Egg", "cooking", 135],
+  ["Egg", "holding", 135],
+  ["Sausage", "holding", 135],
+];
+
 async function listHotHolding(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
-  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
-  if (!who.id) return noStore({ ok: true, client: who.name, date, entries: [] });
-  const rows = await sbSelect(env, `hotholding_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,kind,item,temp,notes,logged_by,created_at&order=created_at.asc`);
-  if (rows === null) return noStore({ ok: true, client: who.name, date, entries: [], missing: true });
-  return noStore({ ok: true, client: who.name, date, entries: (rows || []).map((r) => ({ id: r.id, kind: r.kind === "cooking" ? "cooking" : "holding", item: r.item || "", temp: r.temp, notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+  const { from, to } = weekRange(url);
+  if (!who.id) return noStore({ ok: true, client: who.name, from, to, items: [], entries: [], itemsOn: true });
+  const itemSel = `hotholding_items?client_id=eq.${who.id}&select=id,name,kind,min_temp,sort&order=sort.asc,created_at.asc`;
+  let itemsOn = true;
+  let items = await sbSelect(env, itemSel);
+  if (items === null) { itemsOn = false; items = []; }
+  // First time for this client: seed the standard items so the grid has columns.
+  if (itemsOn && items.length === 0 && can(session, "foodSafety", "edit")) {
+    await sbInsert(env, "hotholding_items", HOTHOLDING_DEFAULTS.map((d, i) => ({ client_id: who.id, name: d[0], kind: d[1], min_temp: d[2], sort: i * 10 })));
+    items = await sbSelect(env, itemSel) || [];
+  }
+  const rows = await sbSelect(env, `hotholding_logs?client_id=eq.${who.id}&log_date=gte.${from}&log_date=lte.${to}&select=id,log_date,kind,item,temp,notes,logged_by,created_at&order=created_at.asc`);
+  if (rows === null) return noStore({ ok: true, client: who.name, from, to, items: [], entries: [], missing: true, itemsOn });
+  return noStore({ ok: true, client: who.name, from, to, itemsOn,
+    items: (items || []).map((i) => ({ id: i.id, name: i.name || "", kind: i.kind === "cooking" ? "cooking" : "holding", min: i.min_temp, sort: i.sort || 0 })),
+    entries: (rows || []).map((r) => ({ id: r.id, date: r.log_date || "", kind: r.kind === "cooking" ? "cooking" : "holding", item: r.item || "", temp: r.temp, notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+}
+
+// Admin editor for the item columns (add / rename / re-kind / set min / delete).
+async function saveHotHoldingItem(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const id = (body.id || "").toString().trim();
+  if (body.delete && id) {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/hotholding_items?id=eq.${id}&client_id=eq.${who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+    return json({ ok: true });
+  }
+  const name = (body.name || "").toString().trim().slice(0, 120);
+  const kind = body.kind === "cooking" ? "cooking" : "holding";
+  if (!name) return json({ ok: false, error: "Enter a name." }, 400);
+  const mn = parseFloat(body.min); const min_temp = isNaN(mn) ? null : mn;
+  if (id) {
+    const patch = { name, kind, min_temp };
+    if (body.sort != null && !isNaN(parseInt(body.sort, 10))) patch.sort = parseInt(body.sort, 10);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/hotholding_items?id=eq.${id}&client_id=eq.${who.id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=representation" }), body: JSON.stringify(patch) });
+    if (!r.ok) return json({ ok: false, error: "Could not save." }, 502);
+    return json({ ok: true });
+  }
+  const sort = body.sort != null && !isNaN(parseInt(body.sort, 10)) ? parseInt(body.sort, 10) : 9990;
+  const res = await sbInsert(env, "hotholding_items", { client_id: who.id, name, kind, min_temp, sort });
+  if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
+  return json({ ok: true, item: res.data || null });
 }
 
 async function addHotHolding(request, env, session) {
