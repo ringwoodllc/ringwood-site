@@ -48,6 +48,7 @@
   .gcell:focus{border-color:var(--green);outline:none}
   .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep)}
   .gcell.logged.out{color:var(--red);background:rgba(138,61,28,.1)}
+  .gcell.scanned{background:rgba(169,99,58,.16);border-color:var(--clay);color:var(--clay)}
   /* Fit the whole week on a phone: tighter cells, wrapped headers, slim date column. */
   @media(max-width:600px){
     .wrap{padding-left:10px;padding-right:10px}
@@ -106,6 +107,11 @@
     <button type="button" class="wstep" id="wNext" title="Next week">▶</button>
   </div>
   <div id="note" class="note" style="display:none"></div>
+  <div id="scanRow" style="display:none;margin-bottom:14px">
+    <label class="btn ghost" for="scanInput" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="11" cy="13" r="3.2"/></svg> Scan a paper sheet</label>
+    <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
+    <span class="savemsg" id="scanMsg" style="margin-left:10px"></span>
+  </div>
 
   <div id="grid"><div class="empty">Loading…</div></div>
   <div class="saverow" id="saveBar" style="display:none"><button type="button" class="btn" id="saveBtn">✓ Save readings</button><span class="savemsg" id="saveMsg"></span></div>
@@ -181,6 +187,7 @@
 
   function render(){
     var el=document.getElementById("grid");
+    var sr=document.getElementById("scanRow"); if(sr) sr.style.display=(CAN_EDIT && ITEMS.length)?"":"none";
     if(!ITEMS.length){ el.innerHTML="<div class='empty'>No items yet."+(IS_MASTER?" Add a few in Edit items below.":"")+"</div>"; document.getElementById("saveBar").style.display="none"; return; }
     var cook=ITEMS.filter(function(i){return i.kind==="cooking";}), hold=ITEMS.filter(function(i){return i.kind!=="cooking";});
     var ordered=cook.concat(hold);
@@ -234,6 +241,40 @@
         .catch(function(){ fails++; next(); });
     })();
   }
+
+  /* ---- Scan a paper sheet: AI reads it and prefills the grid for review ---- */
+  function downscaleImage(file, cb){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){ var max=1800,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} } var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(url); cb(c.toDataURL("image/jpeg",0.9).split(",")[1],"image/jpeg"); };
+    img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
+    img.src=url;
+  }
+  function fillFromScan(readings){
+    var byKey={};
+    Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")).forEach(function(i){ byKey[i.getAttribute("data-item")+"|"+i.getAttribute("data-kind")+"|"+i.getAttribute("data-date")]=i; });
+    var filled=0;
+    readings.forEach(function(r){ var i=byKey[r.item+"|"+r.kind+"|"+r.date]; if(i){ i.value=r.temp; i.classList.add("scanned"); filled++; } });
+    return filled;
+  }
+  var scanInput=document.getElementById("scanInput");
+  if(scanInput) scanInput.addEventListener("change", function(e){
+    var f=e.target.files&&e.target.files[0]; this.value="";
+    if(!f) return;
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var msg=document.getElementById("scanMsg"); msg.style.color="var(--muted)"; msg.textContent="Reading the sheet… this takes a few seconds.";
+    downscaleImage(f, function(b64, ct){
+      if(!b64){ msg.style.color="var(--red)"; msg.textContent="Couldn't read that image."; return; }
+      fetch("/api/hotholding/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,from:iso(WSTART),to:iso(weekEnd()),imageBase64:b64,contentType:ct})})
+        .then(function(r){return r.json();}).then(function(d){
+          if(!(d&&d.ok)){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't read the sheet."; return; }
+          var n=fillFromScan(d.readings||[]);
+          var extra=(d.unmatched&&d.unmatched.length)?(" Couldn't match a column: "+d.unmatched.join(", ")+"."):"";
+          if(d.outsideWeek) extra+=" "+d.outsideWeek+" reading"+(d.outsideWeek===1?" was":"s were")+" for another week.";
+          if(n){ msg.style.color="var(--ok)"; msg.textContent="Filled "+n+" reading"+(n===1?"":"s")+" from the photo. Check the highlighted cells, then Save readings."+extra; }
+          else { msg.style.color="var(--red)"; msg.textContent="No readings matched this week's grid."+extra; }
+        }).catch(function(){ msg.style.color="var(--red)"; msg.textContent="No connection."; });
+    });
+  });
 
   /* ---- Edit items (admin) ---- */
   function renderManage(){

@@ -104,11 +104,13 @@ export default {
     if (url.pathname === "/api/assessment/file" && request.method === "POST") return fileAssessmentToBinder(request, env, session);
     if (url.pathname === "/api/receiving" && request.method === "GET") return listReceiving(url, env, session);
     if (url.pathname === "/api/receiving/add" && request.method === "POST") return addReceiving(request, env, session);
+    if (url.pathname === "/api/receiving/scan" && request.method === "POST") return scanReceiving(request, env, session);
     if (url.pathname === "/api/receiving/delete" && request.method === "POST") return deleteReceiving(request, env, session);
     if (url.pathname === "/api/receiving/update" && request.method === "POST") return updateReceiving(request, env, session);
     if (url.pathname === "/api/receiving/vendor" && request.method === "POST") return saveReceivingVendor(request, env, session);
     if (url.pathname === "/api/hotholding" && request.method === "GET") return listHotHolding(url, env, session);
     if (url.pathname === "/api/hotholding/add" && request.method === "POST") return addHotHolding(request, env, session);
+    if (url.pathname === "/api/hotholding/scan" && request.method === "POST") return scanHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/delete" && request.method === "POST") return deleteHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/update" && request.method === "POST") return updateHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/item" && request.method === "POST") return saveHotHoldingItem(request, env, session);
@@ -3476,11 +3478,11 @@ async function logTempGrid(request, env, session) {
 // unit names so the model maps each column to the right cooler, and match the
 // labels back to asset ids here.
 function normLabel(s) { return (s || "").toString().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
-function matchUnit(label, units) {
+function matchByName(label, rows) {
   const n = normLabel(label);
   if (!n) return null;
   let best = null, bestScore = 0;
-  for (const u of units) {
+  for (const u of rows) {
     for (const cand of [u.nickname, u.name]) {
       const c = normLabel(cand);
       if (!c) continue;
@@ -3496,6 +3498,34 @@ function matchUnit(label, units) {
     }
   }
   return bestScore >= 48 ? best : null;
+}
+
+// One Claude vision call that returns structured JSON for a scanned sheet, or
+// null. Shared by every "scan a paper sheet" endpoint (temps, hot holding,
+// receiving). Reads handwritten or computer-printed numbers alike.
+async function claudeReadSheet(base64, ct, prompt, schema, env) {
+  try {
+    const content = [
+      { type: "image", source: { type: "base64", media_type: ct, data: base64 } },
+      { type: "text", text: prompt },
+    ];
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-opus-4-8",
+        max_tokens: 4000,
+        thinking: { type: "adaptive" },
+        messages: [{ role: "user", content }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return null;
+    return JSON.parse(block.text);
+  } catch { return null; }
 }
 
 const TEMPSCAN_SCHEMA = {
@@ -3538,38 +3568,16 @@ async function scanTempLog(request, env, session) {
   const names = units.map((u) => "- " + (u.nickname ? u.nickname + " (" + u.name + ")" : u.name)).join("\n");
   const prompt =
     "This is a photo of a paper Cold Storage Temperature Log for a food business. The columns are coolers and freezers " +
-    "(units); each row is a reading at a date and time. Read every handwritten temperature you can see clearly and return one " +
-    "entry per filled cell.\n\n" +
+    "(units); each row is a reading at a date and time. Read every temperature you can see clearly, whether handwritten or " +
+    "computer printed, and return one entry per filled cell.\n\n" +
     "For each reading return:\n" +
     "- unit: the column header text for that cell, copied as printed.\n" +
     "- time: the row's time in 24h HH:MM if shown, otherwise an empty string.\n" +
-    "- temp: the handwritten number as a number (may be negative for freezers; keep one decimal if written).\n\n" +
+    "- temp: the number as a number (may be negative for freezers; keep one decimal if written).\n\n" +
     "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
     "This client's known units (match the column to the closest one, but still return the header text you see):\n" + names;
 
-  let read = null;
-  try {
-    const content = [
-      { type: "image", source: { type: "base64", media_type: ct, data: base64 } },
-      { type: "text", text: prompt },
-    ];
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-opus-4-8",
-        max_tokens: 4000,
-        thinking: { type: "adaptive" },
-        messages: [{ role: "user", content }],
-        output_config: { format: { type: "json_schema", schema: TEMPSCAN_SCHEMA } },
-      }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const block = (data.content || []).find((b) => b.type === "text");
-      if (block) read = JSON.parse(block.text);
-    }
-  } catch { read = null; }
+  const read = await claudeReadSheet(base64, ct, prompt, TEMPSCAN_SCHEMA, env);
   if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
 
   const out = [];
@@ -3577,12 +3585,114 @@ async function scanTempLog(request, env, session) {
   for (const r of read.readings) {
     const temp = parseFloat(r.temp);
     if (isNaN(temp)) continue;
-    const u = matchUnit(r.unit, units);
+    const u = matchByName(r.unit, units);
     const time = /^\d{1,2}:\d{2}$/.test((r.time || "").trim()) ? r.time.trim() : "";
     if (u) out.push({ assetId: u.id, unitName: u.nickname || u.name, label: r.unit || "", time, temp, out: tempUnitOut(temp, u.temp_min, u.temp_max) });
     else unmatched[normLabel(r.unit)] = r.unit || "(blank)";
   }
   return json({ ok: true, date, readings: out, matched: out.length, unmatched: Object.values(unmatched) });
+}
+
+// A reading on a weekly sheet: a column label, the row's date, and the number.
+const WEEKSCAN_SCHEMA = {
+  type: "object",
+  properties: {
+    readings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          column: { type: "string" },
+          date: { type: "string" },
+          temp: { type: "number" },
+        },
+        required: ["column", "date", "temp"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["readings"],
+  additionalProperties: false,
+};
+
+// Shared reader for the two weekly grids (hot holding, receiving). Columns are
+// the client's own template lines; rows are dates. Returns readings matched to a
+// column, with each date snapped into the displayed week where possible.
+async function scanWeekSheet(request, env, session, opts) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected. Add the ANTHROPIC_API_KEY in Cloudflare." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const base64 = (body.imageBase64 || "").toString();
+  const ct = (body.contentType || "image/jpeg").toString();
+  if (!base64) return json({ ok: false, error: "No photo." }, 400);
+  const okDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  const from = okDate(body.from) ? body.from : new Date().toISOString().slice(0, 10);
+  const to = okDate(body.to) ? body.to : from;
+  const cols = await opts.loadColumns(who.id);
+  if (cols === null) return json({ ok: false, error: opts.missingError }, 400);
+  if (!cols.length) return json({ ok: false, error: opts.emptyError }, 400);
+
+  const names = cols.map((c) => "- " + c.name).join("\n");
+  const prompt = opts.prompt(names, from, to);
+  const read = await claudeReadSheet(base64, ct, prompt, WEEKSCAN_SCHEMA, env);
+  if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
+
+  const out = [];
+  const unmatched = {};
+  let outsideWeek = 0;
+  for (const r of read.readings) {
+    const temp = parseFloat(r.temp);
+    if (isNaN(temp)) continue;
+    const col = matchByName(r.column, cols);
+    if (!col) { unmatched[normLabel(r.column)] = r.column || "(blank)"; continue; }
+    const date = (r.date || "").toString().slice(0, 10);
+    if (!okDate(date)) continue;
+    if (date < from || date > to) { outsideWeek++; continue; }
+    out.push(opts.toReading(col, date, temp));
+  }
+  return json({ ok: true, from, to, readings: out, matched: out.length, unmatched: Object.values(unmatched), outsideWeek });
+}
+
+async function scanHotHolding(request, env, session) {
+  return scanWeekSheet(request, env, session, {
+    loadColumns: (cid) => sbSelect(env, `hotholding_items?client_id=eq.${cid}&select=id,name,kind,min_temp`),
+    missingError: "The hot holding table isn't set up yet.",
+    emptyError: "No items set up yet. Add them in Edit items first.",
+    prompt: (names, from, to) =>
+      "This is a photo of a weekly Hot Holding / Cooking Temperature sheet for a food business. The columns are food items; " +
+      "each row is a date. Read every temperature you can see clearly, handwritten or computer printed, and return one entry " +
+      "per filled cell.\n\n" +
+      "For each reading return:\n" +
+      "- column: the item's column header text, copied as printed.\n" +
+      "- date: the row's date as YYYY-MM-DD. The sheet covers the week " + from + " to " + to + "; use that to fill in the year.\n" +
+      "- temp: the number as a number (keep one decimal if written).\n\n" +
+      "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
+      "This client's known items (match each column to the closest one):\n" + names,
+    toReading: (col, date, temp) => ({ item: col.name, kind: col.kind === "cooking" ? "cooking" : "holding", date, temp, out: (col.min_temp != null && temp < col.min_temp) }),
+  });
+}
+
+async function scanReceiving(request, env, session) {
+  return scanWeekSheet(request, env, session, {
+    loadColumns: (cid) => sbSelect(env, `receiving_vendors?client_id=eq.${cid}&select=id,name,storage`),
+    missingError: "The receiving table isn't set up yet.",
+    emptyError: "No vendor lines set up yet. Add them in Edit vendors first.",
+    prompt: (names, from, to) =>
+      "This is a photo of a weekly Receiving Log for a food business: deliveries checked in by vendor. The columns are vendor " +
+      "delivery lines; each row is a date; the cells are the temperature of that delivery. Read every temperature you can see " +
+      "clearly, handwritten or computer printed, and return one entry per filled cell.\n\n" +
+      "For each reading return:\n" +
+      "- column: the vendor line's column header text, copied as printed.\n" +
+      "- date: the row's date as YYYY-MM-DD. The sheet covers the week " + from + " to " + to + "; use that to fill in the year.\n" +
+      "- temp: the number as a number (keep one decimal if written).\n\n" +
+      "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
+      "This client's known vendor lines (match each column to the closest one):\n" + names,
+    toReading: (col, date, temp) => ({ vendor: col.name, storage: col.storage === "frozen" ? "frozen" : "refrigerated", date, temp }),
+  });
 }
 
 async function deleteTempLog(request, env, session) {
