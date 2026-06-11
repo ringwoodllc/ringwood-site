@@ -1,0 +1,15 @@
+{
+  "name": "apex-site",
+  "compatibility_date": "2025-06-01",
+  "main": "src/index.js",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    // Set to your Supabase project URL to store contact submissions.
+    // Add SUPABASE_SERVICE_KEY as a secret in the Cloudflare dashboard.
+    "SUPABASE_URL": ""
+  }
+}
