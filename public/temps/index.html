@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Temp Log" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Cold Storage Temperature Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);--red:#8a3d1c;--ok:#2f5d50}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:16px 0 14px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 14px}
+  label{display:block;font-weight:600;font-size:.88rem;color:var(--green-deep);margin-bottom:6px}
+  select,input[type=date],input[type=number],input[type=text]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  .row2{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .row2>div{flex:1;min-width:160px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:11px 16px;font:inherit;font-weight:600;font-size:.9rem}
+  .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
+  .btn:hover{filter:brightness(1.05)}
+  .unit{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:12px;overflow:hidden}
+  .uhead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px}
+  .uname{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .urange{color:var(--muted);font-size:.8rem;margin-top:2px}
+  .ustat{flex:0 0 auto;font-size:.74rem;font-weight:700;border-radius:999px;padding:2px 10px}
+  .ustat.ok{background:rgba(47,93,80,.14);color:var(--ok)}
+  .ustat.bad{background:rgba(138,61,28,.14);color:var(--red)}
+  .ustat.none{background:var(--line);color:var(--muted)}
+  .ubody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .read{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .read:last-child{border-bottom:none}
+  .rtemp{flex:0 0 auto;font-weight:700;font-size:1rem;min-width:62px}
+  .rtemp.out{color:var(--red)}
+  .rmeta{flex:1;min-width:0;color:var(--muted);font-size:.8rem}
+  .rdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .logrow{display:flex;gap:8px;align-items:center;margin-top:11px}
+  .logrow input{flex:1;min-width:0}
+  .logrow .btn{flex:0 0 auto}
+  .empty{color:var(--muted);padding:8px 0;font-size:.9rem}
+  .manage{margin-top:22px}
+  .mgrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
+  .mgrow:last-child{border-bottom:none}
+  .mgname{flex:1;min-width:130px;font-weight:600;color:var(--green-deep)}
+  .mgrange{display:flex;gap:6px;align-items:center}
+  .mgrange input{width:74px;padding:7px 8px;font-size:.9rem}
+  .mgrange span{color:var(--muted);font-size:.82rem}
+  .chk{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green-deep);font-size:.88rem;cursor:pointer}
+  .chk input{width:auto}
+  .mgsave{background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:6px;padding:7px 12px;font:inherit;font-weight:600;font-size:.84rem;cursor:pointer}
+  .secwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
+  .sechead:hover{background:rgba(33,68,58,.04)}
+  .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .hint{color:var(--muted);font-size:.82rem;margin:4px 0 8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/redbook">Red Book</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Food safety · Logs</div>
+    <h1>Cold Storage Temp Log</h1>
+    <p class="lead">Check each cooler and freezer and log the temperature. Readings outside the safe range flag red so they get caught and fixed.</p>
+  </div>
+
+  <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
+  <div class="row2">
+    <div><label for="dateSel">Date</label><input type="date" id="dateSel" /></div>
+  </div>
+  <div class="toolbar">
+    <button type="button" class="btn ghost" id="scanBtn">⃞ Scan a QR code</button>
+  </div>
+  <div id="note" class="note" style="display:none"></div>
+  <div id="units"><div class="empty">Loading…</div></div>
+
+  <div class="manage" id="manageWrap" style="display:none">
+    <div class="secwrap">
+      <div class="sechead" id="mgToggle"><span class="sectitle">Manage units</span><span class="back">Set up ▾</span></div>
+      <div class="secbody" id="mgBody" style="display:none">
+        <div class="hint">Mark which assets are coolers or freezers and set the safe range (°F). Only cold units show up in the daily log above.</div>
+        <div id="mgList"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="scanFile" accept="image/*" capture="environment" style="display:none" />
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", UNITS=[], READS=[], MISSING=false;
+
+  function today(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/temps"); return; }
+    IS_MASTER = d.role==="master";
+    var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
+    if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
+    CAN_EDIT = IS_MASTER || lvl==="edit";
+    DATE = today();
+    document.getElementById("dateSel").value = DATE;
+    document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
+    if(CAN_EDIT) document.getElementById("manageWrap").style.display="block";
+    if(IS_MASTER){
+      document.getElementById("clientPick").style.display="block";
+      fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+        var clients=(o&&o.clients)||[];
+        var sel=document.getElementById("clientSel");
+        sel.innerHTML="<option value=''>Select a client…</option>"+clients.map(function(c){return "<option>"+esc(c)+"</option>";}).join("");
+        sel.addEventListener("change", function(){ CLIENT=sel.value; load(); loadManage(); });
+      }).catch(function(){});
+      document.getElementById("units").innerHTML="<div class='empty'>Pick a client to see its cold units.</div>";
+    } else {
+      CLIENT = d.client||""; load(); loadManage();
+    }
+  }).catch(function(){});
+
+  function load(){
+    if(IS_MASTER && !CLIENT){ document.getElementById("units").innerHTML="<div class='empty'>Pick a client to see its cold units.</div>"; return; }
+    document.getElementById("units").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/temps?client="+encodeURIComponent(CLIENT)+"&date="+encodeURIComponent(DATE),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      var note=document.getElementById("note");
+      if(!d||!d.ok){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      MISSING=!!d.missing;
+      if(MISSING){ note.style.display="block"; note.textContent="The temperature log table isn't set up yet. Add it in Supabase (one-time), then readings save."; } else note.style.display="none";
+      UNITS=d.units||[]; READS=d.readings||[]; render();
+    }).catch(function(){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function outOf(temp,min,max){ if(temp==null||isNaN(temp)) return false; if(min!=null&&temp<min) return true; if(max!=null&&temp>max) return true; return false; }
+  function rangeText(min,max){ if(min==null&&max==null) return "No range set"; if(min!=null&&max!=null) return min+"° to "+max+"°F"; if(max!=null) return "≤ "+max+"°F"; return "≥ "+min+"°F"; }
+
+  function render(){
+    if(!UNITS.length){
+      document.getElementById("units").innerHTML="<div class='empty'>No cold units yet."+(CAN_EDIT?" Use Manage units below to mark a cooler or freezer.":"")+"</div>";
+      return;
+    }
+    var byUnit={}; READS.forEach(function(r){ (byUnit[r.assetId]=byUnit[r.assetId]||[]).push(r); });
+    var html = UNITS.map(function(u){
+      var rs=byUnit[u.id]||[];
+      var anyOut=rs.some(function(r){ return outOf(r.temp,u.min,u.max); });
+      var stat = rs.length ? (anyOut?"<span class='ustat bad'>Out of range</span>":"<span class='ustat ok'>In range</span>") : "<span class='ustat none'>Not checked</span>";
+      var reads = rs.length ? rs.map(function(r){
+        var out=outOf(r.temp,u.min,u.max);
+        var t=r.at?new Date(r.at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):"";
+        return "<div class='read'><span class='rtemp"+(out?" out":"")+"'>"+esc(r.temp)+"°F</span>"+
+          "<span class='rmeta'>"+esc(t)+(r.by?" · "+esc(r.by):"")+"</span>"+
+          (CAN_EDIT?"<button type='button' class='rdel' data-id='"+esc(r.id)+"' title='Remove'>×</button>":"")+
+        "</div>";
+      }).join("") : "<div class='empty'>No reading logged for this date.</div>";
+      var logrow = CAN_EDIT ? "<div class='logrow'><input type='number' inputmode='decimal' step='0.1' placeholder='Temp °F' id='t_"+esc(u.id)+"' /><button type='button' class='btn' data-log='"+esc(u.id)+"'>＋ Log</button></div>" : "";
+      return "<div class='unit'><div class='uhead'><div><div class='uname'>"+esc(u.name)+"</div><div class='urange'>"+esc(rangeText(u.min,u.max))+"</div></div>"+stat+"</div>"+
+        "<div class='ubody'>"+reads+logrow+"</div></div>";
+    }).join("");
+    document.getElementById("units").innerHTML=html;
+    Array.prototype.slice.call(document.querySelectorAll("[data-log]")).forEach(function(b){ b.addEventListener("click", function(){ doLog(b.getAttribute("data-log")); }); });
+    Array.prototype.slice.call(document.querySelectorAll(".rdel")).forEach(function(b){ b.addEventListener("click", function(){ if(!confirm("Remove this reading?")) return; fetch("/api/temps/log/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
+    Array.prototype.slice.call(document.querySelectorAll(".logrow input")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); doLog(i.id.replace("t_","")); } }); });
+  }
+
+  function doLog(assetId){
+    var inp=document.getElementById("t_"+assetId); if(!inp) return;
+    var v=parseFloat(inp.value);
+    if(isNaN(v)){ inp.focus(); return; }
+    inp.disabled=true;
+    fetch("/api/temps/log",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:assetId,temp:v,date:DATE})})
+      .then(function(r){return r.json();}).then(function(d){ inp.disabled=false; if(d&&d.ok){ inp.value=""; load(); } else alert((d&&d.error)||"Couldn't save."); })
+      .catch(function(){ inp.disabled=false; alert("Couldn't reach the server."); });
+  }
+
+  /* ---- Manage units (edit only) ---- */
+  function loadManage(){
+    if(!CAN_EDIT) return;
+    if(IS_MASTER && !CLIENT){ document.getElementById("mgList").innerHTML="<div class='empty'>Pick a client first.</div>"; return; }
+    document.getElementById("mgList").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/temps/units?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      var assets=d.assets||[];
+      if(!assets.length){ document.getElementById("mgList").innerHTML="<div class='empty'>No assets for this client yet.</div>"; return; }
+      document.getElementById("mgList").innerHTML = assets.map(function(a){
+        return "<div class='mgrow' data-aid='"+esc(a.id)+"'>"+
+          "<span class='mgname'>"+esc(a.name)+"</span>"+
+          "<label class='chk'><input type='checkbox' class='mg_cold'"+(a.coldUnit?" checked":"")+" /> Cold unit</label>"+
+          "<span class='mgrange'><input type='number' step='0.1' class='mg_min' placeholder='min' value='"+(a.min==null?"":esc(a.min))+"' /><span>to</span><input type='number' step='0.1' class='mg_max' placeholder='max' value='"+(a.max==null?"":esc(a.max))+"' /><span>°F</span></span>"+
+          "<button type='button' class='mgsave'>Save</button>"+
+        "</div>";
+      }).join("");
+      Array.prototype.slice.call(document.querySelectorAll("#mgList .mgsave")).forEach(function(b){ b.addEventListener("click", function(){ saveUnit(b.closest(".mgrow"), b); }); });
+    }).catch(function(){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function saveUnit(row, btn){
+    var aid=row.getAttribute("data-aid");
+    var cold=row.querySelector(".mg_cold").checked;
+    var min=row.querySelector(".mg_min").value;
+    var max=row.querySelector(".mg_max").value;
+    btn.disabled=true; btn.textContent="Saving…";
+    fetch("/api/temps/unit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:aid,coldUnit:cold,tempMin:min,tempMax:max})})
+      .then(function(r){return r.json();}).then(function(d){ btn.disabled=false; btn.textContent="Save"; if(d&&d.ok){ load(); } else alert((d&&d.error)||"Couldn't save."); })
+      .catch(function(){ btn.disabled=false; btn.textContent="Save"; alert("Couldn't reach the server."); });
+  }
+
+  document.getElementById("mgToggle").addEventListener("click", function(){
+    var b=document.getElementById("mgBody");
+    var open = b.style.display!=="block";
+    b.style.display = open?"block":"none";
+    this.querySelector(".back").textContent = open?"Hide ▴":"Set up ▾";
+    if(open) loadManage();
+  });
+
+  /* ---- Scan a QR code ---- */
+  document.getElementById("scanBtn").addEventListener("click", function(){
+    var code = prompt("Scan or type the asset's QR code or link:");
+    if(!code) return;
+    resolveAndJump(code.trim());
+  });
+  function resolveAndJump(code){
+    fetch("/api/asset/resolve?code="+encodeURIComponent(code)).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ alert((d&&d.error)||"No asset matches that code."); return; }
+      var card=document.querySelector(".unit [data-log='"+d.id+"']");
+      if(card){ var inp=document.getElementById("t_"+d.id); if(inp){ inp.scrollIntoView({behavior:"smooth",block:"center"}); inp.focus(); } return; }
+      alert("\""+(d.name||"That asset")+"\" isn't marked as a cold unit. Add it under Manage units first.");
+    }).catch(function(){ alert("Couldn't reach the server."); });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>

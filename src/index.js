@@ -88,6 +88,11 @@ export default {
     if (url.pathname === "/api/redbook" && request.method === "GET") return listRedbook(url, env, session);
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
+    if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
+    if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
+    if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
+    if (url.pathname === "/api/temps/log" && request.method === "POST") return logTemp(request, env, session);
+    if (url.pathname === "/api/temps/log/delete" && request.method === "POST") return deleteTempLog(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
@@ -135,6 +140,7 @@ export default {
       "/architecture": "/architecture/",
       "/parts": "/parts/",
       "/redbook": "/redbook/",
+      "/temps": "/temps/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -3039,6 +3045,106 @@ async function deleteRedbookDoc(request, env, session) {
     if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
   }
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/redbook_docs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+/* ===================== Cold Storage Temperature Log ===================== */
+// Phase 2 of the Red Book. Mark assets as cold units (cooler/freezer) with a
+// safe range, then log temperature readings per day. Readings live in the
+// `temp_logs` table; the cold-unit flag and range live on the asset itself
+// (temp_min, temp_max, cold_unit). Degrades gracefully until those exist.
+// Default safe ranges (Fahrenheit): cooler 32-41, freezer -10-0.
+
+function tempUnitOut(temp, min, max) {
+  if (temp == null || isNaN(temp)) return false;
+  if (min != null && temp < min) return true;
+  if (max != null && temp > max) return true;
+  return false;
+}
+
+// Confirm an asset is in the caller's scope, returning its row (or null).
+async function tempAssetInScope(env, assetId, clientId) {
+  if (!assetId) return null;
+  const rows = await sbSelect(env, `assets?id=eq.${assetId}&client_id=eq.${clientId}&select=id,name,nickname,temp_min,temp_max,cold_unit&limit=1`);
+  return rows && rows.length ? rows[0] : null;
+}
+
+async function listTemps(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  if (!who.id) return noStore({ ok: true, client: who.name, date, units: [], readings: [] });
+  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max&order=name.asc`);
+  if (units === null) return noStore({ ok: true, client: who.name, date, units: [], readings: [], missing: true });
+  const logs = await sbSelect(env, `temp_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,asset_id,temp,logged_by,reading_at&order=reading_at.asc`);
+  if (logs === null) return noStore({ ok: true, client: who.name, date, units: [], readings: [], missing: true });
+  const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max }));
+  const r = (logs || []).map((l) => ({ id: l.id, assetId: l.asset_id, temp: l.temp, by: l.logged_by || "", at: l.reading_at || "" }));
+  return noStore({ ok: true, client: who.name, date, units: u, readings: r });
+}
+
+async function listTempUnits(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  if (!who.id) return noStore({ ok: true, client: who.name, assets: [] });
+  const rows = await sbSelect(env, `assets?client_id=eq.${who.id}&select=id,name,nickname,temp_min,temp_max,cold_unit&order=name.asc`);
+  if (rows === null) return noStore({ ok: true, client: who.name, assets: [], missing: true });
+  return noStore({ ok: true, client: who.name, assets: (rows || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Asset", coldUnit: !!a.cold_unit, min: a.temp_min, max: a.temp_max })) });
+}
+
+async function setTempUnit(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const assetId = (body.assetId || "").toString().trim();
+  const inScope = await tempAssetInScope(env, assetId, who.id);
+  if (!inScope) return json({ ok: false, error: "Asset not found." }, 404);
+  const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const patch = { cold_unit: !!body.coldUnit, temp_min: num(body.tempMin), temp_max: num(body.tempMax) };
+  const res = await sbUpdate(env, "assets", assetId, patch);
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true });
+}
+
+async function logTemp(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const assetId = (body.assetId || "").toString().trim();
+  const inScope = await tempAssetInScope(env, assetId, who.id);
+  if (!inScope) return json({ ok: false, error: "Asset not found." }, 404);
+  const temp = parseFloat(body.temp);
+  if (isNaN(temp)) return json({ ok: false, error: "Enter a temperature." }, 400);
+  const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const a = authorOf(session);
+  const res = await sbInsert(env, "temp_logs", { asset_id: assetId, client_id: who.id, log_date: date, temp, logged_by: a.author });
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  const r = res.data || {};
+  const out = tempUnitOut(temp, inScope.temp_min, inScope.temp_max);
+  return json({ ok: true, reading: { id: r.id, assetId, temp, by: a.author, at: r.reading_at || "", out } });
+}
+
+async function deleteTempLog(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  // A client login may only delete its own client's readings.
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `temp_logs?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/temp_logs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
 }

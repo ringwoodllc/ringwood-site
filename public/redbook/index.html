@@ -54,6 +54,11 @@
   .coming{margin-top:22px}
   .coming .sectitle{opacity:.7}
   .cwrap{background:var(--bg-2);border:1px dashed var(--line);border-radius:8px;padding:14px 15px;color:var(--muted);font-size:.9rem}
+  .logcard{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 15px;text-decoration:none;color:inherit}
+  .logcard:hover{border-color:var(--green)}
+  .logtitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .logdesc{color:var(--muted);font-size:.86rem;margin-top:3px}
+  .loggo{flex:0 0 auto;color:var(--green-deep);font-weight:600;font-size:.9rem;border-bottom:1px solid var(--clay)}
 </style>
 </head>
 <body>
@@ -78,7 +83,14 @@
 
   <div class="coming">
     <h1 style="font-size:1.4rem;margin-bottom:6px">Logs</h1>
-    <div class="cwrap">Cold Storage Temperature Log, Receiving Log, Hot Holding / Cooking Temps, and the Daily Pre-Shift Checklist are coming next as fillable, asset-linked logs. For now, keep their PDFs in the sections above.</div>
+    <a href="/temps" class="logcard" id="tempsLink">
+      <div>
+        <div class="logtitle">Cold Storage Temperature Log</div>
+        <div class="logdesc">Mark coolers and freezers, set a safe range, and log readings each day. Out-of-range readings flag red.</div>
+      </div>
+      <span class="loggo">Open →</span>
+    </a>
+    <div class="cwrap" style="margin-top:10px">Receiving Log, Hot Holding / Cooking Temps, and the Daily Pre-Shift Checklist are coming next as fillable, asset-linked logs. For now, keep their PDFs in the sections above.</div>
   </div>
 </main>
 <script>
