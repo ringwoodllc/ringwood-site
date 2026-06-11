@@ -36,24 +36,35 @@
   .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:11px 16px;font:inherit;font-weight:600;font-size:.9rem}
   .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
   .btn:hover{filter:brightness(1.05)}
-  .unit{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:12px;overflow:hidden}
-  .uhead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px}
-  .uname{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
-  .urange{color:var(--muted);font-size:.8rem;margin-top:2px}
-  .ustat{flex:0 0 auto;font-size:.74rem;font-weight:700;border-radius:999px;padding:2px 10px}
-  .ustat.ok{background:rgba(47,93,80,.14);color:var(--ok)}
-  .ustat.bad{background:rgba(138,61,28,.14);color:var(--red)}
-  .ustat.none{background:var(--line);color:var(--muted)}
-  .ubody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .tlogwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:14px}
+  table.tlog{width:100%;border-collapse:collapse}
+  table.tlog th{text-align:left;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05)}
+  table.tlog th:nth-child(2){width:96px;text-align:center}
+  table.tlog th:nth-child(3){width:108px;text-align:right}
+  table.tlog td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.tlog tr:last-child td{border-bottom:none}
+  .u-name{font-weight:600;color:var(--green-deep);font-size:.98rem;line-height:1.2}
+  .u-range{color:var(--muted);font-size:.76rem;margin-top:1px}
+  .c-in{text-align:center}
+  .tinput{width:80px;font:inherit;font-size:1.05rem;font-weight:600;text-align:center;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 6px;-webkit-appearance:none;appearance:none}
+  .tinput:focus{border-color:var(--green);outline:none}
+  .c-last{text-align:right;white-space:nowrap}
+  .cell-temp{font-weight:700;font-size:1rem}
+  .cell-temp.out{color:var(--red)}
+  .cell-time{display:block;color:var(--muted);font-size:.72rem}
+  .cell-none{color:var(--muted);font-size:.8rem}
+  tr.flash{animation:flashrow 1.4s ease}
+  @keyframes flashrow{0%{background:rgba(169,99,58,.22)}100%{background:transparent}}
+  .saverow{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  .savebtn{font-size:1rem;padding:12px 22px}
+  .savemsg{font-size:.86rem;font-weight:600}
   .read{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
   .read:last-child{border-bottom:none}
   .rtemp{flex:0 0 auto;font-weight:700;font-size:1rem;min-width:62px}
   .rtemp.out{color:var(--red)}
   .rmeta{flex:1;min-width:0;color:var(--muted);font-size:.8rem}
   .rdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
-  .logrow{display:flex;gap:8px;align-items:center;margin-top:11px}
-  .logrow input{flex:1;min-width:0}
-  .logrow .btn{flex:0 0 auto}
+  .todaylog{margin-bottom:14px}
   .empty{color:var(--muted);padding:8px 0;font-size:.9rem}
   .manage{margin-top:22px}
   .mgrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
@@ -173,43 +184,72 @@
   function outOf(temp,min,max){ if(temp==null||isNaN(temp)) return false; if(min!=null&&temp<min) return true; if(max!=null&&temp>max) return true; return false; }
   function rangeText(min,max){ if(min==null&&max==null) return "No range set"; if(min!=null&&max!=null) return min+"° to "+max+"°F"; if(max!=null) return "≤ "+max+"°F"; return "≥ "+min+"°F"; }
 
+  function timeOf(s){ return s?new Date(s).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""; }
+
   function render(){
+    var el=document.getElementById("units");
     if(!UNITS.length){
-      document.getElementById("units").innerHTML="<div class='empty'>No cold units yet."+(CAN_EDIT?" Use Manage units below to mark a cooler or freezer.":"")+"</div>";
+      el.innerHTML="<div class='empty'>No cold units yet."+(CAN_EDIT?" Use Manage units below to mark a cooler or freezer.":"")+"</div>";
       return;
     }
     var byUnit={}; READS.forEach(function(r){ (byUnit[r.assetId]=byUnit[r.assetId]||[]).push(r); });
-    var html = UNITS.map(function(u){
+    // One row per unit: name + range, a new-reading box, and the latest reading today.
+    var rows = UNITS.map(function(u){
       var rs=byUnit[u.id]||[];
-      var anyOut=rs.some(function(r){ return outOf(r.temp,u.min,u.max); });
-      var stat = rs.length ? (anyOut?"<span class='ustat bad'>Out of range</span>":"<span class='ustat ok'>In range</span>") : "<span class='ustat none'>Not checked</span>";
-      var reads = rs.length ? rs.map(function(r){
-        var out=outOf(r.temp,u.min,u.max);
-        var t=r.at?new Date(r.at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):"";
-        return "<div class='read'><span class='rtemp"+(out?" out":"")+"'>"+esc(r.temp)+"°F</span>"+
-          (r.demo?"<span class='rtag'>DEMO</span>":"")+
-          "<span class='rmeta'>"+esc(t)+(r.by&&!r.demo?" · "+esc(r.by):"")+"</span>"+
-          (CAN_EDIT?"<button type='button' class='rdel' data-id='"+esc(r.id)+"' title='Remove'>×</button>":"")+
-        "</div>";
-      }).join("") : "<div class='empty'>No reading logged for this date.</div>";
-      var logrow = CAN_EDIT ? "<div class='logrow'><input type='number' inputmode='decimal' step='0.1' placeholder='Temp °F' id='t_"+esc(u.id)+"' /><button type='button' class='btn' data-log='"+esc(u.id)+"'>＋ Log</button></div>" : "";
-      return "<div class='unit'><div class='uhead'><div><div class='uname'>"+esc(u.name)+"</div><div class='urange'>"+esc(rangeText(u.min,u.max))+"</div></div>"+stat+"</div>"+
-        "<div class='ubody'>"+reads+logrow+"</div></div>";
+      var latest = rs.length ? rs[rs.length-1] : null;
+      var lastCell;
+      if(latest){
+        var out=outOf(latest.temp,u.min,u.max);
+        lastCell="<span class='cell-temp"+(out?" out":"")+"'>"+esc(latest.temp)+"°</span>"+
+          "<span class='cell-time'>"+esc(timeOf(latest.at))+(latest.demo?" · DEMO":"")+(rs.length>1?" · "+rs.length+"×":"")+"</span>";
+      } else lastCell="<span class='cell-none'>not checked</span>";
+      var inputCell = CAN_EDIT ? "<input type='number' inputmode='decimal' step='0.1' class='tinput' data-aid='"+esc(u.id)+"' placeholder='—' aria-label='Temperature for "+esc(u.name)+"' />" : "";
+      return "<tr id='row_"+esc(u.id)+"'>"+
+        "<td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div><div class='u-range'>"+esc(rangeText(u.min,u.max))+"</div></td>"+
+        "<td class='c-in'>"+inputCell+"</td>"+
+        "<td class='c-last'>"+lastCell+"</td>"+
+      "</tr>";
     }).join("");
-    document.getElementById("units").innerHTML=html;
-    Array.prototype.slice.call(document.querySelectorAll("[data-log]")).forEach(function(b){ b.addEventListener("click", function(){ doLog(b.getAttribute("data-log")); }); });
+    var table="<div class='tlogwrap'><table class='tlog'><thead><tr><th>Unit</th><th>New °F</th><th>Latest today</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+    var saveBtn = CAN_EDIT ? "<div class='saverow'><button type='button' class='btn savebtn' id='saveRound'>✓ Save readings</button><span class='savemsg' id='saveMsg'></span></div>" : "";
+    el.innerHTML = table + saveBtn + buildTodayLog(byUnit);
+
+    var sb=document.getElementById("saveRound");
+    if(sb) sb.addEventListener("click", saveRound);
+    Array.prototype.slice.call(document.querySelectorAll(".tinput")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveRound(); } }); });
+    var tl=document.getElementById("todayToggle");
+    if(tl) tl.addEventListener("click", function(){ var b=document.getElementById("todayBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; this.querySelector(".tlmore").textContent=open?"Hide ▴":"Show ▾"; });
     Array.prototype.slice.call(document.querySelectorAll(".rdel")).forEach(function(b){ b.addEventListener("click", function(){ if(!confirm("Remove this reading?")) return; fetch("/api/temps/log/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
-    Array.prototype.slice.call(document.querySelectorAll(".logrow input")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); doLog(i.id.replace("t_","")); } }); });
   }
 
-  function doLog(assetId){
-    var inp=document.getElementById("t_"+assetId); if(!inp) return;
-    var v=parseFloat(inp.value);
-    if(isNaN(v)){ inp.focus(); return; }
-    inp.disabled=true;
-    fetch("/api/temps/log",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:assetId,temp:v,date:DATE})})
-      .then(function(r){return r.json();}).then(function(d){ inp.disabled=false; if(d&&d.ok){ inp.value=""; load(); } else alert((d&&d.error)||"Couldn't save."); })
-      .catch(function(){ inp.disabled=false; alert("Couldn't reach the server."); });
+  // Collapsible full list of every reading logged for the selected date.
+  function buildTodayLog(byUnit){
+    if(!READS.length) return "";
+    var uName={}; UNITS.forEach(function(u){ uName[u.id]=u; });
+    var items = READS.slice().sort(function(a,b){ return (b.at||"").localeCompare(a.at||""); }).map(function(r){
+      var u=uName[r.assetId]||{}; var out=outOf(r.temp,u.min,u.max);
+      return "<div class='read'><span class='rtemp"+(out?" out":"")+"'>"+esc(r.temp)+"°F</span>"+
+        (r.demo?"<span class='rtag'>DEMO</span>":"")+
+        "<span class='rmeta'><b>"+esc(u.name||"Unit")+"</b> · "+esc(timeOf(r.at))+(r.by&&!r.demo?" · "+esc(r.by):"")+"</span>"+
+        (CAN_EDIT?"<button type='button' class='rdel' data-id='"+esc(r.id)+"' title='Remove'>×</button>":"")+
+      "</div>";
+    }).join("");
+    return "<div class='secwrap todaylog'><div class='sechead' id='todayToggle'><span class='sectitle'>Today's log ("+READS.length+")</span><span class='back tlmore'>Show ▾</span></div>"+
+      "<div class='secbody' id='todayBody' style='display:none'>"+items+"</div></div>";
+  }
+
+  function saveRound(){
+    var inputs=Array.prototype.slice.call(document.querySelectorAll(".tinput"));
+    var readings=[];
+    inputs.forEach(function(i){ var v=parseFloat(i.value); if(!isNaN(v)) readings.push({assetId:i.getAttribute("data-aid"), temp:v}); });
+    var msg=document.getElementById("saveMsg");
+    if(!readings.length){ if(msg){ msg.style.color="var(--muted)"; msg.textContent="Enter a temperature first."; } return; }
+    var btn=document.getElementById("saveRound"); btn.disabled=true; var old=btn.textContent; btn.textContent="Saving…";
+    fetch("/api/temps/round",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,readings:readings})})
+      .then(function(r){return r.json();}).then(function(d){ btn.disabled=false; btn.textContent=old;
+        if(d&&d.ok){ if(msg){ msg.style.color="var(--ok)"; msg.textContent="Saved "+d.count+" reading"+(d.count===1?"":"s")+" ✓"; } load(); }
+        else { if(msg){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't save."; } } })
+      .catch(function(){ btn.disabled=false; btn.textContent=old; if(msg){ msg.style.color="var(--red)"; msg.textContent="No connection"; } });
   }
 
   /* ---- Manage units (edit only) ---- */
@@ -288,8 +328,8 @@
   function resolveAndJump(code){
     fetch("/api/asset/resolve?code="+encodeURIComponent(code)).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok){ alert((d&&d.error)||"No asset matches that code."); return; }
-      var card=document.querySelector(".unit [data-log='"+d.id+"']");
-      if(card){ var inp=document.getElementById("t_"+d.id); if(inp){ inp.scrollIntoView({behavior:"smooth",block:"center"}); inp.focus(); } return; }
+      var inp=document.querySelector(".tinput[data-aid='"+d.id+"']");
+      if(inp){ var row=document.getElementById("row_"+d.id); if(row) row.classList.add("flash"); inp.scrollIntoView({behavior:"smooth",block:"center"}); inp.focus(); return; }
       alert("\""+(d.name||"That asset")+"\" isn't marked as a cold unit. Add it under Manage units first.");
     }).catch(function(){ alert("Couldn't reach the server."); });
   }

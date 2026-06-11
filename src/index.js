@@ -95,6 +95,7 @@ export default {
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
     if (url.pathname === "/api/temps/log" && request.method === "POST") return logTemp(request, env, session);
+    if (url.pathname === "/api/temps/round" && request.method === "POST") return logTempRound(request, env, session);
     if (url.pathname === "/api/temps/log/delete" && request.method === "POST") return deleteTempLog(request, env, session);
     if (url.pathname === "/api/temps/demo" && request.method === "POST") return setTempDemo(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
@@ -3310,6 +3311,37 @@ async function setTempDemo(request, env, session) {
     if (res.ok) count += Math.min(200, rows.length - i);
   }
   return json({ ok: true, on: true, count });
+}
+
+// Save a whole round at once (the table view): many units, one timestamp. Only
+// values for the client's own cold units are accepted.
+async function logTempRound(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const readings = Array.isArray(body.readings) ? body.readings : [];
+  if (!readings.length) return json({ ok: false, error: "Enter at least one temperature." }, 400);
+  // Verify every asset belongs to this client and is a cold unit (one query).
+  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id`);
+  if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
+  const ok = {}; (units || []).forEach((u) => { ok[u.id] = true; });
+  const a = authorOf(session);
+  const at = new Date().toISOString();
+  const rows = [];
+  for (const r of readings) {
+    const aid = (r.assetId || "").toString();
+    const temp = parseFloat(r.temp);
+    if (!ok[aid] || isNaN(temp)) continue;
+    rows.push({ asset_id: aid, client_id: who.id, log_date: date, temp, logged_by: a.author, reading_at: at });
+  }
+  if (!rows.length) return json({ ok: false, error: "Nothing to save." }, 400);
+  const res = await sbInsert(env, "temp_logs", rows);
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true, count: rows.length });
 }
 
 async function deleteTempLog(request, env, session) {
