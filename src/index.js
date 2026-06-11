@@ -3072,6 +3072,13 @@ function looksGenericTitle(t) {
 // plus the document date and expiry when they're visible. `source` is an
 // Anthropic content source: { type:"base64", media_type, data } or { type:"url", url }.
 // Conservative: only what's visible, nothing invented. Returns {title,date,expiry} or null.
+//
+// DATE RULE (do not forget, per Tamer): document dates here are plain calendar
+// dates (YYYY-MM-DD) with NO time and NO timezone — they go straight into the
+// `doc_date` / `expires_at` date columns as written, so there is no UTC shift to
+// worry about (unlike temp_logs.reading_at; see the TIMEZONE note on that table).
+// EXPIRY RULE: if the document shows no expiration, leave expiry blank and ignore
+// it. Never guess, compute, or default an expiry that is not printed on the doc.
 async function readDocFields(source, ct, section, env) {
   if (!env.ANTHROPIC_API_KEY) return null;
   const isPdf = (ct || "").indexOf("pdf") >= 0;
@@ -3083,8 +3090,9 @@ async function readDocFields(source, ct, section, env) {
     "permit, or ID (for example a NYC Food Protection Certificate or a food handler card), include the person's name, like " +
     "\"NYC Food Protection Certificate - Tamer\". Use the real agency or brand name shown (NYC Health, ServSafe, EcoSure). " +
     "No surrounding quotes and no trailing period.\n" +
-    "- date: the issue or performed date as YYYY-MM-DD if clearly shown, otherwise an empty string.\n" +
-    "- expiry: the expiration date as YYYY-MM-DD if shown, otherwise an empty string.\n" +
+    "- date: the issue or performed date as YYYY-MM-DD (a plain calendar date, no time) if clearly shown, otherwise an empty string.\n" +
+    "- expiry: the expiration date as YYYY-MM-DD ONLY if one is actually printed on the document. If there is no expiration, " +
+    "return an empty string. Never guess, calculate, or assume an expiry that is not written on the document.\n" +
     "Only use what is visible on the document. Do not invent names, dates, or facts.";
   const schema = { type: "object", properties: { title: { type: "string" }, date: { type: "string" }, expiry: { type: "string" } }, required: ["title", "date", "expiry"], additionalProperties: false };
   try {
@@ -3131,6 +3139,7 @@ async function uploadRedbookDoc(request, env, session) {
     if (read) {
       if (read.title && (looksGenericTitle(title) || body.autoName === true)) patch.title = read.title;
       if (read.date) patch.doc_date = read.date;
+      // No expiry printed on the document -> ignore it, never set one ourselves.
       if (read.expiry) patch.expires_at = read.expiry;
     }
   }
@@ -3664,8 +3673,11 @@ async function scanTempLog(request, env, session) {
   if (!base64) return json({ ok: false, error: "No photo." }, 400);
   const today = new Date().toISOString().slice(0, 10);
   const hint = (body.date || "").toString().slice(0, 10) || today;
-  // Minutes to add to local wall time to get UTC (browser's getTimezoneOffset), so
-  // reading_at is stored as a true instant that lands back on the same time slot.
+  // DATE/TIME RULE (do not forget, per Tamer): a scanned reading's time must be
+  // stored the SAME way manual entry stores it, or it lands a few hours off and
+  // shows in the wrong slot (see the TIMEZONE note on temp_logs above). The page
+  // sends its getTimezoneOffset(); we turn the local wall time into a true UTC
+  // instant below so 6 AM written on paper comes back as 6 AM in the grid.
   const tzOffset = Number.isFinite(+body.tzOffset) ? +body.tzOffset : 0;
   const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`);
   if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
