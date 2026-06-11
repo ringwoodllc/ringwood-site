@@ -90,6 +90,16 @@
   table.plan .pneed{width:58px;text-align:center;font:inherit;font-size:.95rem;font-weight:700;color:var(--clay);background:var(--bg);border:1px solid var(--clay);border-radius:5px;padding:6px 4px}
   table.plan .detail{font:inherit;font-size:.82rem;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);max-width:140px}
   table.plan .idel{background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:24px;height:24px;font:inherit;cursor:pointer}
+  table.plan .estv{font-weight:600;color:var(--green-deep)}
+  table.plan .expand{background:var(--green);color:#f6f2e8;border:none;border-radius:999px;width:22px;height:22px;font:inherit;font-weight:700;line-height:1;cursor:pointer;vertical-align:middle}
+  table.plan td.prod{vertical-align:middle}
+  .detailrow td{background:var(--bg);text-align:left !important;padding:10px !important}
+  .pcards{display:flex;flex-wrap:wrap;gap:10px}
+  .pcard{display:flex;flex-direction:column;align-items:center;gap:4px;width:104px}
+  .pcard .thumb{width:104px;height:104px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in}
+  .pcard .nopic{width:104px;height:104px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:.74rem;background:var(--bg-2);border:1px dashed var(--line);border-radius:8px}
+  .pcard .pcap{font-size:.74rem;color:var(--muted);text-align:center;line-height:1.25}
+  .pcard .pcap b{color:var(--green-deep)}
   .ordcol{cursor:pointer}
   .ordcol:hover{text-decoration:underline}
   .editor{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
@@ -303,10 +313,17 @@
       html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th><th></th></tr></thead><tbody>";
       gs.forEach(function(g){
         var ocells = maps.length ? maps.map(function(x){ var q=x.m[g.key]; return "<td>"+(q?fmtQ(q):"<span class='zero'>·</span>")+"</td>"; }).join("") : "<td class='zero'>·</td><td class='zero'>·</td><td class='zero'>·</td>";
-        var opts=g.items.map(function(it){ var loc=(it.placement||"somewhere"); var detail=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+kindShort(it.kind)); return "<option>"+esc(loc+" · "+detail)+"</option>"; }).join("");
-        var dd="<select class='detail' title='Where it is'><option>"+esc(estimateOf(g))+"</option>"+opts+"</select>";
+        var onhand="<span class='estv'>"+esc(estimateOf(g))+"</span> <button type='button' class='expand' title='Show the photos behind this'>+</button>";
         var need=g.items[0].need;
-        html+="<tr data-key='"+esc(g.key)+"'><td class='prod'><input class='pname' value='"+esc(g.name)+"' placeholder='Flavor' /></td>"+ocells+"<td>"+dd+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td><td><button type='button' class='idel' title='Remove'>×</button></td></tr>";
+        html+="<tr data-key='"+esc(g.key)+"'><td class='prod'><input class='pname' value='"+esc(g.name)+"' placeholder='Flavor' /></td>"+ocells+"<td>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td><td><button type='button' class='idel' title='Remove'>×</button></td></tr>";
+        // Hidden detail row: the photo(s) and reading that make up this estimate.
+        var cards=g.items.map(function(it){
+          var ph=PHOTOS.filter(function(p){return p.id===it.photo_id;})[0];
+          var img=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"<div class='nopic'>added by hand</div>";
+          var d=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+(kindShort(it.kind)||"unit"+(parseFloat(it.qty)===1?"":"s")));
+          return "<div class='pcard'>"+img+"<div class='pcap'><b>"+esc(d)+"</b><br>"+esc(it.placement||"somewhere")+"</div></div>";
+        }).join("");
+        html+="<tr class='detailrow hide' data-for='"+esc(g.key)+"'><td colspan='"+(ncols+4)+"'><div class='pcards'>"+cards+"</div></td></tr>";
       });
       html+="</tbody></table></div>";
     });
@@ -314,6 +331,12 @@
     Array.prototype.slice.call(box.querySelectorAll("tr[data-key]")).forEach(function(tr){
       var g=groups[tr.getAttribute("data-key")];
       var nameInp=tr.querySelector(".pname"), needInp=tr.querySelector(".pneed");
+      var exp=tr.querySelector(".expand");
+      if(exp) exp.addEventListener("click", function(){
+        var dr=tr.nextElementSibling;
+        if(!dr||dr.className.indexOf("detailrow")<0) return;
+        var open=dr.classList.toggle("hide")===false; exp.textContent=open?"−":"+";
+      });
       nameInp.addEventListener("change", function(){ var v=nameInp.value; g.items.forEach(function(it){ it.product=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,product:v})}); }); renderBuy(); });
       needInp.addEventListener("change", function(){ var v=needInp.value; var it=g.items[0]; it.need=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,need:v})}); renderBuy(); });
       tr.querySelector(".idel").addEventListener("click", function(){
