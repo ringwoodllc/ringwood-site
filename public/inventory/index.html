@@ -298,13 +298,22 @@
   function fullLabel(f){ return f==="full"?"Full":(f==="half"?"~Half":(f==="low"?"Low":"—")); }
   function kindShort(k){ return k==="pack"?"pack":(k==="tub"?"tub":(k==="other"?"":"")); }
   function shortDate(s){ var p=(s||"").slice(0,10).split("-"); return p.length===3?(+p[1])+"/"+(+p[2]):s; }
+  // The order form's real sections. Tubs and quarts first so flavor names that
+  // contain words like "Bar" (Pistachio Choc Bar 3G) aren't miscategorized.
+  var INV_CATS=["3 Gallon Tubs","Quarts","Beverages","Ice Cream Cakes","Ice Cream Layers","Miscellaneous","Non-Ice Cream Cakes","Novelties","Toppings","Other"];
   function catOf(product, kind){
-    if(kind==="cabinet"||kind==="tub") return "3 Gallon";
-    if(kind==="pack") return "Quarts & Packs";
+    if(kind==="cabinet"||kind==="tub") return "3 Gallon Tubs";
     var n=(product||"").toLowerCase();
-    if(/\bqt\b|quart/.test(n)) return "Quarts & Packs";
-    if(/cake|sheet|6 ?pk|\bpk\b|bars|diced/.test(n)) return "Cakes & Novelty";
-    return "3 Gallon";
+    if(/\b3 ?g\b|3 ?gal|gallon|ic 3g|\bshb\b|\bnsa\b|3g$/.test(n)) return "3 Gallon Tubs";
+    if(/\bqt\b|quart/.test(n) || kind==="pack") return "Quarts";
+    if(/ic layer|\blyr\b| layer /.test(n)) return "Ice Cream Layers";
+    if(/roll cake|fudge crunch/.test(n)) return "Ice Cream Cakes";
+    if(/cake iw|sheet (choc|confetti|white|fudge)|(rd|round) (choc|confetti|white) cake/.test(n)) return "Non-Ice Cream Cakes";
+    if(/coating|topping|topper|whpd|whip|almond|pastry pride|\bcrm\b/.test(n)) return "Toppings";
+    if(/4 ?pk|novelt|\bbars?\b/.test(n)) return "Novelties";
+    if(/blast|cappuc|beverage|smoothie|shake/.test(n)) return "Beverages";
+    if(/diced|brownie sheet|pizza crust/.test(n)) return "Miscellaneous";
+    return "3 Gallon Tubs";
   }
   function baseKey(product){
     var n=(product||"").toLowerCase();
@@ -321,7 +330,7 @@
     return "≈ "+fmtQ(t)+(cab&&!sealed?(" tub"+(t===1?"":"s")):"");
   }
 
-  function catKind(cat){ return cat==="Quarts & Packs"?"pack":(cat==="Cakes & Novelty"?"other":"tub"); }
+  function catKind(cat){ return cat==="Quarts"?"pack":(cat==="3 Gallon Tubs"?"tub":"other"); }
   function estVal(items){ var t=0; items.forEach(function(it){ t+= it.kind==="cabinet"?fullVal(it.fullness):(parseFloat(it.qty)||0); }); return t; }
   // On-hand = your manual override if set, otherwise the AI estimate from photos.
   function ohOf(items){ if(items.length && items[0].onhand!=null && items[0].onhand!==""){ var v=parseFloat(items[0].onhand); if(!isNaN(v)) return v; } return items.length?estVal(items):0; }
@@ -339,7 +348,7 @@
     ALL_PRODUCTS.forEach(function(n){ add(n,""); });
     (ORD3||[]).forEach(function(o){ (o.items||[]).forEach(function(it){ if(it.product) add(it.product,""); }); });
     ITEMS.forEach(function(it){ if(it.product){ var k=ordKey(it.product,it.kind); if(!seen[k]) add(it.product, it.kind); } });
-    var cats=["3 Gallon","Quarts & Packs","Cakes & Novelty","Other"];
+    var cats=INV_CATS;
     var byCat={}; cats.forEach(function(c){byCat[c]=[];});
     list.forEach(function(p){ (byCat[p.cat]||byCat["Other"]).push(p); });
     var ohdr = maps.length ? maps.map(function(x,i){ var lbl=maps.length===1?"Last":(i===0?"Oldest":(i===maps.length-1?"Last":"Prior")); return "<th title='"+esc(orderLabel(x.o))+"'>"+lbl+"<div style='font-weight:400;text-transform:none;font-size:.7rem'>"+esc(shortDate(x.o.order_date))+"</div></th>"; }).join("") : "<th>Order 1</th><th>Order 2</th><th>Last</th>";
@@ -490,7 +499,7 @@
     if(!ORDERS.length){ box.innerHTML="<div class='empty'>No orders yet. Upload an order and the trend builds here.</div>"; return; }
     // Group products by the same categories as the plan (3 Gallon, Quarts & Packs, …).
     var prods={}; ORDERS.forEach(function(o){ (o.items||[]).forEach(function(it){ var p=(it.product||"").trim(); if(p) prods[p]=true; }); });
-    var cats=["3 Gallon","Quarts & Packs","Cakes & Novelty","Other"];
+    var cats=INV_CATS;
     var byCat={}; cats.forEach(function(c){byCat[c]=[];});
     Object.keys(prods).forEach(function(p){ (byCat[catOf(p,"")]||byCat["Other"]).push(p); });
     var head="<tr><th class='prod'>Flavor</th>"+ORDERS.map(function(o,i){ var amt=(o.amount!=null&&o.amount!=="")?("<div style='font-weight:400;text-transform:none;font-size:.68rem;color:var(--muted)'>$"+esc(o.amount)+"</div>"):""; return "<th class='ordcol' data-i='"+i+"' title='Tap to edit'>"+esc(orderLabel(o))+amt+"</th>"; }).join("")+"</tr>";
