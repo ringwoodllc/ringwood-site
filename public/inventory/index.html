@@ -89,6 +89,12 @@
   table.plan .pname{width:100%;min-width:130px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 8px}
   table.plan .pneed{width:58px;text-align:center;font:inherit;font-size:.95rem;font-weight:700;color:var(--clay);background:var(--bg);border:1px solid var(--clay);border-radius:5px;padding:6px 4px}
   table.plan .ponhand{width:56px;text-align:center;font:inherit;font-size:.92rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 4px}
+  /* Compact (mobile) view: short names, tight columns, fits without scrolling. */
+  table.plan.compact{font-size:.72rem}
+  table.plan.compact th,table.plan.compact td{padding:3px 2px}
+  table.plan.compact th.prod,table.plan.compact td.prod{min-width:0;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74rem}
+  table.plan.compact .ponhand,table.plan.compact .pneed{width:34px;padding:3px 1px;font-size:.78rem}
+  table.plan.compact .expand{display:none}
   table.plan .detail{font:inherit;font-size:.82rem;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);max-width:140px}
   table.plan .idel{background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:24px;height:24px;font:inherit;cursor:pointer}
   table.plan .estv{font-weight:600;color:var(--green-deep)}
@@ -167,7 +173,7 @@
       <span class="msg" id="photoMsg"></span>
     </div>
     <div id="photos" class="photos"></div>
-    <div class="toolbar"><label class="chk"><input type="checkbox" id="hideEmpty" /> Hide flavors with nothing on hand and never ordered</label></div>
+    <div class="toolbar"><label class="chk"><input type="checkbox" id="hideEmpty" /> Hide flavors with nothing on hand and never ordered</label><label class="chk"><input type="checkbox" id="compact" /> Compact</label></div>
     <div id="items"></div>
     <div class="grp">Buy list</div>
     <div id="buy" class="buy"><div class="empty">Set "Need" on items above and they collect here.</div></div>
@@ -268,6 +274,18 @@
   }
   document.getElementById("backToList").addEventListener("click", function(){ showList(); loadCounts(); });
   document.getElementById("hideEmpty").addEventListener("change", function(){ if(CUR) renderPlan(); });
+  document.getElementById("compact").addEventListener("change", function(){ if(CUR) renderPlan(); });
+  // Shorthand flavor names for the compact (mobile) view; full name stays in the tooltip.
+  function shortName(n){
+    return (n||"").replace(/Chocolate/gi,"Choc").replace(/Cookies/gi,"Ckys").replace(/Cookie/gi,"Cky")
+      .replace(/Strawberries/gi,"Strwb").replace(/Strawberry/gi,"Strwb").replace(/Vanilla/gi,"Van")
+      .replace(/Pralines/gi,"Prln").replace(/Pistachio/gi,"Pist").replace(/Caramel/gi,"Crml")
+      .replace(/Almonds?/gi,"Almd").replace(/Peanut Butter/gi,"PB").replace(/Rainbow/gi,"Rnbw")
+      .replace(/Sherbet/gi,"Shbt").replace(/Beach Day/gi,"Bch Day").replace(/Birthday/gi,"Bday")
+      .replace(/Cheesecake/gi,"Chzcake").replace(/\bMint\b/gi,"Mnt").replace(/Crunch/gi,"Crnch")
+      .replace(/Cappuccino/gi,"Capp").replace(/Fudge/gi,"Fdg").replace(/Butter Pecan/gi,"Btr Pecan")
+      .replace(/Cotton Candy/gi,"Cttn Candy").replace(/\s+/g," ").trim();
+  }
   document.getElementById("deleteCountBtn").addEventListener("click", function(){
     if(!CUR) return;
     if(!confirm("Delete this whole count, including its photos and items?")) return;
@@ -338,6 +356,7 @@
   function renderPlan(){
     var box=document.getElementById("items");
     var he=document.getElementById("hideEmpty"); var hideEmpty=he&&he.checked;
+    var ce=document.getElementById("compact"); var compact=ce&&ce.checked;
     var maps=orderMaps();
     // On-hand from the photos, grouped by flavor.
     var groups={}; ITEMS.forEach(function(it){ var k=ordKey(it.product,it.kind); (groups[k]=groups[k]||[]).push(it); });
@@ -370,14 +389,14 @@
         var exp = items.length ? " <button type='button' class='expand' title='Show the photos behind this'>+</button>" : "";
         var onhand = "<input class='ponhand' type='number' min='0' step='0.25' value='"+(ohShown===""?"":esc(ohShown))+"' placeholder='0' />"+exp;
         var need=items.length?items[0].need:null;
-        rows+="<tr data-key='"+esc(p.key)+"'><td class='prod'>"+esc(p.name)+"</td>"+ocells+"<td class='ohcell'>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td></tr>";
+        rows+="<tr data-key='"+esc(p.key)+"'><td class='prod' title='"+esc(p.name)+"'>"+esc(compact?shortName(p.name):p.name)+"</td>"+ocells+"<td class='ohcell'>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td></tr>";
         if(items.length){
           var cards=items.map(function(it){ var ph=PHOTOS.filter(function(z){return z.id===it.photo_id;})[0]; var img=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"<div class='nopic'>added by hand</div>"; var dd=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+(kindShort(it.kind)||"unit")); return "<div class='pcard'>"+img+"<div class='pcap'><b>"+esc(dd)+"</b><br>"+esc(it.placement||"somewhere")+"</div></div>"; }).join("");
           rows+="<tr class='detailrow hide'><td colspan='"+(ncols+3)+"'><div class='pcards'>"+cards+"</div></td></tr>";
         }
       });
       if(!rows) return;
-      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan"+(compact?" compact":"")+"'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
     });
     if(!shown){ box.innerHTML="<div class='empty'>"+(hideEmpty?"Nothing on hand or on order yet. Untick the hide box to see the full order form.":"Loading the order form…")+"</div>"; return; }
     box.innerHTML=html;
