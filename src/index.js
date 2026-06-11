@@ -3537,10 +3537,11 @@ const TEMPSCAN_SCHEMA = {
         type: "object",
         properties: {
           unit: { type: "string" },
+          date: { type: "string" },
           time: { type: "string" },
           temp: { type: "number" },
         },
-        required: ["unit", "time", "temp"],
+        required: ["unit", "date", "time", "temp"],
         additionalProperties: false,
       },
     },
@@ -3548,6 +3549,16 @@ const TEMPSCAN_SCHEMA = {
   required: ["readings"],
   additionalProperties: false,
 };
+
+// Insert rows in chunks so the request body stays small; returns how many saved.
+async function insertChunks(env, table, rows) {
+  let saved = 0;
+  for (let i = 0; i < rows.length; i += 200) {
+    const res = await sbInsert(env, table, rows.slice(i, i + 200));
+    if (res.ok) saved += Math.min(200, rows.length - i);
+  }
+  return saved;
+}
 
 async function scanTempLog(request, env, session) {
   if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
@@ -3560,7 +3571,7 @@ async function scanTempLog(request, env, session) {
   const base64 = (body.imageBase64 || "").toString();
   const ct = (body.contentType || "image/jpeg").toString();
   if (!base64) return json({ ok: false, error: "No photo." }, 400);
-  const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const hint = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
   const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`);
   if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
   if (!units.length) return json({ ok: false, error: "No cold units set up yet. Add them in Manage units first." }, 400);
@@ -3569,9 +3580,10 @@ async function scanTempLog(request, env, session) {
   const prompt =
     "This is a photo of a paper Cold Storage Temperature Log for a food business. The columns are coolers and freezers " +
     "(units); each row is a reading at a date and time. Read every temperature you can see clearly, whether handwritten or " +
-    "computer printed, and return one entry per filled cell.\n\n" +
+    "computer printed, and return one entry per filled cell. Read every date on the sheet, not just one day.\n\n" +
     "For each reading return:\n" +
     "- unit: the column header text for that cell, copied as printed.\n" +
+    "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", so use that for the year.\n" +
     "- time: the row's time in 24h HH:MM if shown, otherwise an empty string.\n" +
     "- temp: the number as a number (may be negative for freezers; keep one decimal if written).\n\n" +
     "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
@@ -3580,17 +3592,27 @@ async function scanTempLog(request, env, session) {
   const read = await claudeReadSheet(base64, ct, prompt, TEMPSCAN_SCHEMA, env);
   if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
 
-  const out = [];
+  const okDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  const a = authorOf(session);
+  const rows = [];
   const unmatched = {};
+  const dates = {};
   for (const r of read.readings) {
     const temp = parseFloat(r.temp);
     if (isNaN(temp)) continue;
     const u = matchByName(r.unit, units);
+    if (!u) { unmatched[normLabel(r.unit)] = r.unit || "(blank)"; continue; }
+    const d = (r.date || "").toString().slice(0, 10);
+    const date = okDate(d) ? d : hint;
     const time = /^\d{1,2}:\d{2}$/.test((r.time || "").trim()) ? r.time.trim() : "";
-    if (u) out.push({ assetId: u.id, unitName: u.nickname || u.name, label: r.unit || "", time, temp, out: tempUnitOut(temp, u.temp_min, u.temp_max) });
-    else unmatched[normLabel(r.unit)] = r.unit || "(blank)";
+    const row = { asset_id: u.id, client_id: who.id, log_date: date, temp, logged_by: a.author };
+    if (time) { const t = time.split(":"); row.reading_at = `${date}T${String(+t[0]).padStart(2, "0")}:${String(+t[1]).padStart(2, "0")}:00`; }
+    rows.push(row);
+    dates[date] = true;
   }
-  return json({ ok: true, date, readings: out, matched: out.length, unmatched: Object.values(unmatched) });
+  if (!rows.length) return json({ ok: false, error: "Couldn't match any readings to your units." + (Object.keys(unmatched).length ? " Columns seen: " + Object.values(unmatched).join(", ") : ""), unmatched: Object.values(unmatched) }, 200);
+  const saved = await insertChunks(env, "temp_logs", rows);
+  return json({ ok: true, saved, dates: Object.keys(dates).sort(), unmatched: Object.values(unmatched) });
 }
 
 // A reading on a weekly sheet: a column label, the row's date, and the number.
@@ -3616,8 +3638,9 @@ const WEEKSCAN_SCHEMA = {
 };
 
 // Shared reader for the two weekly grids (hot holding, receiving). Columns are
-// the client's own template lines; rows are dates. Returns readings matched to a
-// column, with each date snapped into the displayed week where possible.
+// the client's own template lines; rows are dates. Reads every date on the sheet
+// and saves the readings straight to the log, so a scan needs no follow-up Save
+// and isn't limited to the week on screen.
 async function scanWeekSheet(request, env, session, opts) {
   if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
@@ -3630,20 +3653,20 @@ async function scanWeekSheet(request, env, session, opts) {
   const ct = (body.contentType || "image/jpeg").toString();
   if (!base64) return json({ ok: false, error: "No photo." }, 400);
   const okDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
-  const from = okDate(body.from) ? body.from : new Date().toISOString().slice(0, 10);
-  const to = okDate(body.to) ? body.to : from;
+  const hint = okDate(body.from) ? body.from : new Date().toISOString().slice(0, 10);
   const cols = await opts.loadColumns(who.id);
   if (cols === null) return json({ ok: false, error: opts.missingError }, 400);
   if (!cols.length) return json({ ok: false, error: opts.emptyError }, 400);
 
   const names = cols.map((c) => "- " + c.name).join("\n");
-  const prompt = opts.prompt(names, from, to);
+  const prompt = opts.prompt(names, hint);
   const read = await claudeReadSheet(base64, ct, prompt, WEEKSCAN_SCHEMA, env);
   if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
 
-  const out = [];
+  const a = authorOf(session);
+  const rows = [];
   const unmatched = {};
-  let outsideWeek = 0;
+  const dates = {};
   for (const r of read.readings) {
     const temp = parseFloat(r.temp);
     if (isNaN(temp)) continue;
@@ -3651,47 +3674,57 @@ async function scanWeekSheet(request, env, session, opts) {
     if (!col) { unmatched[normLabel(r.column)] = r.column || "(blank)"; continue; }
     const date = (r.date || "").toString().slice(0, 10);
     if (!okDate(date)) continue;
-    if (date < from || date > to) { outsideWeek++; continue; }
-    out.push(opts.toReading(col, date, temp));
+    rows.push(opts.row(col, date, temp, who.id, a.author));
+    dates[date] = true;
   }
-  return json({ ok: true, from, to, readings: out, matched: out.length, unmatched: Object.values(unmatched), outsideWeek });
+  if (!rows.length) return json({ ok: false, error: "Couldn't match any readings to your columns." + (Object.keys(unmatched).length ? " Columns seen: " + Object.values(unmatched).join(", ") : ""), unmatched: Object.values(unmatched) }, 200);
+  let saved = await insertChunks(env, opts.table, rows);
+  // Pre-migration fallback (e.g. receiving_logs without the storage column).
+  if (saved === 0 && opts.retryWithout) {
+    const stripped = rows.map((r) => { const c = { ...r }; opts.retryWithout.forEach((k) => delete c[k]); return c; });
+    saved = await insertChunks(env, opts.table, stripped);
+  }
+  return json({ ok: true, saved, dates: Object.keys(dates).sort(), unmatched: Object.values(unmatched) });
 }
 
 async function scanHotHolding(request, env, session) {
   return scanWeekSheet(request, env, session, {
+    table: "hotholding_logs",
     loadColumns: (cid) => sbSelect(env, `hotholding_items?client_id=eq.${cid}&select=id,name,kind,min_temp`),
     missingError: "The hot holding table isn't set up yet.",
     emptyError: "No items set up yet. Add them in Edit items first.",
-    prompt: (names, from, to) =>
-      "This is a photo of a weekly Hot Holding / Cooking Temperature sheet for a food business. The columns are food items; " +
+    prompt: (names, hint) =>
+      "This is a photo of a Hot Holding / Cooking Temperature sheet for a food business. The columns are food items; " +
       "each row is a date. Read every temperature you can see clearly, handwritten or computer printed, and return one entry " +
-      "per filled cell.\n\n" +
+      "per filled cell. Read every date on the sheet, not just one.\n\n" +
       "For each reading return:\n" +
       "- column: the item's column header text, copied as printed.\n" +
-      "- date: the row's date as YYYY-MM-DD. The sheet covers the week " + from + " to " + to + "; use that to fill in the year.\n" +
+      "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", so use that for the year.\n" +
       "- temp: the number as a number (keep one decimal if written).\n\n" +
       "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
       "This client's known items (match each column to the closest one):\n" + names,
-    toReading: (col, date, temp) => ({ item: col.name, kind: col.kind === "cooking" ? "cooking" : "holding", date, temp, out: (col.min_temp != null && temp < col.min_temp) }),
+    row: (col, date, temp, cid, author) => ({ client_id: cid, log_date: date, kind: col.kind === "cooking" ? "cooking" : "holding", item: col.name, temp, logged_by: author }),
   });
 }
 
 async function scanReceiving(request, env, session) {
   return scanWeekSheet(request, env, session, {
+    table: "receiving_logs",
+    retryWithout: ["storage"],
     loadColumns: (cid) => sbSelect(env, `receiving_vendors?client_id=eq.${cid}&select=id,name,storage`),
     missingError: "The receiving table isn't set up yet.",
     emptyError: "No vendor lines set up yet. Add them in Edit vendors first.",
-    prompt: (names, from, to) =>
-      "This is a photo of a weekly Receiving Log for a food business: deliveries checked in by vendor. The columns are vendor " +
+    prompt: (names, hint) =>
+      "This is a photo of a Receiving Log for a food business: deliveries checked in by vendor. The columns are vendor " +
       "delivery lines; each row is a date; the cells are the temperature of that delivery. Read every temperature you can see " +
-      "clearly, handwritten or computer printed, and return one entry per filled cell.\n\n" +
+      "clearly, handwritten or computer printed, and return one entry per filled cell. Read every date on the sheet, not just one.\n\n" +
       "For each reading return:\n" +
       "- column: the vendor line's column header text, copied as printed.\n" +
-      "- date: the row's date as YYYY-MM-DD. The sheet covers the week " + from + " to " + to + "; use that to fill in the year.\n" +
+      "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", so use that for the year.\n" +
       "- temp: the number as a number (keep one decimal if written).\n\n" +
       "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
       "This client's known vendor lines (match each column to the closest one):\n" + names,
-    toReading: (col, date, temp) => ({ vendor: col.name, storage: col.storage === "frozen" ? "frozen" : "refrigerated", date, temp }),
+    row: (col, date, temp, cid, author) => ({ client_id: cid, log_date: date, vendor: col.name, storage: col.storage === "frozen" ? "frozen" : "refrigerated", temp, status: "Accepted", logged_by: author }),
   });
 }
 
