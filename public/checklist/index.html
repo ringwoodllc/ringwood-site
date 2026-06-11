@@ -70,6 +70,7 @@
   .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
   .sechead:hover{background:rgba(33,68,58,.04)}
   .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .admincrown{display:inline-flex;align-items:center;gap:4px;background:rgba(33,68,58,.1);color:var(--green-deep);border-radius:999px;padding:1px 8px 1px 7px;font-family:"Hanken Grotesk",sans-serif;font-size:.62rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle;margin-left:7px}
   .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
   .hint{color:var(--muted);font-size:.82rem;margin:8px 0}
   .mgrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}
@@ -127,7 +128,7 @@
 
   <div class="manage" id="manageWrap" style="display:none">
     <div class="secwrap">
-      <div class="sechead" id="mgToggle"><span class="sectitle">Edit sections</span><span class="back">Edit ▾</span></div>
+      <div class="sechead" id="mgToggle"><span class="sectitle">Edit sections <span class="admincrown" title="Admin only. Clients do not see this."><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span></span><span class="back">Edit ▾</span></div>
       <div class="secbody" id="mgBody" style="display:none">
         <div class="hint">Rename a section, switch it between one box and Open / Mid / Close, add new areas, or remove ones you don't use. Changes apply to this client's checklist every day.</div>
         <div id="mgList"><div class="empty">Loading…</div></div>
@@ -153,7 +154,7 @@
     document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
     document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
     document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
-    if(CAN_EDIT) document.getElementById("manageWrap").style.display="block";
+    if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
@@ -215,13 +216,13 @@
     SECTIONS.forEach(function(s){ if(ITEMS_ON) wireDetail(s); });
     document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
     var anyEmpty=SECTIONS.some(function(s){ return !(s.items&&s.items.length); });
-    document.getElementById("clTools").style.display = (CAN_EDIT && ITEMS_ON && anyEmpty) ? "block" : "none";
+    document.getElementById("clTools").style.display = (IS_MASTER && ITEMS_ON && anyEmpty) ? "block" : "none";
   }
 
   // The expandable "what to check" panel under a section.
   function buildDetail(s){
     var items=s.items||[];
-    if(CAN_EDIT){
+    if(IS_MASTER){
       var rows=items.map(function(it,i){ return "<div class='itrow'><input class='ititem' data-i='"+i+"' value='"+esc(it)+"' /><button type='button' class='itdel' data-i='"+i+"' title='Delete'>×</button></div>"; }).join("");
       return "<div class='itwrap' data-id='"+esc(s.id)+"'>"+
         (rows||"<div class='hint'>No items yet. Add them below.</div>")+
@@ -234,7 +235,7 @@
   }
 
   function wireDetail(s){
-    if(!CAN_EDIT) return;
+    if(!IS_MASTER) return;
     var wrap=document.querySelector(".itwrap[data-id='"+s.id+"']"); if(!wrap) return;
     function currentItems(){ return Array.prototype.slice.call(wrap.querySelectorAll(".ititem")).map(function(i){ return i.value.trim(); }).filter(Boolean); }
     Array.prototype.slice.call(wrap.querySelectorAll(".ititem")).forEach(function(inp){ inp.addEventListener("change", function(){ saveItems(s, currentItems()); }); });
