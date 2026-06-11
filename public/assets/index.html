@@ -200,6 +200,7 @@
 </main>
 
 <script src="/jsQR.js"></script>
+<script src="/client-pins.js"></script>
 <script>
   // Shrink large phone photos client-side so uploads are fast on cell signal.
   function processPhoto(file){
@@ -296,7 +297,7 @@
       var f = clientSel.closest(".field"); if (f) f.style.display = "none";
       var gl = f && f.previousElementSibling; if (gl && gl.classList && gl.classList.contains("group-label")) gl.style.display = "none";
       var acr = document.getElementById("addClientRow"); if (acr) acr.style.display = "none";
-    }
+    } else if (window.RWClientPins){ try { window.__cpins = RWClientPins.attach({ selectEl: clientSel, exclude: ["__add"] }); } catch(e){} }
   }).catch(function(){});
   var ADD_CLIENT = "<option value='__add'>＋ Add a client…</option>";
   var ADD_EQUIP = "<option value='__add'>＋ Add a type…</option>";
@@ -334,7 +335,7 @@
   function writeCache(d){ try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), data: d })); } catch(e){} }
 
   function applyLists(o){
-    if (!CLIENT_LOCK) fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT);
+    if (!CLIENT_LOCK){ fillSelect(clientSel, o.clients, "No clients yet", ADD_CLIENT); if (window.__cpins) window.__cpins.refresh(); }
     fillSelect(equipSel, o.types, null, ADD_EQUIP);
     fillSelect(locationSel, o.locations, null, ADD_LOC);
   }

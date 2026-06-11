@@ -80,6 +80,7 @@
   <div id="list"><div class="empty">Loading…</div></div>
 </main>
 <script src="/jsQR.js"></script>
+<script src="/client-pins.js"></script>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   // ---- scan a QR code: pull up that asset's service record ----
@@ -146,6 +147,7 @@
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if(w && w.ok && w.role==="client"){ document.getElementById("clientWrap").style.display="none"; }
+    else if(window.RWClientPins){ try { window.__cpins = RWClientPins.attach({ selectEl: clientSel, exclude: ["__unassigned"] }); } catch(e){} }
   }).catch(function(){});
 
   function fillFilters(){
@@ -155,6 +157,7 @@
     var chtml="<option value=''>All clients</option>"+Object.keys(clients).sort().map(function(c){return "<option>"+esc(c)+"</option>";}).join("");
     if(hasUn) chtml+="<option value='__unassigned'>Unassigned</option>";
     clientSel.innerHTML=chtml; clientSel.value=ck;
+    if(window.__cpins) window.__cpins.refresh();
     var tk=typeSel.value; typeSel.innerHTML="<option value=''>All types</option>"+Object.keys(types).sort().map(function(t){return "<option>"+esc(t)+"</option>";}).join(""); typeSel.value=tk;
   }
   function render(){

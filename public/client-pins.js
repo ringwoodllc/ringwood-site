@@ -2,8 +2,16 @@
    Pins a handful of clients as one-tap chips and remembers the last one you
    used, so you don't re-pick from the dropdown every visit. Pins and the last
    selection are stored per-browser in localStorage and shared across every
-   screen that mounts this (Temp Log, Red Book, ...). The full dropdown stays
-   for the long tail. */
+   screen (Temp Log, Red Book, ticket list, service records, asset entry).
+
+   Two ways to use it:
+     mount(opts)  - the component owns the <select> and fills it. For simple
+                    "pick a client to view" pages (Temp Log, Red Book).
+     attach(opts) - the page keeps its own <select> (counts, colors, "All
+                    clients", add-client). The component only adds the chip bar,
+                    remembers the choice, and drives the select via a change
+                    event. Returns { refresh } to re-read options after a rebuild.
+*/
 (function () {
   var PIN_KEY = "rw_pinned_clients", LAST_KEY = "rw_last_client";
   function loadJSON(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
@@ -31,30 +39,21 @@
     var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
   }
 
-  // opts: { selectEl, clients:[name], placeholder, onPick(name) }
-  function mount(opts) {
-    ensureStyle();
-    var sel = opts.selectEl, clients = opts.clients || [], onPick = opts.onPick || function () {};
-    var placeholder = opts.placeholder || "Select a client…";
-    sel.innerHTML = "<option value=''>" + esc(placeholder) + "</option>" +
-      clients.map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("");
+  // Default to pick when the screen opens: your last choice if it still exists,
+  // otherwise your first pinned client. That's what makes a pin act as a default.
+  function defaultFor(clients) {
+    var last = getLast();
+    if (last && clients.indexOf(last) >= 0) return last;
+    var pins = getPins().filter(function (p) { return clients.indexOf(p) >= 0; });
+    return pins[0] || "";
+  }
 
-    var box = document.createElement("div"); box.className = "rwcp";
-    sel.parentNode.insertBefore(box, sel);
-    var moreWrap = document.createElement("div"); moreWrap.className = "rwcp-more";
-    sel.parentNode.insertBefore(moreWrap, sel); moreWrap.appendChild(sel);
-
-    var current = "", editMode = false;
-
-    function pick(name, remember) {
-      current = name || "";
-      sel.value = current;
-      if (remember !== false) setLast(current);
-      renderChips();
-      onPick(current);
-    }
-
-    function renderChips() {
+  // Build the chip bar UI. getCurrent()/getClients() are read live so the same
+  // bar works whether the client list is fixed (mount) or rebuilt (attach).
+  function makeChips(box, getClients, getCurrent, onChoose) {
+    var editMode = false;
+    function render() {
+      var clients = getClients(), current = getCurrent();
       var pins = getPins().filter(function (p) { return clients.indexOf(p) >= 0; });
       var html;
       if (editMode) {
@@ -64,7 +63,7 @@
             return '<button type="button" class="rwcp-chip pin' + (on ? " pinned" : "") + '" data-pin="' + esc(c) + '">' + (on ? "★ " : "☆ ") + esc(c) + "</button>";
           }).join("") +
           '<button type="button" class="rwcp-edit" data-done="1">Done</button>' +
-          '</div><div class="rwcp-hint">Tap a client to pin or unpin it. Pinned clients show as one-tap chips.</div>';
+          '</div><div class="rwcp-hint">Tap a client to pin or unpin it. Pinned clients show as one-tap chips here and on every screen.</div>';
       } else {
         var chips = pins.map(function (c) {
           return '<button type="button" class="rwcp-chip' + (c === current ? " on" : "") + '" data-client="' + esc(c) + '">' + esc(c) + "</button>";
@@ -75,26 +74,92 @@
       }
       box.innerHTML = html;
       Array.prototype.slice.call(box.querySelectorAll("[data-client]")).forEach(function (b) {
-        b.addEventListener("click", function () { pick(b.getAttribute("data-client"), true); });
+        b.addEventListener("click", function () { onChoose(b.getAttribute("data-client")); });
       });
       Array.prototype.slice.call(box.querySelectorAll("[data-pin]")).forEach(function (b) {
         b.addEventListener("click", function () {
           var name = b.getAttribute("data-pin"), p = getPins(), i = p.indexOf(name);
           if (i >= 0) p.splice(i, 1); else p.push(name);
-          setPins(p); renderChips();
+          setPins(p); render();
         });
       });
-      var ed = box.querySelector("[data-edit]"); if (ed) ed.addEventListener("click", function () { editMode = true; renderChips(); });
-      var dn = box.querySelector("[data-done]"); if (dn) dn.addEventListener("click", function () { editMode = false; renderChips(); });
+      var ed = box.querySelector("[data-edit]"); if (ed) ed.addEventListener("click", function () { editMode = true; render(); });
+      var dn = box.querySelector("[data-done]"); if (dn) dn.addEventListener("click", function () { editMode = false; render(); });
     }
+    return render;
+  }
+
+  // mount: { selectEl, clients:[name], placeholder, onPick(name) }
+  function mount(opts) {
+    ensureStyle();
+    var sel = opts.selectEl, clients = opts.clients || [], onPick = opts.onPick || function () {};
+    sel.innerHTML = "<option value=''>" + esc(opts.placeholder || "Select a client…") + "</option>" +
+      clients.map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("");
+
+    var box = document.createElement("div"); box.className = "rwcp";
+    sel.parentNode.insertBefore(box, sel);
+    var moreWrap = document.createElement("div"); moreWrap.className = "rwcp-more";
+    sel.parentNode.insertBefore(moreWrap, sel); moreWrap.appendChild(sel);
+
+    var current = "";
+    function pick(name, remember) {
+      current = name || ""; sel.value = current;
+      if (remember !== false) setLast(current);
+      renderChips(); onPick(current);
+    }
+    var renderChips = makeChips(box, function () { return clients; }, function () { return current; }, function (n) { pick(n, true); });
 
     sel.addEventListener("change", function () { pick(sel.value, true); });
     renderChips();
 
-    var last = getLast();
-    if (last && clients.indexOf(last) >= 0) pick(last, false);
-    else onPick("");
+    var def = defaultFor(clients);
+    if (def) pick(def, true); else onPick("");
   }
 
-  window.RWClientPins = { mount: mount, getLast: getLast };
+  // attach: { selectEl, exclude:[values] } — page owns the options.
+  // Returns { refresh } so the page can re-read options after rebuilding them.
+  function attach(opts) {
+    ensureStyle();
+    var sel = opts.selectEl, exclude = opts.exclude || [];
+    function clientsNow() {
+      var out = [];
+      Array.prototype.slice.call(sel.options).forEach(function (o) {
+        if (!o.value) return;                       // placeholder / "All clients"
+        if (o.value.indexOf("__") === 0) return;    // __add / __unassigned
+        if (exclude.indexOf(o.value) >= 0) return;
+        out.push(o.value);
+      });
+      return out;
+    }
+    var box = document.createElement("div"); box.className = "rwcp";
+    sel.parentNode.insertBefore(box, sel);
+
+    var renderChips = makeChips(box, clientsNow, function () { return sel.value; }, function (name) {
+      sel.value = name;
+      if (sel.value === name) { setLast(name); sel.dispatchEvent(new Event("change", { bubbles: true })); }
+      renderChips();
+    });
+    // Keep the pin highlight and remembered default in sync when the user uses
+    // the dropdown directly (don't re-dispatch — the page already handled it).
+    sel.addEventListener("change", function () { setLast(sel.value); renderChips(); });
+    renderChips();
+
+    var restored = false;
+    function refresh() {
+      renderChips();
+      if (restored) return;
+      var clients = clientsNow();
+      if (!clients.length) return;                  // options not loaded yet
+      var def = defaultFor(clients);
+      restored = true;
+      if (def && sel.value !== def) {
+        sel.value = def;
+        if (sel.value === def) { setLast(def); sel.dispatchEvent(new Event("change", { bubbles: true })); renderChips(); }
+      }
+    }
+    refresh();
+    return { refresh: refresh };
+  }
+
+  window.RWClientPins = { mount: mount, attach: attach, getLast: getLast };
 })();

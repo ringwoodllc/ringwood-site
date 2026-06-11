@@ -224,6 +224,7 @@
   <div id="editWrap"></div>
 </main>
 
+<script src="/client-pins.js"></script>
 <script>
   var clientSel = document.getElementById("client");
   var sortSel = document.getElementById("sort");
@@ -243,6 +244,7 @@
       var aw = document.getElementById("archkWrap"); if (aw) aw.style.display = "none";
     }
     if (w && w.ok && w.role === "master"){ IS_MASTER = true; }
+    if (!(w && w.ok && w.role === "client") && window.RWClientPins){ try { window.__cpins = RWClientPins.attach({ selectEl: clientSel }); } catch(e){} }
     renderChips();
   }).catch(function(){ renderChips(); });
 
@@ -324,6 +326,7 @@
     if(hasUn) html += "<option value='__unassigned'>Unassigned</option>";
     clientSel.innerHTML = html;
     if(keep){ clientSel.value = keep; if(clientSel.value !== keep) clientSel.value = ""; }
+    if(window.__cpins) window.__cpins.refresh();
   }
   renderClients(readClientsCache() || SEED_CLIENTS);
   function loadClients(tries){
