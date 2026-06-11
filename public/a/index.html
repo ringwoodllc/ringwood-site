@@ -266,7 +266,7 @@
     var arr=allAssets.filter(function(a){
       if(client==="__unassigned"){ if(a.client) return false; }
       else if(client && a.client!==client) return false;
-      if(q){ var hay=[a.name,a.make,a.model,a.serial,a.type,a.location,a.qr].join(" ").toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      if(q){ var hay=[a.name,a.fullName,a.make,a.model,a.serial,a.type,a.location,a.qr,a.description].join(" ").toLowerCase(); if(hay.indexOf(q)<0) return false; }
       return true;
     });
     arr.sort(function(a,b){

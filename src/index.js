@@ -1925,6 +1925,7 @@ async function listAssets(env, session) {
       make: x.make || "",
       serial: x.serial || "",
       qr: x.qr_tag || "",
+      description: x.description || "",
       services: (x.service_records && x.service_records[0] && x.service_records[0].count) || 0,
       loggedAt: x.logged_at || "",
     }))
