@@ -82,6 +82,9 @@
   .mgdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:28px;height:28px;font:inherit;cursor:pointer}
   .addrow{display:flex;gap:8px;margin-top:12px}
   .addrow input{flex:1}
+  .resetrow{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .resetbtn{background:transparent;border:1px solid rgba(138,61,28,.5);color:var(--red);border-radius:6px;padding:8px 13px;font:inherit;font-weight:600;font-size:.84rem;cursor:pointer}
+  .resetbtn:hover{background:rgba(138,61,28,.06)}
   .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:10px 15px;font:inherit;font-weight:600;font-size:.9rem}
   .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
   .empty{color:var(--muted);padding:10px 0;font-size:.9rem}
@@ -133,6 +136,7 @@
         <div class="hint">Rename a section, switch it between one box and Open / Mid / Close, add new areas, or remove ones you don't use. Changes apply to this client's checklist every day.</div>
         <div id="mgList"><div class="empty">Loading…</div></div>
         <div class="addrow"><input type="text" id="newName" placeholder="New section name" autocomplete="off" /><button type="button" class="btn ghost" id="addSec">＋ Add</button></div>
+        <div class="resetrow"><button type="button" class="resetbtn" id="resetBtn">↺ Load the standard Pre-Shift sheet</button><span class="savemsg" id="resetMsg"></span><div class="hint">Replaces all areas above with the standard sheet and its items. Use this to start fresh.</div></div>
       </div>
     </div>
   </div>
@@ -273,6 +277,18 @@
       .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Saved ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1500); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
       .catch(function(){ setMsg("No connection","var(--red)"); });
   }
+
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    if(!confirm("Replace all areas with the standard Pre-Shift sheet? This deletes the current areas and their items.")) return;
+    var b=document.getElementById("resetBtn"), m=document.getElementById("resetMsg");
+    b.disabled=true; var old=b.textContent; b.textContent="Loading…"; m.textContent="";
+    fetch("/api/checklist/reset",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent=old;
+        if(d&&d.ok){ m.style.color="var(--ok)"; m.textContent="Loaded "+d.count+" areas ✓"; load(); }
+        else { m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't load."; } })
+      .catch(function(){ b.disabled=false; b.textContent=old; m.style.color="var(--red)"; m.textContent="No connection"; });
+  });
 
   document.getElementById("populateBtn").addEventListener("click", function(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }

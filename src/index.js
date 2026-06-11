@@ -95,6 +95,7 @@ export default {
     if (url.pathname === "/api/checklist/section" && request.method === "POST") return saveChecklistSection(request, env, session);
     if (url.pathname === "/api/checklist/day" && request.method === "POST") return saveChecklistDay(request, env, session);
     if (url.pathname === "/api/checklist/populate" && request.method === "POST") return populateChecklist(request, env, session);
+    if (url.pathname === "/api/checklist/reset" && request.method === "POST") return resetChecklist(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -3436,19 +3437,14 @@ async function deleteTempLog(request, env, session) {
 // Mid/Close assignments are stored as one JSON blob per date in checklist_days.
 // Degrades gracefully until those tables exist.
 const CHECKLIST_DEFAULTS = [
-  ["Exterior & Entrance", "shift", ["Parking lot and walkway clear of trash", "Exterior lights working", "Signage on and clean", "Entrance door and glass clean", "Mats down and clean"]],
-  ["Dining Room", "single", ["Tables and chairs clean and set", "Floors swept and mopped", "Condiments stocked and clean", "Trash bins emptied and lined", "Windows and sills clean"]],
-  ["Restrooms", "shift", ["Stocked: soap, towels, tissue", "Toilets and sinks clean", "Floors clean and dry", "Trash emptied", "Mirrors clean"]],
-  ["Front Counter / POS", "single", ["Counter clean and sanitized", "POS and card reader working", "Receipt paper stocked", "Menus clean", "Bags and napkins stocked"]],
-  ["Beverage Station", "single", ["Machines cleaned and stocked", "Ice bin clean, scoop stored properly", "Cups and lids stocked", "Spills wiped", "Syrup dates checked"]],
-  ["Food Prep / Line", "shift", ["Surfaces cleaned and sanitized", "Sanitizer buckets made and labeled", "Cutting boards clean, no damage", "Date labels current", "Gloves and utensils stocked"]],
-  ["Kitchen / Cook Line", "shift", ["Equipment clean and working", "Hood and filters clean", "Floors and drains clean", "Hot holding at temperature", "Thermometers calibrated"]],
-  ["Coolers & Freezers", "single", ["Temps in range (see Temp Log)", "Doors seal, no frost build-up", "Food covered, dated, FIFO", "No raw over ready-to-eat", "Floors clean"]],
-  ["Dry & Chemical Storage", "single", ["Stored off the floor, organized", "Chemicals separate from food", "Containers labeled", "No pests or droppings", "FIFO rotation"]],
-  ["Handwashing & Sanitation", "shift", ["Sinks stocked: soap, towels", "Hot water working", "Sanitizer at correct strength", "Test strips available", "Wiping cloths in sanitizer"]],
-  ["Trash & Dumpster Area", "shift", ["Trash emptied", "Dumpster lids closed", "Area clean, no spills", "No pest activity", "Cardboard broken down"]],
-  ["Equipment Check", "single", ["Refrigeration running", "Cook equipment working", "No leaks or hazards", "Lights working", "Report issues to manager"]],
-  ["Staff Readiness", "single", ["Uniforms clean, hair restrained", "Health check: no one sick", "Hands washed", "Name tags on", "Pre-shift notes reviewed"]],
+  ["Exterior", "shift", ["Exterior Building (signage/lighting/awnings/operational/good repair)", "POP Materials (current/posted properly)"]],
+  ["Dining Room", "shift", ["Trash Receptacles (clean/empty as needed/empty at close)", "Napkin/Straws/Lids/Condiment Holders (clean/stocked)", "Drink Cooler (clean/stocked/FIFO)", "Ceiling/Vents/Lights/Floor/Mats (clean/good repair)", "Windows/Doors/Sills (clean/good repair)", "Music (working/proper station/proper volume)", "TVs (proper channels/no sound, close captioned only)"]],
+  ["Upright Dessert Freezer & Dessert Display Case", "shift", ["Glass (clean/streak free)", "Interior (clean/free of debris)", "Properly Merchandised (fully stocked)", "Shelves (tilted/shelf strips)", "Lights & Vents (working/clean)", "Holding Temperature", "P.O.P. (current to plan/in good condition)", "All Required Designs (available)", "All Expired Product (recorded/discarded)"]],
+  ["Restroom", "shift", ["Restroom Fixtures (clean/operating/good repair)", "Ceilings/Lights/Vents/Walls/Floors (clean/good repair)", "Trash Receptacles (covered in Ladies' room/clean/empty as needed)", "Antibacterial Soap/Towels/Toilet Paper (stocked)"]],
+  ["Queuing/Counter Area", "shift", ["Rails/Stanchions (clean/good repair)", "POS Area (clean/organized/clutter free/receipt paper stocked)", "Pink receipt paper levels in the On-the-Go printer", "All Counters/Cases/Millwork (clean/good repair)", "Retail Displays (stocked/priced/faced using standards, guidelines)", "All POP (current/good repair)", "Dress Code Policy followed"]],
+  ["Service Area", "shift", ["Work Stations Stocked (food/paper/condiments)", "Counters/Work Areas (clean/good repair)", "Reach-in Coolers (clean/stocked/good repair)", "Ceiling/Lights/Vents/Walls/Floors (clean/good repair)", "Equipment/Stainless (clean)", "Donut Case (organized/stocked/back case stds met during operating hrs)", "Sanitizer Buckets/Cloths (proper concentration)", "All Hand Wash Sinks (clean/stocked)", "Trash Receptacles (clean/empty as needed/empty at close)", "Ice Caddy (clean/stocked/emptied at close)", "Espresso Machine & Area (clean/stocked)", "Fill ice to Island Oasis hopper and calibrate using Daily Island Oasis Ice Calibration worksheet", "Dipping Cabinets (proper temp./exterior clean/streak free)", "Dipping Cabinet Flavor Strips accurately in place per tub", "Ice Cream Tubs (scrape/level/partial/rims clean)", "Dipper Wells (clean/water running)", "Pink Taster Spoons (stocked)", "Cone Displays & Holders (clean)", "Sundae Station (clean/toppings stocked and date coded/organized)", "Milk & Bananas (product level/expiration date/quality)", "Undercounter Refrigerators (proper temp./clean/stocked/FIFO)", "Food/Food Storage (properly labeled/date coded/stored/temp./logged)", "Beverage Equipment (clean/working order)"]],
+  ["Sandwich Station", "shift", ["Functioning Approved Calibrated Thermometer (clean/sanitized)", "Station Stocked (food/paper/condiments)", "Utensils/Cutting Boards (clean/sanitized)", "Food Products (properly stored/labeled/dated/rotated)", "Ceiling/Lights/Vents/Walls/Floors (clean/good repair)", "Trash Receptacles (clean/empty as needed/empty at close)", "Chemicals/Cleaning Supplies (stored away from food)", "Sanitizer Buckets/Cloths (proper concentration)", "Single-use Gloves (available/in use)"]],
+  ["Kitchen/Back Room", "shift", ["Prep/Finishing Table (clean)", "Ovens/Hoods (clean)", "Ceiling/Lights/Vents/Walls/Floors (clean/good repair)", "Sinks (clean/good repair)", "Trash Receptacles (clean/empty as needed/empty at close)", "Racks/Baskets/Trays/Boards (clean/organized)", "Dishes/Utensils (washed/sanitized/inverted)", "Cleaning Supplies (stored properly)", "Mops/Brooms (clean/hung)", "Donut Hoppers (clean/stocked/rotated)", "Frosting Buckets (scraped/dated)", "Racks/Buckets/Trays (clean)", "Walk-in (clean/organized/FIFO)"]],
 ];
 // Tidy an items array from a request: trim, drop blanks, cap counts/length.
 function cleanChecklistItems(arr) {
@@ -3538,6 +3534,29 @@ async function populateChecklist(request, env, session) {
     }
   }
   return json({ ok: true, count });
+}
+
+// Replace a client's whole section list with the standard default sheet. Admin
+// action; clears the existing sections first (the day marks reference old ids,
+// so they simply won't line up afterward, which is fine for a fresh template).
+async function resetChecklist(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  // Does the items column exist?
+  let itemsOn = (await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id,items&limit=1`)) !== null;
+  if (!itemsOn && (await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id&limit=1`)) === null) {
+    return json({ ok: false, error: "The checklist tables aren't set up yet." }, 400);
+  }
+  const del = await fetch(`${env.SUPABASE_URL}/rest/v1/checklist_sections?client_id=eq.${who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!del.ok) return json({ ok: false, error: "Could not clear the old sections." }, 502);
+  const rows = CHECKLIST_DEFAULTS.map((d, i) => { const row = { client_id: who.id, name: d[0], mode: d[1], sort: i * 10 }; if (itemsOn) row.items = d[2] || []; return row; });
+  const res = await sbInsert(env, "checklist_sections", rows);
+  if (!res.ok) return json({ ok: false, error: "Could not load the sheet." }, 502);
+  return json({ ok: true, count: rows.length });
 }
 
 async function saveChecklistDay(request, env, session) {
