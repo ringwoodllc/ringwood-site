@@ -82,8 +82,6 @@
   .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
   .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
   .hint{color:var(--muted);font-size:.82rem;margin:4px 0 8px}
-  .btn.on{background:var(--clay);color:#f6f2e8}
-  .demobanner{background:rgba(169,99,58,.12);border:1px solid rgba(169,99,58,.4);border-radius:8px;padding:11px 14px;color:#7a4a26;font-size:.88rem;font-weight:600;margin-bottom:14px}
   .rtag{flex:0 0 auto;font-size:.6rem;font-weight:700;letter-spacing:.04em;background:rgba(169,99,58,.16);color:#7a4a26;border-radius:4px;padding:1px 5px}
 </style>
 </head>
@@ -110,9 +108,7 @@
   </div>
   <div class="toolbar">
     <button type="button" class="btn ghost" id="scanBtn">⃞ Scan a QR code</button>
-    <button type="button" class="btn ghost" id="demoBtn" style="display:none">Demo data: off</button>
   </div>
-  <div id="demoBanner" class="demobanner" style="display:none">Showing demo sample data, not real temperature checks. Use the Demo button to turn it off.</div>
   <div id="note" class="note" style="display:none"></div>
   <div id="units"><div class="empty">Loading…</div></div>
 
@@ -130,7 +126,7 @@
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", UNITS=[], READS=[], MISSING=false, DEMO_ON=false;
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", UNITS=[], READS=[], MISSING=false;
 
   function today(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 
@@ -144,7 +140,6 @@
     document.getElementById("dateSel").value = DATE;
     document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
     if(CAN_EDIT) document.getElementById("manageWrap").style.display="block";
-    if(IS_MASTER){ document.getElementById("demoBtn").style.display="inline-flex"; }
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
@@ -175,7 +170,6 @@
       if(!d||!d.ok){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The temperature log table isn't set up yet. Add it in Supabase (one-time), then readings save."; } else note.style.display="none";
-      DEMO_ON=!!d.demo; updateDemoBtn();
       UNITS=(d.units||[]).sort(byName); READS=d.readings||[]; render();
     }).catch(function(){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
@@ -299,24 +293,6 @@
     b.style.display = open?"block":"none";
     this.querySelector(".back").textContent = open?"Hide ▴":"Set up ▾";
     if(open) loadManage();
-  });
-
-  /* ---- Demo sample data (master only) ---- */
-  function updateDemoBtn(){
-    var b=document.getElementById("demoBtn"); if(!b) return;
-    b.textContent = "Demo data: "+(DEMO_ON?"on":"off");
-    b.className = "btn "+(DEMO_ON?"on":"ghost");
-    document.getElementById("demoBanner").style.display = DEMO_ON?"block":"none";
-  }
-  document.getElementById("demoBtn").addEventListener("click", function(){
-    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
-    var turnOn = !DEMO_ON;
-    if(turnOn && !confirm("Fill this client's log with demo sample data for the last 14 days? Every reading is labeled DEMO. Use this for client demonstrations only.")) return;
-    if(!turnOn && !confirm("Remove all demo sample data for this client?")) return;
-    var b=document.getElementById("demoBtn"); b.disabled=true; b.textContent="Working…";
-    fetch("/api/temps/demo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,on:turnOn})})
-      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; if(d&&d.ok){ DEMO_ON=d.on; updateDemoBtn(); load(); } else { updateDemoBtn(); alert((d&&d.error)||"Couldn't update demo data."); } })
-      .catch(function(){ b.disabled=false; updateDemoBtn(); alert("Couldn't reach the server."); });
   });
 
   /* ---- Scan a QR code ---- */
