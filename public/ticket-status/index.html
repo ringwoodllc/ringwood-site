@@ -113,6 +113,11 @@
   .lgbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:3px 11px;font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
   .lgbtn:hover{border-color:var(--green)}
   .lgbtn.del{color:#8a3d1c}
+  .lblrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+  .lblrow label{margin-bottom:0}
+  .aibtn{flex:0 0 auto;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:5px 12px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
+  .aibtn:hover{background:rgba(169,99,58,.08)}
+  .aibtn:disabled{opacity:.6;cursor:default}
   .prow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 11px;margin-bottom:7px}
   .prow .pmain{min-width:0;font-size:.96rem}
   .prow .pqty{font-weight:700;color:var(--green-deep)}
@@ -539,17 +544,18 @@
               "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
           "</div>"
         ) +
-        "<div class='field'><label>Description</label>" +
+        "<div class='field'>" +
+          (IS_CLIENT ? "<label>Description</label>" :
+            "<div class='lblrow'><label>Description</label><button type='button' class='aibtn' id='e_fold'>✨ Pull updates</button></div>") +
           "<textarea id='e_desc' style='min-height:120px'" + (IS_CLIENT ? " readonly" : "") + ">" + esc(t.description) + "</textarea>" +
           (IS_CLIENT ? "" :
-            "<button type='button' class='qbtn' id='e_fold' style='margin-top:8px;border-color:var(--clay);color:var(--clay)'>✨ Pull updates into description</button>" +
             "<div id='e_foldWrap' style='display:none;margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>" +
               "<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Updated description</div>" +
               "<div id='e_foldText' style='font-size:.95rem;white-space:pre-wrap'></div>" +
               "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_foldUse'>Use this</button><button type='button' class='qbtn' id='e_foldKeep'>Keep mine</button></div>" +
             "</div>") +
         "</div>" +
-        (IS_MASTER ? "<div class='field' id='e_partsField'><label>Parts &amp; materials needed</label><div id='e_parts'></div></div>" : "") +
+        (IS_MASTER ? "<div class='field' id='e_partsField'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>" : "") +
         "<div class='field'><label>Main photos <span style='font-weight:400;color:var(--muted);font-size:.86rem'>— the headline shots shown up top</span></label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
           "<label class='qbtn' for='e_file' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
@@ -717,7 +723,6 @@
             "<input id='p_unit' type='text' placeholder='unit' />"+
             "<button type='button' class='qbtn rev' id='p_add'>Add</button>"+
           "</div>"+
-          "<button type='button' class='qbtn' id='p_suggest' style='border-color:var(--clay);color:var(--clay);margin-top:8px'>✨ Suggest with AI</button>"+
           "<div id='p_sugg' style='display:none;margin-top:8px'></div>";
         var addBtn=document.getElementById("p_add");
         addBtn.addEventListener("click", function(){
@@ -727,7 +732,6 @@
             .then(function(r){return r.json();}).then(function(d){ addBtn.disabled=false; if(d&&d.ok){ loadParts(); } else { alert((d&&d.error)||"Couldn't add the part."); } })
             .catch(function(){ addBtn.disabled=false; });
         });
-        document.getElementById("p_suggest").addEventListener("click", suggestParts);
       }
       partsEl.addEventListener("click", function(e){
         var btn=e.target.closest?e.target.closest(".prow [data-act]"):null; if(!btn) return;
@@ -758,6 +762,7 @@
       }
       function addSugg(p, cb){ fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:p.item,quantity:p.quantity,unit:p.unit})}).then(function(r){return r.json();}).then(function(d){ if(cb) cb(d); }).catch(function(){ if(cb) cb({}); }); }
       function loadParts(){ fetch("/api/tickets/parts?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(rows){ PARTS=Array.isArray(rows)?rows:[]; renderParts(); }).catch(function(){ PARTS=[]; renderParts(); }); }
+      var sgBtn=document.getElementById("p_suggest"); if(sgBtn) sgBtn.addEventListener("click", suggestParts);
       loadParts();
     }
 
