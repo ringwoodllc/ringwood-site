@@ -128,7 +128,7 @@
       idHtml = "Signed in as <a href='/account'>" + esc(w.client || w.name || "your account") + "</a>";
     }
 
-    strip.innerHTML = idHtml + (isMaster && !w.impersonating ? " &middot; <a href='/admin'>Admin Panel</a>" : "") + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
+    strip.innerHTML = idHtml + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
 
     var so = document.getElementById("rwSignout");
