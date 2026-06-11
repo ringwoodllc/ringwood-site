@@ -101,6 +101,7 @@ export default {
     if (url.pathname === "/api/assessment/question" && request.method === "POST") return saveAssessmentQuestion(request, env, session);
     if (url.pathname === "/api/assessment/reset" && request.method === "POST") return resetAssessment(request, env, session);
     if (url.pathname === "/api/assessment/photo" && request.method === "POST") return uploadAssessmentPhoto(request, env, session);
+    if (url.pathname === "/api/assessment/file" && request.method === "POST") return fileAssessmentToBinder(request, env, session);
     if (url.pathname === "/api/receiving" && request.method === "GET") return listReceiving(url, env, session);
     if (url.pathname === "/api/receiving/add" && request.method === "POST") return addReceiving(request, env, session);
     if (url.pathname === "/api/receiving/delete" && request.method === "POST") return deleteReceiving(request, env, session);
@@ -3034,16 +3035,22 @@ async function listRedbook(url, env, session) {
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
   if (!who.id) return noStore({ ok: true, client: who.name, docs: [], expiry: true });
   const base = `redbook_docs?client_id=eq.${who.id}`;
-  // Try with the optional expires_at column; if that column doesn't exist yet,
-  // fall back to the base columns so the binder keeps working before the migration.
-  let expiry = true;
-  let rows = await sbSelect(env, `${base}&select=id,section,title,file_url,file_type,uploaded_by,created_at,expires_at&order=created_at.desc`);
+  // Try with the optional columns (expires_at, doc_date); fall back step by step
+  // so the binder keeps working before the migrations. doc_date is the paperwork
+  // date (when the inspection/cert actually happened), editable since documents
+  // are often filed as a follow-up; created_at stays the upload time.
+  let expiry = true, dateOn = true;
+  let rows = await sbSelect(env, `${base}&select=id,section,title,file_url,file_type,uploaded_by,created_at,expires_at,doc_date&order=created_at.desc`);
+  if (rows === null) {
+    dateOn = false;
+    rows = await sbSelect(env, `${base}&select=id,section,title,file_url,file_type,uploaded_by,created_at,expires_at&order=created_at.desc`);
+  }
   if (rows === null) {
     rows = await sbSelect(env, `${base}&select=id,section,title,file_url,file_type,uploaded_by,created_at&order=created_at.desc`);
     expiry = false;
-    if (rows === null) return noStore({ ok: true, client: who.name, docs: [], missing: true, expiry: false });
+    if (rows === null) return noStore({ ok: true, client: who.name, docs: [], missing: true, expiry: false, dateOn: false });
   }
-  return noStore({ ok: true, client: who.name, expiry, docs: (rows || []).map((d) => ({ id: d.id, section: d.section || "Other", title: d.title || "", url: d.file_url || "", type: d.file_type || "", uploadedBy: d.uploaded_by || "", created: d.created_at || "", expires: d.expires_at || "" })) });
+  return noStore({ ok: true, client: who.name, expiry, dateOn, docs: (rows || []).map((d) => ({ id: d.id, section: d.section || "Other", title: d.title || "", url: d.file_url || "", type: d.file_type || "", uploadedBy: d.uploaded_by || "", created: d.created_at || "", expires: d.expires_at || "", docDate: d.doc_date || "" })) });
 }
 
 async function uploadRedbookDoc(request, env, session) {
@@ -3208,6 +3215,11 @@ async function renameRedbookDoc(request, env, session) {
   if ("expires" in body) {
     const e = (body.expires || "").toString().trim();
     patch.expires_at = /^\d{4}-\d{2}-\d{2}$/.test(e) ? e : null;
+  }
+  // Optional document date (when the paperwork actually happened) — same deal.
+  if ("docDate" in body) {
+    const dd = (body.docDate || "").toString().trim();
+    patch.doc_date = /^\d{4}-\d{2}-\d{2}$/.test(dd) ? dd : null;
   }
   const res = await sbUpdate(env, "redbook_docs", id, patch);
   if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
@@ -3731,6 +3743,44 @@ async function uploadAssessmentPhoto(request, env, session) {
   const url = await uploadToStorage(env, path, base64, ct);
   if (!url) return json({ ok: false, error: "Upload failed." }, 502);
   return json({ ok: true, url });
+}
+
+// File a frozen copy of a completed assessment into the Red Book binder
+// (Monthly Self-Assessments). The page sends its rendered report; we store it
+// and upsert one binder entry per assessment date, so re-filing the same date
+// replaces the copy instead of piling up duplicates. The binder entry's
+// doc_date is the assessment date (paperwork is often filed as a follow-up).
+async function fileAssessmentToBinder(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const date = (body.date || "").toString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ ok: false, error: "Bad date." }, 400);
+  const htmlBase64 = body.htmlBase64 || "";
+  if (!htmlBase64) return json({ ok: false, error: "Nothing to file." }, 400);
+  const path = `assessment/${who.id}/report-${date}-${Date.now()}.html`;
+  const fileUrl = await uploadToStorage(env, path, htmlBase64, "text/html");
+  if (!fileUrl) return json({ ok: false, error: "Upload failed." }, 502);
+  const section = "Monthly Self-Assessments";
+  const title = `Self-Assessment — ${date}`;
+  const a = authorOf(session);
+  // Upsert by client + title: one binder copy per assessment date.
+  const existing = await sbSelect(env, `redbook_docs?client_id=eq.${who.id}&title=eq.${encodeURIComponent(title)}&select=id&limit=1`);
+  if (existing === null) return json({ ok: false, error: "The Red Book table isn't set up yet." }, 400);
+  if (existing[0]) {
+    let res = await sbUpdate(env, "redbook_docs", existing[0].id, { file_url: fileUrl, file_type: "text/html", section, doc_date: date });
+    if (!res.ok) res = await sbUpdate(env, "redbook_docs", existing[0].id, { file_url: fileUrl, file_type: "text/html", section }); // pre-migration fallback
+    if (!res.ok) return json({ ok: false, error: "Couldn't update the binder copy." }, 502);
+    return json({ ok: true, updated: true });
+  }
+  const row = { client_id: who.id, section, title, file_url: fileUrl, file_type: "text/html", uploaded_by: a.author, doc_date: date };
+  let res = await sbInsert(env, "redbook_docs", row);
+  if (!res.ok) { delete row.doc_date; res = await sbInsert(env, "redbook_docs", row); } // pre-migration fallback
+  if (!res.ok) return json({ ok: false, error: "Couldn't file it." }, 502);
+  return json({ ok: true });
 }
 
 /* ===================== Receiving Log ===================== */

@@ -189,7 +189,7 @@
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   var SECTIONS = ["Permits & Inspections","Food Safety Certifications","Employee Health","Pest Management","Chemical Safety (SDS / HazCom)","Monthly Self-Assessments","Cleaning & Sanitation","Temperature & Calibration","Receiving","Crisis / Recovery","Other / Supporting Documents"];
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[], EXPIRY_ON=true, lastSecIndex=null, pasteWired=false;
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[], EXPIRY_ON=true, DATE_ON=true, lastSecIndex=null, pasteWired=false;
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/redbook"); return; }
@@ -272,6 +272,7 @@
       if(!d||!d.ok){ document.getElementById("sections").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       if(d.missing){ note.style.display="block"; note.textContent="The Red Book table isn't set up yet. Add it in Supabase (one-time), then uploads save."; } else note.style.display="none";
       EXPIRY_ON = d.expiry !== false;
+      DATE_ON = d.dateOn !== false;
       DOCS=d.docs||[]; render();
     }).catch(function(){ document.getElementById("sections").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
@@ -303,14 +304,21 @@
       var ds=(bySec[sec]||[]).slice().sort(function(a,b){ return (a.title||"").toLowerCase().localeCompare((b.title||"").toLowerCase()); });
       var docHtml = ds.length ? ds.map(function(x){
         var isImg=(x.type||"").indexOf("image")===0;
+        var isHtml=(x.type||"").indexOf("html")>=0;
+        var chip=isImg?"IMG":(isHtml?"DOC":"PDF");
         var ei = EXPIRY_ON ? expInfo(x.expires) : null;
-        // Uploader and upload date are internal: only the admin (master) view sees them.
-        // The expiry is useful to the client, so it always shows.
+        // Uploader and upload date are internal: only the admin (master) view sees
+        // them. The document date (when the paperwork happened, editable) shows in
+        // place of the upload date when set. Expiry always shows.
         var parts=[];
-        if(IS_MASTER){ if(x.uploadedBy) parts.push(esc(x.uploadedBy)); if(x.created) parts.push(esc(new Date(x.created).toLocaleDateString())); }
+        if(IS_MASTER){
+          if(x.uploadedBy) parts.push(esc(x.uploadedBy));
+          if(x.docDate) parts.push("Dated "+esc(new Date(x.docDate+"T00:00:00").toLocaleDateString()));
+          else if(x.created) parts.push(esc(new Date(x.created).toLocaleDateString()));
+        }
         if(ei) parts.push("<span class='dexp "+ei.cls+"'>"+esc(ei.label)+"</span>");
         var metaHtml=parts.join(" · ");
-        return "<div class='doc'><span class='dtype "+(isImg?"img":"pdf")+"'>"+(isImg?"IMG":"PDF")+"</span>"+
+        return "<div class='doc'><span class='dtype "+(isImg?"img":"pdf")+"'>"+chip+"</span>"+
           "<div class='dmain'><a class='dlink' href='"+esc(x.url)+"' target='_blank' rel='noopener'>"+esc(x.title)+"</a>"+
           (metaHtml?"<div class='dmeta'>"+metaHtml+"</div>":"")+"</div>"+
           (CAN_EDIT?"<button type='button' class='dedit' data-id='"+esc(x.id)+"' data-title='"+esc(x.title)+"' title='Rename'>✎</button>":"")+
@@ -354,12 +362,15 @@
     var doc=DOCS.filter(function(z){return z.id===id;})[0]||{};
     var cur=doc.title||btn.getAttribute("data-title")||"";
     var curExp=(doc.expires||"").slice(0,10);
+    var curDD=(doc.docDate||"").slice(0,10);
     var curSec=doc.section||"";
     var secHtml = "<label class='dexplbl' for='dsec_"+esc(id)+"'>Section (move it)</label><select id='dsec_"+esc(id)+"' class='dsec-edit'>"+SECTIONS.map(function(s){ return "<option"+(s===curSec?" selected":"")+">"+esc(s)+"</option>"; }).join("")+"</select>";
+    var ddHtml = DATE_ON ? "<label class='dexplbl' for='ddd_"+esc(id)+"'>Document date (when it was performed)</label><input id='ddd_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curDD)+"' />" : "";
     var expHtml = EXPIRY_ON ? "<label class='dexplbl' for='dexp_"+esc(id)+"'>Expires (optional)</label><input id='dexp_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curExp)+"' />" : "";
-    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+secHtml+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
+    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+secHtml+ddHtml+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
     var inp=main.querySelector(".dtitle-edit"); inp.focus(); inp.select();
-    var expInp=main.querySelector(".dexp-edit");
+    var expInp=document.getElementById("dexp_"+id);
+    var ddInp=document.getElementById("ddd_"+id);
     var secInp=main.querySelector(".dsec-edit");
     var tidyBtn=main.querySelector(".dtidy"), tidyMsg=main.querySelector(".dtidymsg");
     tidyBtn.addEventListener("click", function(){
@@ -374,12 +385,13 @@
     function commit(){
       var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
       var e=expInp?(expInp.value||""):null;
+      var dd=ddInp?(ddInp.value||""):null;
       var sec=secInp?secInp.value:curSec;
-      if(t===cur && sec===curSec && (!EXPIRY_ON || e===curExp)){ render(); return; }
+      if(t===cur && sec===curSec && (!EXPIRY_ON || e===curExp) && (!DATE_ON || dd===curDD)){ render(); return; }
       inp.disabled=true;
-      var body={id:id,title:t,section:sec}; if(EXPIRY_ON) body.expires=e;
+      var body={id:id,title:t,section:sec}; if(EXPIRY_ON) body.expires=e; if(DATE_ON) body.docDate=dd;
       fetch("/api/redbook/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(doc){ doc.title=t; doc.section=sec; if(EXPIRY_ON) doc.expires=e; } render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't save."); } })
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(doc){ doc.title=t; doc.section=sec; if(EXPIRY_ON) doc.expires=e; if(DATE_ON) doc.docDate=dd; } render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't save."); } })
         .catch(function(){ inp.disabled=false; alert("Couldn't reach the server."); });
     }
     inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); commit(); } else if(e.key==="Escape"){ render(); } });

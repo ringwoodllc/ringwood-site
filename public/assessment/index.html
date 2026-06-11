@@ -282,9 +282,22 @@
   function printReport(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
     if(!QS.length){ alert("Nothing to print yet."); return; }
+    var html=buildReport();
     var w=window.open("","_blank"); if(!w){ alert("Allow pop-ups to print, then try again."); return; }
-    w.document.write(buildReport()); w.document.close();
+    w.document.write(html); w.document.close();
     setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
+    fileToBinder(html);
+  }
+  // A frozen copy goes into the Red Book (Monthly Self-Assessments) automatically,
+  // one per assessment date — re-printing the same date replaces it.
+  function fileToBinder(html){
+    if(!CAN_EDIT) return;
+    var b64;
+    try { b64=btoa(unescape(encodeURIComponent(html))); } catch(e){ return; }
+    setMsg("Filing a copy to the Red Book…","var(--muted)");
+    fetch("/api/assessment/file",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,htmlBase64:b64})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Filed to Red Book ✓","var(--ok)"); setTimeout(function(){ setMsg(""," "); },2200); } else setMsg((d&&d.error)||"Couldn't file to the Red Book","var(--red)"); })
+      .catch(function(){ setMsg("Couldn't file to the Red Book","var(--red)"); });
   }
   document.getElementById("pdfBtn").addEventListener("click", printReport);
 
