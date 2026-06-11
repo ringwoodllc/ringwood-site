@@ -56,6 +56,13 @@
   .qfind{margin-top:8px}
   .qfind input{font-size:.9rem;padding:8px 10px}
   .qfind.hide{display:none}
+  .qpics{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+  .thumb{position:relative;display:inline-block}
+  .thumb img{height:54px;width:54px;object-fit:cover;border:1px solid var(--line);border-radius:5px;display:block}
+  .thumbdel{position:absolute;top:-7px;right:-7px;background:var(--bg);border:1px solid rgba(138,61,28,.5);color:var(--red);border-radius:999px;width:20px;height:20px;font:inherit;font-size:.78rem;line-height:1;cursor:pointer}
+  .addpic{display:inline-flex;align-items:center;height:54px;padding:0 12px;border:1.5px dashed rgba(47,93,80,.45);border-radius:5px;color:var(--green-deep);font-weight:600;font-size:.82rem;cursor:pointer}
+  .addpic:hover{border-color:var(--green)}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
   .findtog{margin-top:6px;background:transparent;border:none;color:var(--clay);font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;padding:0}
   .empty{color:var(--muted);padding:10px 0;font-size:.9rem}
   .manage{margin-top:8px}
@@ -95,9 +102,7 @@
 
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
   <div class="row2">
-    <div><label for="dateSel">Date</label>
-      <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
-    </div>
+    <div><label for="dateSel">Assessment date</label><input type="date" id="dateSel" /></div>
   </div>
   <div id="note" class="note" style="display:none"></div>
   <div id="clTools" style="display:none;margin-bottom:12px">
@@ -105,6 +110,7 @@
     <span class="savemsg" id="resetMsg" style="margin-left:10px"></span>
   </div>
   <div id="summary" class="summary" style="display:none"></div>
+  <div class="toolbar"><button type="button" class="btn ghost" id="pdfBtn">🖨 Save as PDF</button><span class="savemsg">Answers save automatically. Reopen this date anytime to edit.</span></div>
   <div id="list"><div class="empty">Loading…</div></div>
   <div class="savemsg" id="saveMsg" style="margin:4px 0 18px"></div>
 
@@ -121,7 +127,7 @@
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", QS=[], ANS={}, FIND={}, MISSING=false, saveT=null;
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", QS=[], ANS={}, FIND={}, FINDPICS={}, MISSING=false, saveT=null;
   function pad(n){ return String(n).padStart(2,"0"); }
   function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 
@@ -133,8 +139,6 @@
     CAN_EDIT = IS_MASTER || lvl==="edit";
     DATE = today(); document.getElementById("dateSel").value = DATE;
     document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
-    document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
-    document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
     if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
@@ -145,7 +149,6 @@
     } else { CLIENT=d.client||""; load(); }
   }).catch(function(){});
 
-  function shiftDate(n){ var p=DATE.split("-"); var d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); DATE=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); document.getElementById("dateSel").value=DATE; load(); }
 
   function load(){
     if(IS_MASTER && !CLIENT){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to start.</div>"; return; }
@@ -155,7 +158,7 @@
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The assessment tables aren't set up yet. Add them in Supabase (one-time), then answers save."; } else note.style.display="none";
-      QS=d.questions||[]; ANS=d.ans||{}; FIND=d.find||{};
+      QS=d.questions||[]; ANS=d.ans||{}; FIND=d.find||{}; FINDPICS=d.findpics||{};
       document.getElementById("clTools").style.display = IS_MASTER ? "block" : "none";
       render(); renderManage();
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
@@ -180,6 +183,9 @@
     // wire findings
     Array.prototype.slice.call(el.querySelectorAll(".qfind input")).forEach(function(i){ i.addEventListener("input", function(){ var qid=i.getAttribute("data-q"); if(i.value.trim()) FIND[qid]=i.value; else delete FIND[qid]; queueSave(); }); });
     Array.prototype.slice.call(el.querySelectorAll(".findtog")).forEach(function(t){ t.addEventListener("click", function(){ var f=document.getElementById("f_"+t.getAttribute("data-q")); f.classList.remove("hide"); t.style.display="none"; f.querySelector("input").focus(); }); });
+    // photos on a finding
+    Array.prototype.slice.call(el.querySelectorAll(".addpic input")).forEach(function(i){ i.addEventListener("change", function(e){ var fl=e.target.files&&e.target.files[0]; e.target.value=""; if(fl) addPhoto(i.getAttribute("data-q"), fl); }); });
+    Array.prototype.slice.call(el.querySelectorAll(".thumbdel")).forEach(function(b){ b.addEventListener("click", function(){ var qid=b.getAttribute("data-q"), u=b.getAttribute("data-url"); FINDPICS[qid]=(FINDPICS[qid]||[]).filter(function(x){return x!==u;}); if(!FINDPICS[qid].length) delete FINDPICS[qid]; render(); saveDay(); }); });
     updateSummary();
   }
 
@@ -189,7 +195,12 @@
       "<button type='button' class='no"+(a==="no"?" on":"")+"' data-q='"+esc(q.id)+"' data-v='no'"+(CAN_EDIT?"":" disabled")+">No</button></span>";
     var findBox = "<div class='qfind"+(f?"":" hide")+"' id='f_"+esc(q.id)+"'><input type='text' data-q='"+esc(q.id)+"' value='"+esc(f)+"' placeholder='Findings (optional)'"+(CAN_EDIT?"":" disabled")+" /></div>";
     var findTog = (CAN_EDIT && !f) ? "<button type='button' class='findtog' data-q='"+esc(q.id)+"'>＋ Add finding</button>" : "";
-    return "<div class='q'><div class='qtop'>"+(q.code?"<span class='qcode'>"+esc(q.code)+"</span>":"")+"<span class='qtext'>"+esc(q.question)+"</span>"+yn+"</div>"+findBox+findTog+"</div>";
+    var pics=FINDPICS[q.id]||[];
+    var picStrip = (pics.length || CAN_EDIT) ? ("<div class='qpics'>"+
+      pics.map(function(u){ return "<span class='thumb'><a href='"+esc(u)+"' target='_blank' rel='noopener'><img src='"+esc(u)+"' alt='finding photo' /></a>"+(CAN_EDIT?"<button type='button' class='thumbdel' data-q='"+esc(q.id)+"' data-url='"+esc(u)+"'>×</button>":"")+"</span>"; }).join("")+
+      (CAN_EDIT?"<label class='addpic'>＋ Photo<input type='file' accept='image/*' capture='environment' data-q='"+esc(q.id)+"' style='display:none' /></label>":"")+
+      "</div>") : "";
+    return "<div class='q'><div class='qtop'>"+(q.code?"<span class='qcode'>"+esc(q.code)+"</span>":"")+"<span class='qtext'>"+esc(q.question)+"</span>"+yn+"</div>"+findBox+findTog+picStrip+"</div>";
   }
 
   function updateSummary(){
@@ -206,10 +217,71 @@
     if(!CAN_EDIT || (IS_MASTER && !CLIENT)) return;
     if(saveT){ clearTimeout(saveT); saveT=null; }
     setMsg("Saving…","var(--muted)");
-    fetch("/api/assessment/day",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,ans:ANS,find:FIND})})
+    fetch("/api/assessment/day",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,ans:ANS,find:FIND,findpics:FINDPICS})})
       .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Saved ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1500); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
       .catch(function(){ setMsg("No connection","var(--red)"); });
   }
+
+  /* ---- Photos on a finding ---- */
+  function readFile(file, cb){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){ var max=1600,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} } var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(url); cb(c.toDataURL("image/jpeg",0.85).split(",")[1],"image/jpeg"); };
+    img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
+    img.src=url;
+  }
+  function addPhoto(qid, file){
+    setMsg("Uploading photo…","var(--muted)");
+    readFile(file, function(b64, ct){
+      if(!b64){ setMsg("Couldn't read the photo","var(--red)"); return; }
+      fetch("/api/assessment/photo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,fileBase64:b64,contentType:ct})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.url){ (FINDPICS[qid]=FINDPICS[qid]||[]).push(d.url); render(); saveDay(); setMsg("",""); } else setMsg((d&&d.error)||"Upload failed","var(--red)"); })
+        .catch(function(){ setMsg("No connection","var(--red)"); });
+    });
+  }
+
+  /* ---- Save as PDF (browser print) ---- */
+  function buildReport(){
+    var bySec=[], idx={};
+    QS.forEach(function(q){ if(idx[q.section]==null){ idx[q.section]=bySec.length; bySec.push({name:q.section,qs:[]}); } bySec[idx[q.section]].qs.push(q); });
+    var n=QS.length, yes=0,no=0,ans=0;
+    QS.forEach(function(q){ var a=ANS[q.id]; if(a){ans++; if(a==="yes")yes++; else no++;} });
+    var dd=new Date(DATE+"T00:00:00");
+    var rows=bySec.map(function(s){
+      return "<h2>"+esc(s.name)+"</h2>"+s.qs.map(function(q){
+        var a=ANS[q.id]||"", f=FIND[q.id]||"", pics=FINDPICS[q.id]||[];
+        var badge=a==="yes"?"<span class='b yes'>Yes</span>":(a==="no"?"<span class='b no'>No</span>":"<span class='b na'>—</span>");
+        return "<div class='r'><div class='rt'><span class='c'>"+esc(q.code)+"</span><span class='qt'>"+esc(q.question)+"</span>"+badge+"</div>"+
+          (f?"<div class='f'><b>Findings:</b> "+esc(f)+"</div>":"")+
+          (pics.length?"<div class='ph'>"+pics.map(function(u){return "<img src='"+esc(u)+"'/>";}).join("")+"</div>":"")+
+        "</div>";
+      }).join("");
+    }).join("");
+    return "<!doctype html><html><head><meta charset='utf-8'><title>Self-Assessment "+esc(CLIENT)+" "+esc(DATE)+"</title><style>"+
+      "body{font-family:Arial,Helvetica,sans-serif;color:#23282a;margin:28px;font-size:12px}"+
+      "h1{font-size:20px;margin:0 0 2px;color:#21443a}h2{font-size:14px;background:#21443a;color:#fff;padding:6px 10px;margin:18px 0 8px}"+
+      ".meta{color:#555;margin-bottom:6px}.sum span{display:inline-block;border:1px solid #ccc;border-radius:12px;padding:2px 9px;margin-right:6px}"+
+      ".r{padding:7px 0;border-bottom:1px solid #eee}.rt{display:flex;gap:8px;align-items:flex-start}.c{color:#777;min-width:60px;font-weight:bold}.qt{flex:1}"+
+      ".b{font-weight:bold;padding:1px 8px;border-radius:4px}.b.yes{background:#e3efe9;color:#2f5d50}.b.no{background:#f5e2da;color:#8a3d1c}.b.na{color:#999}"+
+      ".f{margin:4px 0 0 68px;color:#333}.ph{margin:6px 0 0 68px}.ph img{height:120px;margin:0 8px 8px 0;border:1px solid #ccc;border-radius:4px;vertical-align:top}"+
+      ".pbtn{margin-bottom:10px;padding:8px 14px;font-size:13px;cursor:pointer}"+
+      "@media print{.pbtn{display:none}h2,.b{-webkit-print-color-adjust:exact;print-color-adjust:exact}}"+
+      "</style></head><body>"+
+      "<button class='pbtn' onclick='window.print()'>Print / Save as PDF</button>"+
+      "<h1>Food Safety Self-Assessment</h1>"+
+      "<div class='meta'><b>"+esc(CLIENT||"")+"</b> &middot; "+esc(dd.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}))+"</div>"+
+      "<div class='sum'><span>"+ans+" of "+n+" answered</span><span>"+yes+" Yes</span>"+(no?"<span>"+no+" No</span>":"")+"</div>"+
+      rows+
+      "<div style='margin-top:18px;color:#888;font-size:10px'>Generated "+esc(new Date().toLocaleString())+" &middot; Ringwood</div>"+
+      "</body></html>";
+  }
+  function printReport(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    if(!QS.length){ alert("Nothing to print yet."); return; }
+    var w=window.open("","_blank"); if(!w){ alert("Allow pop-ups to print, then try again."); return; }
+    w.document.write(buildReport()); w.document.close();
+    setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
+  }
+  document.getElementById("pdfBtn").addEventListener("click", printReport);
 
   /* ---- Edit questions (admin) ---- */
   document.getElementById("mgToggle").addEventListener("click", function(){

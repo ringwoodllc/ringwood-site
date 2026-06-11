@@ -100,6 +100,7 @@ export default {
     if (url.pathname === "/api/assessment/day" && request.method === "POST") return saveAssessmentDay(request, env, session);
     if (url.pathname === "/api/assessment/question" && request.method === "POST") return saveAssessmentQuestion(request, env, session);
     if (url.pathname === "/api/assessment/reset" && request.method === "POST") return resetAssessment(request, env, session);
+    if (url.pathname === "/api/assessment/photo" && request.method === "POST") return uploadAssessmentPhoto(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -3702,7 +3703,24 @@ async function listAssessment(url, env, session) {
   }
   const days = await sbSelect(env, `assessment_days?client_id=eq.${who.id}&log_date=eq.${date}&select=data&limit=1`);
   const data = (days && days[0] && days[0].data) || {};
-  return noStore({ ok: true, client: who.name, date, questions: (qs || []).map((q) => ({ id: q.id, section: q.section || "Other", code: q.code || "", question: q.question || "", sort: q.sort || 0 })), ans: data.ans || {}, find: data.find || {} });
+  return noStore({ ok: true, client: who.name, date, questions: (qs || []).map((q) => ({ id: q.id, section: q.section || "Other", code: q.code || "", question: q.question || "", sort: q.sort || 0 })), ans: data.ans || {}, find: data.find || {}, findpics: data.findpics || {} });
+}
+
+async function uploadAssessmentPhoto(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const base64 = body.fileBase64 || "";
+  const ct = (body.contentType || "image/jpeg").toString();
+  if (!base64) return json({ ok: false, error: "No photo." }, 400);
+  const ext = ct.indexOf("png") >= 0 ? "png" : "jpg";
+  const path = `assessment/${who.id}/${Date.now()}-${Math.floor(Math.random() * 1e4)}.${ext}`;
+  const url = await uploadToStorage(env, path, base64, ct);
+  if (!url) return json({ ok: false, error: "Upload failed." }, 502);
+  return json({ ok: true, url });
 }
 
 async function saveAssessmentDay(request, env, session) {
@@ -3715,10 +3733,12 @@ async function saveAssessmentDay(request, env, session) {
   const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
   const ansIn = (body.ans && typeof body.ans === "object") ? body.ans : {};
   const findIn = (body.find && typeof body.find === "object") ? body.find : {};
-  const ans = {}, find = {};
+  const picsIn = (body.findpics && typeof body.findpics === "object") ? body.findpics : {};
+  const ans = {}, find = {}, findpics = {};
   for (const k of Object.keys(ansIn)) { const v = (ansIn[k] || "").toString(); if (v === "yes" || v === "no") ans[k] = v; }
   for (const k of Object.keys(findIn)) { const v = (findIn[k] || "").toString().slice(0, 1000); if (v.trim()) find[k] = v; }
-  const data = { ans, find };
+  for (const k of Object.keys(picsIn)) { if (Array.isArray(picsIn[k])) { const arr = picsIn[k].filter((u) => typeof u === "string" && u).slice(0, 8); if (arr.length) findpics[k] = arr; } }
+  const data = { ans, find, findpics };
   const a = authorOf(session);
   const existing = await sbSelect(env, `assessment_days?client_id=eq.${who.id}&log_date=eq.${date}&select=id&limit=1`);
   if (existing === null) return json({ ok: false, error: "The assessment table isn't set up yet." }, 400);
