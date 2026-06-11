@@ -269,11 +269,29 @@
       if(q){ var hay=[a.name,a.fullName,a.make,a.model,a.serial,a.type,a.location,a.qr,a.description].join(" ").toLowerCase(); if(hay.indexOf(q)<0) return false; }
       return true;
     });
-    arr.sort(function(a,b){
+    // The chosen sort (Name / Date) is the tiebreaker.
+    function baseCmp(a,b){
       if(sort==="new") return (b.loggedAt||"").localeCompare(a.loggedAt||"");
       if(sort==="old") return (a.loggedAt||"").localeCompare(b.loggedAt||"");
       if(sort==="za") return (b.name||"").toLowerCase().localeCompare((a.name||"").toLowerCase());  // Z–A
       return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase());  // A–Z default
+    }
+    // When searching, rank by where the match is: a hit in the name beats one
+    // buried in the description, so the obvious results lead.
+    function score(a){
+      var nm=(a.name||"").toLowerCase(), fn=(a.fullName||"").toLowerCase();
+      var prim=[a.make,a.model,a.serial,a.type,a.location,a.qr].join(" ").toLowerCase();
+      var desc=(a.description||"").toLowerCase();
+      var s=0;
+      if(nm.indexOf(q)===0) s+=100; else if(nm.indexOf(q)>=0) s+=70;
+      if(fn.indexOf(q)>=0) s+=40;
+      if(prim.indexOf(q)>=0) s+=25;
+      if(desc.indexOf(q)>=0) s+=8;
+      return s;
+    }
+    arr.sort(function(a,b){
+      if(q){ var d=score(b)-score(a); if(d) return d; }
+      return baseCmp(a,b);
     });
     assetCount.textContent = allAssets.length ? (arr.length+" of "+allAssets.length+" asset"+(allAssets.length===1?"":"s")) : "";
     if(!arr.length){ assetList.innerHTML="<div class='empty'>"+(allAssets.length?"No assets match.":"No assets yet.")+"</div>"; return; }
