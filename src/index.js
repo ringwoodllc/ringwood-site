@@ -85,6 +85,9 @@ export default {
     if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
     if (url.pathname === "/api/parts/list" && request.method === "GET") return listAllParts(url, env, session);
+    if (url.pathname === "/api/redbook" && request.method === "GET") return listRedbook(url, env, session);
+    if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
+    if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
@@ -131,6 +134,7 @@ export default {
       "/admin": "/admin/",
       "/architecture": "/architecture/",
       "/parts": "/parts/",
+      "/redbook": "/redbook/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -453,7 +457,7 @@ async function adminRevokeToken(request, env) {
 }
 
 // ---- master-only: user management ----
-const PERM_AREAS = ["tickets", "assets", "service"];
+const PERM_AREAS = ["tickets", "assets", "service", "foodSafety"];
 const PERM_LEVELS = ["none", "view", "edit"];
 function cleanPerms(p) {
   const out = {};
@@ -2972,6 +2976,71 @@ async function foldNotesIntoDescription(request, env, session) {
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }
+}
+
+/* ===================== Food Safety (Red Book) ===================== */
+// A per-client binder of food-safety documents (PDF/photo), organized by section.
+// Gated by the "foodSafety" permission. Lives in the `redbook_docs` table;
+// degrades gracefully until that table exists.
+
+// Resolve which client's book this request is for: a client login is locked to
+// its own client; a master may pass ?client=<name>.
+async function redbookClientId(env, session, nameParam) {
+  const forced = scopeName(session);
+  const name = forced != null ? forced : (nameParam || "");
+  if (!name) return { id: null, name: "" };
+  const refs = await getRefs(env);
+  return { id: findId(refs.clients, name), name };
+}
+
+async function listRedbook(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  if (!who.id) return noStore({ ok: true, client: who.name, docs: [] });
+  const rows = await sbSelect(env, `redbook_docs?client_id=eq.${who.id}&select=id,section,title,file_url,file_type,uploaded_by,created_at&order=created_at.desc`);
+  if (rows === null) return noStore({ ok: true, client: who.name, docs: [], missing: true });
+  return noStore({ ok: true, client: who.name, docs: (rows || []).map((d) => ({ id: d.id, section: d.section || "Other", title: d.title || "", url: d.file_url || "", type: d.file_type || "", uploadedBy: d.uploaded_by || "", created: d.created_at || "" })) });
+}
+
+async function uploadRedbookDoc(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const who = await redbookClientId(env, session, c(body.client));
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const section = c(body.section) || "Other";
+  const title = c(body.title) || "Document";
+  const base64 = body.fileBase64 || "";
+  const ct = c(body.contentType) || "application/pdf";
+  if (!base64) return json({ ok: false, error: "No file." }, 400);
+  const ext = ct.indexOf("pdf") >= 0 ? "pdf" : (ct.indexOf("png") >= 0 ? "png" : "jpg");
+  const path = `redbook/${who.id}/${Date.now()}-${Math.floor(Math.random() * 1e4)}.${ext}`;
+  const fileUrl = await uploadToStorage(env, path, base64, ct);
+  if (!fileUrl) return json({ ok: false, error: "Upload failed." }, 502);
+  const a = authorOf(session);
+  const res = await sbInsert(env, "redbook_docs", { client_id: who.id, section, title, file_url: fileUrl, file_type: ct, uploaded_by: a.author });
+  if (!res.ok) return json({ ok: false, error: ("Saved the file, but couldn't record it. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true, doc: res.data || null });
+}
+
+async function deleteRedbookDoc(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  // A client login may only delete its own client's docs.
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `redbook_docs?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/redbook_docs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
 }
 
 /* ===================== Ticket parts / materials ===================== */

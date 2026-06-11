@@ -95,6 +95,7 @@
       <div class="field"><label>Tickets</label><select id="n_p_tickets">__PERMS__</select></div>
       <div class="field"><label>Assets</label><select id="n_p_assets">__PERMS__</select></div>
       <div class="field"><label>Service</label><select id="n_p_service">__PERMS__</select></div>
+      <div class="field"><label>Food safety</label><select id="n_p_foodSafety">__PERMS__</select></div>
     </div>
     <div class="field" style="margin-top:12px"><label>Password <span style="font-weight:400;color:var(--muted)">— optional; leave blank to use a magic link</span></label><input id="n_pw" type="text" autocomplete="off" placeholder="At least 8 characters, or leave blank" /></div>
     <button class="btn" id="n_add" type="button">Add login</button>
@@ -116,7 +117,7 @@
   var PERM_OPTS = "<option value='none'>None</option><option value='view'>View</option><option value='edit'>Edit</option>";
   document.getElementById("n_perms").innerHTML = document.getElementById("n_perms").innerHTML.replace(/__PERMS__/g, PERM_OPTS);
   // default new client perms to Edit
-  ["n_p_tickets","n_p_assets","n_p_service"].forEach(function(id){ document.getElementById(id).value = "edit"; });
+  ["n_p_tickets","n_p_assets","n_p_service","n_p_foodSafety"].forEach(function(id){ document.getElementById(id).value = "edit"; });
 
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   var CLIENTS = [];
@@ -232,6 +233,7 @@
           "<div class='field'><label>Tickets</label>"+permSel("pt_"+k,u.perms.tickets)+"</div>"+
           "<div class='field'><label>Assets</label>"+permSel("pa_"+k,u.perms.assets)+"</div>"+
           "<div class='field'><label>Service</label>"+permSel("ps_"+k,u.perms.service)+"</div>"+
+          "<div class='field'><label>Food safety</label>"+permSel("pf_"+k,u.perms.foodSafety)+"</div>"+
         "</div>"+
         "<label class='chk'><input type='checkbox' id='ac_"+k+"' "+(u.active?"checked":"")+" /> Active (can sign in)</label>";
     } else {
@@ -265,7 +267,7 @@
       if(!isMaster){
         payload.client = document.getElementById("c_"+k).value;
         payload.active = document.getElementById("ac_"+k).checked;
-        payload.perms = { tickets: document.getElementById("pt_"+k).value, assets: document.getElementById("pa_"+k).value, service: document.getElementById("ps_"+k).value };
+        payload.perms = { tickets: document.getElementById("pt_"+k).value, assets: document.getElementById("pa_"+k).value, service: document.getElementById("ps_"+k).value, foodSafety: document.getElementById("pf_"+k).value };
       }
       sv.disabled = true; sv.textContent="Saving…";
       fetch("/api/admin/user",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
@@ -313,7 +315,7 @@
       username:document.getElementById("n_username").value.trim(),
       client:document.getElementById("n_client").value,
       password:document.getElementById("n_pw").value,
-      perms:{ tickets:document.getElementById("n_p_tickets").value, assets:document.getElementById("n_p_assets").value, service:document.getElementById("n_p_service").value } };
+      perms:{ tickets:document.getElementById("n_p_tickets").value, assets:document.getElementById("n_p_assets").value, service:document.getElementById("n_p_service").value, foodSafety:document.getElementById("n_p_foodSafety").value } };
     if(!payload.email && !payload.username){ msg.className="msg err"; msg.textContent="Enter an email or a username."; return; }
     if(role==="client" && !payload.client){ msg.className="msg err"; msg.textContent="Pick a client."; return; }
     b.disabled=true; b.textContent="Adding…";

@@ -227,6 +227,7 @@
       <tr><td><code>locations</code></td><td>The location list (Kitchen, Roof…).</td><td>—</td></tr>
       <tr><td><code>vendors</code></td><td>The directory of vendors and technicians you assign work to.</td><td>—</td></tr>
       <tr><td><code>contacts</code></td><td>Leads from the public website contact form.</td><td>—</td></tr>
+      <tr><td><code>redbook_docs</code></td><td>Food-safety binder documents (Red Book), by section.</td><td>→ clients</td></tr>
     </tbody>
   </table>
 
@@ -323,6 +324,11 @@
     { t:"contacts", note:"Leads from the public website form.", cols:[
       ["id","uuid","pk"],["name","text",""],["email","text",""],["phone","text",""],
       ["company","text",""],["stage","text",""],["timeline","text",""],["message","text",""],["status","text","New…"]
+    ]},
+    { t:"redbook_docs", note:"Food-safety binder documents (Red Book).", cols:[
+      ["id","uuid","pk"],["client_id","uuid","fk → clients"],["section","text","binder section"],
+      ["title","text",""],["file_url","text","stored file"],["file_type","text","pdf or image"],
+      ["uploaded_by","text",""],["created_at","timestamptz",""]
     ]}
   ];
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }

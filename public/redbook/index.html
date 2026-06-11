@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Food Safety" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Food Safety (Red Book)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);--red:#8a3d1c}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:16px 0 14px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 14px}
+  label{display:block;font-weight:600;font-size:.88rem;color:var(--green-deep);margin-bottom:6px}
+  select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  .sec{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:12px;overflow:hidden}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px;cursor:pointer}
+  .sechead:hover{background:rgba(33,68,58,.04)}
+  .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .seccount{flex:0 0 auto;background:var(--line);color:var(--muted);border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:700;min-width:22px;text-align:center}
+  .seccount.has{background:var(--green);color:#f6f2e8}
+  .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .doc{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .doc:last-child{border-bottom:none}
+  .dtype{flex:0 0 auto;font-size:.62rem;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:4px}
+  .dtype.pdf{background:#f0e0d4;color:#7a4a26}
+  .dtype.img{background:#dfe9f4;color:#274a73}
+  .dmain{flex:1;min-width:0}
+  .dmain a{color:var(--green-deep);font-weight:600;text-decoration:none;word-break:break-word}
+  .dmain a:hover{border-bottom:1px solid var(--clay)}
+  .dmeta{color:var(--muted);font-size:.78rem;margin-top:1px}
+  .ddel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .up{display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:10px;background:var(--bg);border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;padding:9px 14px;color:var(--green-deep);font-weight:600;font-size:.88rem}
+  .up:hover{border-color:var(--green)}
+  .umsg{font-size:.82rem;color:var(--muted);margin-top:6px}
+  .empty{color:var(--muted);padding:8px 0;font-size:.9rem}
+  .coming{margin-top:22px}
+  .coming .sectitle{opacity:.7}
+  .cwrap{background:var(--bg-2);border:1px dashed var(--line);border-radius:8px;padding:14px 15px;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Home</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Food safety</div>
+    <h1>Red Book</h1>
+    <p class="lead">Your food-safety binder: permits, certifications, training, pest, chemicals, self-assessments, and more. Upload a PDF or photo into each section so it's ready for an EcoSure or health-department review.</p>
+  </div>
+  <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
+  <div id="note" class="note" style="display:none"></div>
+  <div id="sections"><div class="empty">Loading…</div></div>
+
+  <div class="coming">
+    <h1 style="font-size:1.4rem;margin-bottom:6px">Logs</h1>
+    <div class="cwrap">Cold Storage Temperature Log, Receiving Log, Hot Holding / Cooking Temps, and the Daily Pre-Shift Checklist are coming next as fillable, asset-linked logs. For now, keep their PDFs in the sections above.</div>
+  </div>
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  var SECTIONS = ["Permits & Inspections","Food Safety Certifications","Employee Health","Pest Management","Chemical Safety (SDS / HazCom)","Monthly Self-Assessments","Cleaning & Sanitation","Temperature & Calibration","Receiving","Crisis / Recovery","Other / Supporting Documents"];
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[];
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/redbook"); return; }
+    IS_MASTER = d.role==="master";
+    var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
+    if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
+    CAN_EDIT = IS_MASTER || lvl==="edit";
+    if(IS_MASTER){
+      document.getElementById("clientPick").style.display="block";
+      fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+        var clients=(o&&o.clients)||[];
+        var sel=document.getElementById("clientSel");
+        sel.innerHTML="<option value=''>Select a client…</option>"+clients.map(function(c){return "<option>"+esc(c)+"</option>";}).join("");
+        sel.addEventListener("change", function(){ CLIENT=sel.value; load(); });
+      }).catch(function(){});
+      document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>";
+    } else {
+      CLIENT = d.client||""; load();
+    }
+  }).catch(function(){});
+
+  function load(){
+    if(IS_MASTER && !CLIENT){ document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>"; return; }
+    document.getElementById("sections").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/redbook?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      var note=document.getElementById("note");
+      if(!d||!d.ok){ document.getElementById("sections").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      if(d.missing){ note.style.display="block"; note.textContent="The Red Book table isn't set up yet. Add it in Supabase (one-time), then uploads save."; } else note.style.display="none";
+      DOCS=d.docs||[]; render();
+    }).catch(function(){ document.getElementById("sections").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function render(){
+    var bySec={}; DOCS.forEach(function(x){ (bySec[x.section]=bySec[x.section]||[]).push(x); });
+    var html = SECTIONS.map(function(sec, i){
+      var ds=bySec[sec]||[];
+      var docHtml = ds.length ? ds.map(function(x){
+        var isImg=(x.type||"").indexOf("image")===0;
+        return "<div class='doc'><span class='dtype "+(isImg?"img":"pdf")+"'>"+(isImg?"IMG":"PDF")+"</span>"+
+          "<div class='dmain'><a href='"+esc(x.url)+"' target='_blank' rel='noopener'>"+esc(x.title)+"</a>"+
+          "<div class='dmeta'>"+(x.uploadedBy?esc(x.uploadedBy)+" · ":"")+esc(x.created?new Date(x.created).toLocaleDateString():"")+"</div></div>"+
+          (CAN_EDIT?"<button type='button' class='ddel' data-id='"+esc(x.id)+"' title='Remove'>×</button>":"")+
+        "</div>";
+      }).join("") : "<div class='empty'>No documents yet.</div>";
+      var up = CAN_EDIT ? "<label class='up' for='up_"+i+"'>＋ Upload PDF or photo</label><input type='file' id='up_"+i+"' accept='application/pdf,image/*' data-sec='"+esc(sec)+"' style='display:none'/><div class='umsg' id='umsg_"+i+"'></div>" : "";
+      return "<div class='sec'><div class='sechead' data-i='"+i+"'><span class='sectitle'>"+esc(sec)+"</span><span class='seccount"+(ds.length?" has":"")+"'>"+ds.length+"</span></div>"+
+        "<div class='secbody' id='sb_"+i+"' style='display:none'>"+docHtml+up+"</div></div>";
+    }).join("");
+    document.getElementById("sections").innerHTML=html;
+    // wire toggles
+    Array.prototype.slice.call(document.querySelectorAll(".sechead")).forEach(function(h){ h.addEventListener("click", function(){ var b=document.getElementById("sb_"+h.getAttribute("data-i")); b.style.display = b.style.display==="block"?"none":"block"; }); });
+    // wire deletes
+    Array.prototype.slice.call(document.querySelectorAll(".ddel")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); if(!confirm("Remove this document?")) return; fetch("/api/redbook/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
+    // wire uploads
+    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) doUpload(f, inp.getAttribute("data-sec"), inp.id.replace("up_","umsg_")); }); });
+  }
+
+  function readFile(file, cb){
+    if((file.type||"").indexOf("image")===0){
+      var img=new Image(), url=URL.createObjectURL(file);
+      img.onload=function(){ var max=1800,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} } var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(url); var dd=c.toDataURL("image/jpeg",0.85); cb(dd.split(",")[1],"image/jpeg"); };
+      img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
+      img.src=url;
+    } else {
+      var fr=new FileReader(); fr.onload=function(){ cb((fr.result||"").split(",")[1], file.type||"application/pdf"); }; fr.onerror=function(){ cb(null); }; fr.readAsDataURL(file);
+    }
+  }
+
+  function doUpload(file, section, msgId){
+    var m=document.getElementById(msgId); if(m){ m.style.color="var(--muted)"; m.textContent="Uploading…"; }
+    var title=(file.name||"Document").replace(/\.[^.]+$/,"");
+    readFile(file, function(base64, ct){
+      if(!base64){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't read the file."; } return; }
+      fetch("/api/redbook/upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,section:section,title:title,fileBase64:base64,contentType:ct})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(m) m.textContent=""; load(); } else { if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Upload failed."; } } })
+        .catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
+    });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
