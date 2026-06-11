@@ -89,6 +89,7 @@ export default {
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/rename" && request.method === "POST") return renameRedbookDoc(request, env, session);
+    if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
@@ -3057,6 +3058,48 @@ async function deleteRedbookDoc(request, env, session) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/redbook_docs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
+}
+
+// AI cleanup for a document title: fix spelling and capitalization and tidy the
+// formatting into a short, professional title. Conservative: it must not invent
+// dates, names, or facts that aren't already in the title. Returns a suggestion
+// to preview; nothing is saved until the user hits Save.
+async function tidyRedbookTitle(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const title = (body.title || "").toString().trim();
+  const section = (body.section || "").toString().trim();
+  if (!title) return json({ ok: false, error: "Enter a name first." }, 400);
+  const schema = { type: "object", properties: { title: { type: "string" } }, required: ["title"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 120,
+        messages: [{ role: "user", content:
+          "Tidy the title of a food-safety document" + (section ? " filed under the section \"" + section + "\"" : "") + ". " +
+          "Fix spelling and capitalization (for example correct brand names like EcoSure and ServSafe) and tidy it into a short, professional document title. " +
+          "House style you may apply only when the information is already present: write any date in ISO form (YYYY-MM-DD or YYYY-MM), and write an expiry already in the title as \"exp YYYY-MM\". " +
+          "Do NOT add dates, names, locations, or any fact that is not already in the title. Do not change its meaning or expand abbreviations into new claims. " +
+          "Keep it a concise title, not a sentence. No surrounding quotes and no trailing period.\n\nTitle: " + title }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out;
+    try { out = JSON.parse(block.text); } catch { return json({ ok: false, error: "Couldn't read the suggestion." }, 502); }
+    const cleaned = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 200);
+    return json({ ok: true, title: cleaned || title });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
 }
 
 async function renameRedbookDoc(request, env, session) {

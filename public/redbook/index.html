@@ -50,9 +50,12 @@
   .dedit{flex:0 0 auto;background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
   .dedit:hover{border-color:var(--green)}
   .dtitle-edit{width:100%;font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--green);border-radius:5px;padding:7px 9px}
-  .deditrow{display:flex;gap:7px;margin-top:6px}
+  .deditrow{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:6px}
   .dsave{background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:6px 13px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
   .dcancel{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
+  .dtidy{background:transparent;border:1px solid var(--green);color:var(--green-deep);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
+  .dtidy:hover{background:rgba(47,93,80,.08)}
+  .dtidymsg{font-size:.8rem;font-weight:600;align-self:center}
   .dexp{font-weight:600}
   .dexp.exp-ok{color:var(--muted)}
   .dexp.exp-soon{color:#7a5a12}
@@ -219,9 +222,19 @@
     var cur=doc.title||btn.getAttribute("data-title")||"";
     var curExp=(doc.expires||"").slice(0,10);
     var expHtml = EXPIRY_ON ? "<label class='dexplbl' for='dexp_"+esc(id)+"'>Expires (optional)</label><input id='dexp_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curExp)+"' />" : "";
-    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dcancel'>Cancel</button></div>";
+    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
     var inp=main.querySelector(".dtitle-edit"); inp.focus(); inp.select();
     var expInp=main.querySelector(".dexp-edit");
+    var tidyBtn=main.querySelector(".dtidy"), tidyMsg=main.querySelector(".dtidymsg");
+    tidyBtn.addEventListener("click", function(){
+      var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
+      tidyBtn.disabled=true; tidyBtn.textContent="…"; tidyMsg.textContent="";
+      fetch("/api/redbook/tidy-title",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:t,section:doc.section||""})})
+        .then(function(r){return r.json();}).then(function(d){ tidyBtn.disabled=false; tidyBtn.textContent="✨ Tidy";
+          if(d&&d.ok){ inp.value=d.title; tidyMsg.style.color="var(--green)"; tidyMsg.textContent=(d.title===t?"Already clean":"Review and Save"); inp.focus(); }
+          else { tidyMsg.style.color="var(--red)"; tidyMsg.textContent=(d&&d.error)||"Couldn't tidy."; } })
+        .catch(function(){ tidyBtn.disabled=false; tidyBtn.textContent="✨ Tidy"; tidyMsg.style.color="var(--red)"; tidyMsg.textContent="No connection"; });
+    });
     function commit(){
       var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
       var e=expInp?(expInp.value||""):null;
