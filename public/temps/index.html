@@ -132,11 +132,19 @@
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
         var clients=(o&&o.clients)||[];
-        var sel=document.getElementById("clientSel");
-        sel.innerHTML="<option value=''>Select a client…</option>"+clients.map(function(c){return "<option>"+esc(c)+"</option>";}).join("");
-        sel.addEventListener("change", function(){ CLIENT=sel.value; load(); loadManage(); });
+        RWClientPins.mount({
+          selectEl: document.getElementById("clientSel"),
+          clients: clients,
+          placeholder: "Select a client…",
+          onPick: function(name){
+            CLIENT=name;
+            if(!name){
+              document.getElementById("units").innerHTML="<div class='empty'>Pick a client to see its cold units.</div>";
+              document.getElementById("mgList").innerHTML="<div class='empty'>Pick a client first.</div>";
+            } else { load(); loadManage(); }
+          }
+        });
       }).catch(function(){});
-      document.getElementById("units").innerHTML="<div class='empty'>Pick a client to see its cold units.</div>";
     } else {
       CLIENT = d.client||""; load(); loadManage();
     }
@@ -250,6 +258,7 @@
     }).catch(function(){ alert("Couldn't reach the server."); });
   }
 </script>
+<script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

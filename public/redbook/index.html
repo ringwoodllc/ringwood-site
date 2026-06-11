@@ -108,11 +108,17 @@
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
         var clients=(o&&o.clients)||[];
-        var sel=document.getElementById("clientSel");
-        sel.innerHTML="<option value=''>Select a client…</option>"+clients.map(function(c){return "<option>"+esc(c)+"</option>";}).join("");
-        sel.addEventListener("change", function(){ CLIENT=sel.value; load(); });
+        RWClientPins.mount({
+          selectEl: document.getElementById("clientSel"),
+          clients: clients,
+          placeholder: "Select a client…",
+          onPick: function(name){
+            CLIENT=name;
+            if(!name){ document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>"; }
+            else { load(); }
+          }
+        });
       }).catch(function(){});
-      document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>";
     } else {
       CLIENT = d.client||""; load();
     }
@@ -176,6 +182,7 @@
     });
   }
 </script>
+<script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>
