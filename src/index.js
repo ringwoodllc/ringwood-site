@@ -93,6 +93,7 @@ export default {
     if (url.pathname === "/api/inventory" && request.method === "GET") return listInventory(url, env, session);
     if (url.pathname === "/api/inventory/count" && request.method === "POST") return createInventoryCount(request, env, session);
     if (url.pathname === "/api/inventory/count/close" && request.method === "POST") return closeInventoryCount(request, env, session);
+    if (url.pathname === "/api/inventory/count/delete" && request.method === "POST") return deleteInventoryCount(request, env, session);
     if (url.pathname === "/api/inventory/photo" && request.method === "POST") return addInventoryPhoto(request, env, session);
     if (url.pathname === "/api/inventory/photo/delete" && request.method === "POST") return deleteInventoryPhoto(request, env, session);
     if (url.pathname === "/api/inventory/item" && request.method === "POST") return saveInventoryItem(request, env, session);
@@ -3439,6 +3440,18 @@ async function closeInventoryCount(request, env, session) {
   const res = await sbUpdate(env, "inventory_counts", s.count.id, { status: done, finished_at: done === "done" ? new Date().toISOString() : null });
   if (!res.ok) return json({ ok: false, error: "Could not update." }, 502);
   return json({ ok: true, status: done });
+}
+
+async function deleteInventoryCount(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, (body.id || "").toString().trim());
+  if (s.error) return s.error;
+  // Photos and items cascade-delete with the count (FK on delete cascade).
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/inventory_counts?id=eq.${s.count.id}&client_id=eq.${s.who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
 }
 
 async function addInventoryPhoto(request, env, session) {
