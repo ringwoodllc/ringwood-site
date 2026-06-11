@@ -220,7 +220,13 @@
       if(!d||!d.ok){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The temperature log table isn't set up yet. Add it in Supabase (one-time), then readings save."; } else note.style.display="none";
-      UNITS=(d.units||[]).sort(byOrder); READS=d.readings||[]; render();
+      UNITS=(d.units||[]).sort(byOrder); READS=d.readings||[];
+      // Make sure every saved reading has a column: add a slot for any reading
+      // time that isn't already one of the slots (e.g. a scanned 6 AM round),
+      // so nothing logged is hidden just because its time isn't a default slot.
+      READS.forEach(function(r){ if(r.at){ var dt=new Date(r.at); if(!isNaN(dt)){ var k=pad(dt.getHours())+":"+pad(dt.getMinutes()); if(SLOTS.map(slotKey).indexOf(k)<0) SLOTS.push(k); } } });
+      SLOTS.sort(function(a,b){ return slotKey(a).localeCompare(slotKey(b)); });
+      render();
     }).catch(function(){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
