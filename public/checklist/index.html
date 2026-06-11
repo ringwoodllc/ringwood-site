@@ -125,7 +125,12 @@
     </div>
   </div>
 
-  <div id="clTools" style="display:none;margin-bottom:12px"><button type="button" class="btn ghost" id="populateBtn">✦ Populate suggested items</button><span class="savemsg" id="popMsg" style="margin-left:10px"></span></div>
+  <div id="clTools" style="display:none;margin-bottom:12px">
+    <button type="button" class="btn" id="resetBtn">↺ Load the standard Pre-Shift sheet</button>
+    <button type="button" class="btn ghost" id="populateBtn" style="display:none">✦ Populate suggested items</button>
+    <span class="savemsg" id="resetMsg" style="margin-left:10px"></span><span class="savemsg" id="popMsg" style="margin-left:10px"></span>
+    <div class="hint" id="clHint">Loads your full standard sheet (areas and items), replacing what's here. Admin only.</div>
+  </div>
   <div id="list"><div class="empty">Loading…</div></div>
   <div class="savebar" id="saveBar" style="display:none"><button type="button" class="btn" id="saveBtn">✓ Save checklist</button><span class="savemsg" id="saveMsg"></span></div>
 
@@ -136,7 +141,6 @@
         <div class="hint">Rename a section, switch it between one box and Open / Mid / Close, add new areas, or remove ones you don't use. Changes apply to this client's checklist every day.</div>
         <div id="mgList"><div class="empty">Loading…</div></div>
         <div class="addrow"><input type="text" id="newName" placeholder="New section name" autocomplete="off" /><button type="button" class="btn ghost" id="addSec">＋ Add</button></div>
-        <div class="resetrow"><button type="button" class="resetbtn" id="resetBtn">↺ Load the standard Pre-Shift sheet</button><span class="savemsg" id="resetMsg"></span><div class="hint">Replaces all areas above with the standard sheet and its items. Use this to start fresh.</div></div>
       </div>
     </div>
   </div>
@@ -220,7 +224,8 @@
     SECTIONS.forEach(function(s){ if(ITEMS_ON) wireDetail(s); });
     document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
     var anyEmpty=SECTIONS.some(function(s){ return !(s.items&&s.items.length); });
-    document.getElementById("clTools").style.display = (IS_MASTER && ITEMS_ON && anyEmpty) ? "block" : "none";
+    document.getElementById("clTools").style.display = (IS_MASTER && ITEMS_ON) ? "block" : "none";
+    document.getElementById("populateBtn").style.display = (IS_MASTER && ITEMS_ON && anyEmpty) ? "inline-flex" : "none";
   }
 
   // The expandable "what to check" panel under a section.

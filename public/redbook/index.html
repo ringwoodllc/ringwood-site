@@ -98,6 +98,7 @@
   .cwrap{background:var(--bg-2);border:1px dashed var(--line);border-radius:8px;padding:14px 15px;color:var(--muted);font-size:.9rem}
   .logcard{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 15px;text-decoration:none;color:inherit}
   .logcard:hover{border-color:var(--green)}
+  .grouphd{font-family:"Spectral",serif;font-weight:500;font-size:1.4rem;color:var(--green-deep);margin-bottom:10px}
   .logtitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
   .logdesc{color:var(--muted);font-size:.86rem;margin-top:3px}
   .loggo{flex:0 0 auto;color:var(--green-deep);font-weight:600;font-size:.9rem;border-bottom:1px solid var(--clay)}
@@ -123,6 +124,24 @@
   <div id="adminNote" class="adminnote" style="display:none"><span class="admincrown"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span> Clients can view and open documents. Only you can add, rename, move, or delete them.</div>
   <div id="note" class="note" style="display:none"></div>
   <div id="expSummary" class="expbanner" style="display:none"></div>
+
+  <h2 class="grouphd">Logs</h2>
+  <a href="/temps" class="logcard">
+    <div>
+      <div class="logtitle">Cold Storage Temperature Log</div>
+      <div class="logdesc">Mark coolers and freezers, set a safe range, and log readings each day. Out-of-range readings flag red.</div>
+    </div>
+    <span class="loggo">Open →</span>
+  </a>
+  <a href="/checklist" class="logcard" style="margin-top:10px">
+    <div>
+      <div class="logtitle">Daily Pre-Shift Checklist</div>
+      <div class="logdesc">Walk the store and check off each area for the day, with Open / Mid / Close assignments. Sections are editable.</div>
+    </div>
+    <span class="loggo">Open →</span>
+  </a>
+
+  <h2 class="grouphd" style="margin-top:22px">Binder</h2>
   <div id="rbtools" style="display:none"><button type="button" class="tidyall" id="tidyAllBtn">✨ Tidy all titles</button></div>
   <div id="sections"><div class="empty">Loading…</div></div>
 
@@ -135,23 +154,6 @@
     </div>
   </div>
 
-  <div class="coming">
-    <h1 style="font-size:1.4rem;margin-bottom:6px">Logs</h1>
-    <a href="/temps" class="logcard" id="tempsLink">
-      <div>
-        <div class="logtitle">Cold Storage Temperature Log</div>
-        <div class="logdesc">Mark coolers and freezers, set a safe range, and log readings each day. Out-of-range readings flag red.</div>
-      </div>
-      <span class="loggo">Open →</span>
-    </a>
-    <a href="/checklist" class="logcard" id="checklistLink" style="margin-top:10px">
-      <div>
-        <div class="logtitle">Daily Pre-Shift Checklist</div>
-        <div class="logdesc">Walk the store and check off each area for the day, with Open / Mid / Close assignments. Sections are editable.</div>
-      </div>
-      <span class="loggo">Open →</span>
-    </a>
-  </div>
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
