@@ -474,13 +474,15 @@
     img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
     img.src=url;
   }
+  var UPLOADING=0;
+  window.addEventListener("beforeunload", function(e){ if(UPLOADING>0){ e.preventDefault(); e.returnValue="Photos are still uploading. Leave anyway?"; return e.returnValue; } });
   function uploadPhotos(files){
     files=Array.prototype.slice.call(files||[]).filter(function(f){ return f && (f.type||"").indexOf("image")===0; });
     if(!CUR){ return; }
     if(!files.length) return;
-    var msg=document.getElementById("photoMsg"); var i=0, added=0;
+    var msg=document.getElementById("photoMsg"); var i=0, added=0; UPLOADING++;
     (function next(){
-      if(i>=files.length){ msg.style.color="var(--ok)"; msg.textContent="Read "+added+" item"+(added===1?"":"s")+" from "+files.length+" photo"+(files.length===1?"":"s")+"."; openCount(CUR.id); return; }
+      if(i>=files.length){ UPLOADING--; msg.style.color="var(--ok)"; msg.textContent="Read "+added+" item"+(added===1?"":"s")+" from "+files.length+" photo"+(files.length===1?"":"s")+". All saved."; openCount(CUR.id); return; }
       var f=files[i++]; msg.style.color="var(--muted)"; msg.textContent="Reading photo "+i+" of "+files.length+"…";
       downscale(f, function(b64, ct){
         if(!b64){ next(); return; }
