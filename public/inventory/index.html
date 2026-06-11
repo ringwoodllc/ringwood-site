@@ -340,6 +340,16 @@
   function baseKey(product){
     var n=(product||"").toLowerCase();
     n=n.replace(/\b(3g|3 ?gal|gallon|qt|quart|ic|shb|nsa|6 ?pk|pk|iw|14 ?pk|12|round|rd|lyr|layer|sheet|bars|diced|new|br)\b/g," ");
+    // Normalize common abbreviation / spelling variants so the same flavor matches
+    // whether the AI read it short or long (e.g. "Chocolate" vs "Choc").
+    n=n.replace(/\bchocolate\b/g,"choc")
+       .replace(/\b(ckie|cky|ckys|ckys|cookies)\b/g,"cookie")
+       .replace(/\b(strawberries|strwb|strwbry|strawbry)\b/g,"strawberry")
+       .replace(/\b(crm|creme)\b/g,"cream").replace(/\bchsck\b/g,"cheesecake").replace(/\bchzcake\b/g,"cheesecake")
+       .replace(/\bmnt\b/g,"mint").replace(/\bcrml\b/g,"caramel").replace(/\b(prln|praline)\b/g,"pralines")
+       .replace(/\bvan\b/g,"vanilla").replace(/\bbday\b/g,"birthday").replace(/\bpb\b/g,"peanut butter")
+       .replace(/\bcrnch\b/g,"crunch").replace(/\bfdg\b/g,"fudge").replace(/\balmd\b/g,"almond")
+       .replace(/\bsherbert\b/g,"sherbet").replace(/\bshbt\b/g,"sherbet").replace(/\bbch\b/g,"beach");
     return n.replace(/[^a-z0-9]+/g," ").trim();
   }
   function ordKey(product, kind){ return catOf(product,kind)+"|"+baseKey(product); }
