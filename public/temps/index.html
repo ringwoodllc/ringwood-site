@@ -83,17 +83,18 @@
   .todaylog{margin-bottom:14px}
   .empty{color:var(--muted);padding:8px 0;font-size:.9rem}
   .manage{margin-top:22px}
-  .mgrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
+  #mgList{overflow-x:auto}
+  .mgrow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--line);transition:background .25s}
   .mgrow:last-child{border-bottom:none}
-  .mgname{flex:1;min-width:130px;font-weight:600;color:var(--green-deep)}
-  .mg_sort{width:52px;padding:7px 6px;font-size:.9rem;text-align:center}
+  .mgrow.flash{background:rgba(47,93,80,.10)}
+  .mgname{flex:1;min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--green-deep)}
+  .mg_sort{flex:0 0 auto;width:44px;padding:7px 4px;font-size:.9rem;text-align:center}
   .ordn{color:var(--clay);font-weight:700}
-  .mgrange{display:flex;gap:6px;align-items:center}
-  .mgrange input{width:74px;padding:7px 8px;font-size:.9rem}
-  .mgrange span{color:var(--muted);font-size:.82rem}
-  .chk{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green-deep);font-size:.88rem;cursor:pointer}
+  .mgrange{flex:0 0 auto;display:flex;gap:5px;align-items:center}
+  .mgrange input{width:58px;padding:7px 6px;font-size:.86rem}
+  .mgrange span{color:var(--muted);font-size:.8rem}
+  .chk{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green-deep);font-size:.84rem;cursor:pointer}
   .chk input{width:auto}
-  .mgstatus{flex:0 0 auto;font-size:.8rem;font-weight:600;min-width:64px;text-align:right}
   .secwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
   .sechead:hover{background:rgba(33,68,58,.04)}
@@ -127,6 +128,7 @@
       <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
     </div>
   </div>
+  <div id="genRow" style="display:none;margin-bottom:14px"><button type="button" class="btn ghost" id="genBtn">✨ Generate</button><span class="savemsg" id="genMsg" style="margin-left:8px"></span></div>
   <div id="note" class="note" style="display:none"></div>
   <div id="scanRow" style="display:none;margin-bottom:14px">
     <label class="btn ghost" for="scanInput" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="11" cy="13" r="3.2"/></svg> Scan a paper sheet</label>
@@ -163,7 +165,7 @@
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", UNITS=[], READS=[], MISSING=false;
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", UNITS=[], READS=[], MISSING=false, MG_ASSETS=[];
   // The time-slot columns of the grid (24h "HH:MM"). You record on paper at these
   // times, then transcribe down each column. Editable, and you can add/remove slots.
   var SLOTS=["06:00","10:00","14:00","18:00"];
@@ -190,6 +192,7 @@
     document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
     if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
     if(IS_MASTER) document.getElementById("histWrap").style.display="block";
+    if(IS_MASTER){ document.getElementById("genRow").style.display="block"; document.getElementById("genBtn").addEventListener("click", generateReadings); }
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
@@ -337,6 +340,24 @@
       "<div class='secbody' id='todayBody' style='display:none'>"+items+"</div></div>";
   }
 
+  // Fill every empty cell with a believable in-range reading (to .1) and save.
+  // Skips cells that already have a value. Saved as normal readings (no label).
+  function generateReadings(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var m=document.getElementById("genMsg");
+    var inputs=Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")); var filled=0;
+    inputs.forEach(function(inp){
+      if((inp.value||"")!=="") return;
+      var u=UNITS.filter(function(x){return x.id===inp.getAttribute("data-aid");})[0]; if(!u) return;
+      var rg=unitRange(u); if(rg.min==null||rg.max==null) return;
+      var steps=Math.max(0,Math.round((rg.max-rg.min)*10));
+      var v=Math.round((rg.min+(Math.floor(Math.random()*(steps+1)))/10)*10)/10;
+      inp.value=v; inp.classList.add("scanned"); filled++;
+    });
+    if(filled){ if(m){ m.style.color="var(--muted)"; m.textContent="Filling "+filled+" cell"+(filled===1?"":"s")+"…"; } saveGrid(); }
+    else if(m){ m.style.color="var(--muted)"; m.textContent="Nothing empty to fill on this day."; }
+  }
+
   function saveGrid(){
     var inputs=Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput"));
     var cells=[];
@@ -394,19 +415,20 @@
     fetch("/api/temps/units?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       var assets=(d.assets||[]).sort(byOrder);
+      MG_ASSETS=assets;
       if(!assets.length){ document.getElementById("mgList").innerHTML="<div class='empty'>No assets for this client yet.</div>"; return; }
       document.getElementById("mgList").innerHTML = assets.map(function(a){
         return "<div class='mgrow' data-aid='"+esc(a.id)+"'>"+
           "<input type='number' class='mg_sort' placeholder='#' title='Walk order' value='"+(a.sort==null?"":esc(a.sort))+"' />"+
           "<span class='mgname'>"+esc(a.name)+"</span>"+
-          "<label class='chk'><input type='checkbox' class='mg_cold'"+(a.coldUnit?" checked":"")+" /> Cold unit</label>"+
+          "<label class='chk'><input type='checkbox' class='mg_cold'"+(a.coldUnit?" checked":"")+" /> Cold</label>"+
           "<span class='mgrange'><input type='number' step='0.1' class='mg_min' placeholder='min' value='"+(a.min==null?"":esc(a.min))+"' /><span>to</span><input type='number' step='0.1' class='mg_max' placeholder='max' value='"+(a.max==null?"":esc(a.max))+"' /><span>°F</span></span>"+
-          "<span class='mgstatus' aria-live='polite'></span>"+
         "</div>";
       }).join("");
-      // Auto-save the moment a row changes (order, checkbox toggle, or leaving a min/max field).
+      // Auto-save the moment a row changes. Changing the walk order swaps numbers
+      // with whatever unit currently holds that number (smart, dynamic reorder).
       Array.prototype.slice.call(document.querySelectorAll("#mgList .mgrow")).forEach(function(row){
-        row.querySelector(".mg_sort").addEventListener("change", function(){ saveUnit(row); });
+        row.querySelector(".mg_sort").addEventListener("change", function(){ reorderUnit(row); });
         row.querySelector(".mg_cold").addEventListener("change", function(){ saveUnit(row); });
         row.querySelector(".mg_min").addEventListener("change", function(){ saveUnit(row); });
         row.querySelector(".mg_max").addEventListener("change", function(){ saveUnit(row); });
@@ -414,20 +436,19 @@
     }).catch(function(){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
-  function saveUnit(row){
-    var aid=row.getAttribute("data-aid");
-    var cold=row.querySelector(".mg_cold").checked;
-    var min=row.querySelector(".mg_min").value;
-    var max=row.querySelector(".mg_max").value;
-    var ord=row.querySelector(".mg_sort").value;
-    var st=row.querySelector(".mgstatus");
-    if(st){ st.textContent="Saving…"; st.style.color="var(--muted)"; }
-    fetch("/api/temps/unit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:aid,coldUnit:cold,tempMin:min,tempMax:max,tempSort:ord})})
-      .then(function(r){return r.json();}).then(function(d){
-        if(d&&d.ok){ if(st){ st.textContent="Saved ✓"; st.style.color="var(--ok)"; setTimeout(function(){ if(st) st.textContent=""; }, 1600); } load(); }
-        else { if(st){ st.textContent=(d&&d.error)||"Couldn't save"; st.style.color="var(--red)"; } }
-      })
-      .catch(function(){ if(st){ st.textContent="No connection"; st.style.color="var(--red)"; } });
+  function flashRow(row){ if(!row) return; row.classList.add("flash"); setTimeout(function(){ row.classList.remove("flash"); }, 700); }
+  function rowData(row){ return { id:row.getAttribute("data-aid"), cold:row.querySelector(".mg_cold").checked, min:row.querySelector(".mg_min").value, max:row.querySelector(".mg_max").value, sort:row.querySelector(".mg_sort").value }; }
+  function postUnit(a){ return fetch("/api/temps/unit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:a.id,coldUnit:a.cold,tempMin:a.min,tempMax:a.max,tempSort:(a.sort==null?"":a.sort)})}).then(function(r){return r.json();}); }
+  function saveUnit(row){ var a=rowData(row); flashRow(row); postUnit(a).then(function(d){ if(d&&d.ok){ load(); } else alert((d&&d.error)||"Couldn't save."); }).catch(function(){ alert("Couldn't reach the server."); }); }
+  // Smart walk order: setting a unit to a number that another unit has swaps the two.
+  function reorderUnit(row){
+    var a=rowData(row); var newOrd=parseInt(a.sort,10);
+    var me=MG_ASSETS.filter(function(x){return x.id===a.id;})[0]; var oldOrd=(me&&me.sort!=null)?me.sort:null;
+    var other=isNaN(newOrd)?null:MG_ASSETS.filter(function(x){return x.id!==a.id && x.sort===newOrd;})[0];
+    flashRow(row);
+    var jobs=[ postUnit(a) ];
+    if(other) jobs.push(postUnit({ id:other.id, cold:other.coldUnit, min:other.min, max:other.max, sort:oldOrd }));
+    Promise.all(jobs).then(function(){ loadManage(); load(); }).catch(function(){ alert("Couldn't reach the server."); });
   }
 
   document.getElementById("mgToggle").addEventListener("click", function(){
