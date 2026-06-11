@@ -484,11 +484,10 @@
     if(!ORDERS.length){ box.innerHTML="<div class='empty'>No orders yet. Add one for each day you buy, and the trend builds here.</div>"; return; }
     var prods={}; ORDERS.forEach(function(o){ (o.items||[]).forEach(function(it){ var p=(it.product||"").trim(); if(p) prods[p]=true; }); });
     var products=Object.keys(prods).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
-    var head="<tr><th class='prod'>Flavor</th>"+ORDERS.map(function(o,i){ var amt=(o.amount!=null&&o.amount!=="")?("<div style='font-weight:400;text-transform:none;font-size:.68rem;color:var(--muted)'>$"+esc(o.amount)+"</div>"):""; return "<th class='ordcol' data-i='"+i+"' title='Tap to edit'>"+esc(orderLabel(o))+amt+"</th>"; }).join("")+"<th>Total</th></tr>";
+    var head="<tr><th class='prod'>Flavor</th>"+ORDERS.map(function(o,i){ var amt=(o.amount!=null&&o.amount!=="")?("<div style='font-weight:400;text-transform:none;font-size:.68rem;color:var(--muted)'>$"+esc(o.amount)+"</div>"):""; return "<th class='ordcol' data-i='"+i+"' title='Tap to edit'>"+esc(orderLabel(o))+amt+"</th>"; }).join("")+"</tr>";
     var body=products.map(function(p){
-      var total=0;
-      var cells=ORDERS.map(function(o){ var q=qtyOf(o,p); total+=q; return q?("<td>"+fmtQ(q)+"</td>"):"<td class='zero'>·</td>"; }).join("");
-      return "<tr><td class='prod'>"+esc(p)+"</td>"+cells+"<td><b>"+fmtQ(total)+"</b></td></tr>";
+      var cells=ORDERS.map(function(o){ var q=qtyOf(o,p); return q?("<td>"+fmtQ(q)+"</td>"):"<td class='zero'>·</td>"; }).join("");
+      return "<tr><td class='prod'>"+esc(p)+"</td>"+cells+"</tr>";
     }).join("");
     box.innerHTML="<div class='trendwrap'><table class='trend'><thead>"+head+"</thead><tbody>"+body+"</tbody></table></div>";
     Array.prototype.slice.call(box.querySelectorAll(".ordcol")).forEach(function(th){ th.addEventListener("click", function(){ editOrder(ORDERS[+th.getAttribute("data-i")]); }); });
