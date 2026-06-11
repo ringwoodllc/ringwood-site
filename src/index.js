@@ -101,6 +101,12 @@ export default {
     if (url.pathname === "/api/assessment/question" && request.method === "POST") return saveAssessmentQuestion(request, env, session);
     if (url.pathname === "/api/assessment/reset" && request.method === "POST") return resetAssessment(request, env, session);
     if (url.pathname === "/api/assessment/photo" && request.method === "POST") return uploadAssessmentPhoto(request, env, session);
+    if (url.pathname === "/api/receiving" && request.method === "GET") return listReceiving(url, env, session);
+    if (url.pathname === "/api/receiving/add" && request.method === "POST") return addReceiving(request, env, session);
+    if (url.pathname === "/api/receiving/delete" && request.method === "POST") return deleteReceiving(request, env, session);
+    if (url.pathname === "/api/hotholding" && request.method === "GET") return listHotHolding(url, env, session);
+    if (url.pathname === "/api/hotholding/add" && request.method === "POST") return addHotHolding(request, env, session);
+    if (url.pathname === "/api/hotholding/delete" && request.method === "POST") return deleteHotHolding(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -161,6 +167,8 @@ export default {
       "/temps": "/temps/",
       "/checklist": "/checklist/",
       "/assessment": "/assessment/",
+      "/receiving": "/receiving/",
+      "/hotholding": "/hotholding/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -3721,6 +3729,98 @@ async function uploadAssessmentPhoto(request, env, session) {
   const url = await uploadToStorage(env, path, base64, ct);
   if (!url) return json({ ok: false, error: "Upload failed." }, 502);
   return json({ ok: true, url });
+}
+
+/* ===================== Receiving Log ===================== */
+// Per-delivery entries: vendor, item, temperature, accepted/rejected, notes.
+// Lives in `receiving_logs`; degrades gracefully until the table exists.
+async function listReceiving(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  if (!who.id) return noStore({ ok: true, client: who.name, date, entries: [] });
+  const rows = await sbSelect(env, `receiving_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,vendor,item,temp,status,notes,logged_by,created_at&order=created_at.asc`);
+  if (rows === null) return noStore({ ok: true, client: who.name, date, entries: [], missing: true });
+  return noStore({ ok: true, client: who.name, date, entries: (rows || []).map((r) => ({ id: r.id, vendor: r.vendor || "", item: r.item || "", temp: r.temp, status: r.status || "Accepted", notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+}
+
+async function addReceiving(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const date = c(body.date).slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const vendor = c(body.vendor).slice(0, 120), item = c(body.item).slice(0, 160), notes = c(body.notes).slice(0, 500);
+  if (!vendor && !item) return json({ ok: false, error: "Enter a vendor or item." }, 400);
+  const tp = parseFloat(body.temp); const temp = isNaN(tp) ? null : tp;
+  const status = c(body.status) === "Rejected" ? "Rejected" : "Accepted";
+  const a = authorOf(session);
+  const res = await sbInsert(env, "receiving_logs", { client_id: who.id, log_date: date, vendor, item, temp, status, notes, logged_by: a.author });
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true });
+}
+
+async function deleteReceiving(request, env, session) {
+  return deleteFoodLogRow(request, env, session, "receiving_logs");
+}
+
+/* ===================== Hot Holding / Cooking Temps ===================== */
+// Per-check entries: kind (cooking or hot holding), food item, temperature, notes.
+// Cooking flags below 165°F; hot holding flags below 135°F. Lives in
+// `hotholding_logs`; degrades gracefully until the table exists.
+async function listHotHolding(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  if (!who.id) return noStore({ ok: true, client: who.name, date, entries: [] });
+  const rows = await sbSelect(env, `hotholding_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,kind,item,temp,notes,logged_by,created_at&order=created_at.asc`);
+  if (rows === null) return noStore({ ok: true, client: who.name, date, entries: [], missing: true });
+  return noStore({ ok: true, client: who.name, date, entries: (rows || []).map((r) => ({ id: r.id, kind: r.kind === "cooking" ? "cooking" : "holding", item: r.item || "", temp: r.temp, notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+}
+
+async function addHotHolding(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const date = c(body.date).slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const kind = c(body.kind) === "cooking" ? "cooking" : "holding";
+  const item = c(body.item).slice(0, 160), notes = c(body.notes).slice(0, 500);
+  if (!item) return json({ ok: false, error: "Enter a food item." }, 400);
+  const tp = parseFloat(body.temp); if (isNaN(tp)) return json({ ok: false, error: "Enter a temperature." }, 400);
+  const a = authorOf(session);
+  const res = await sbInsert(env, "hotholding_logs", { client_id: who.id, log_date: date, kind, item, temp: tp, notes, logged_by: a.author });
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true });
+}
+
+async function deleteHotHolding(request, env, session) {
+  return deleteFoodLogRow(request, env, session, "hotholding_logs");
+}
+
+// Shared delete for the simple food logs above: client logins may only delete
+// their own client's rows.
+async function deleteFoodLogRow(request, env, session, table) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `${table}?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
 }
 
 async function saveAssessmentDay(request, env, session) {
