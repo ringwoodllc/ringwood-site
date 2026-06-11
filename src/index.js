@@ -120,6 +120,7 @@ export default {
     if (url.pathname === "/api/temps/log" && request.method === "POST") return logTemp(request, env, session);
     if (url.pathname === "/api/temps/round" && request.method === "POST") return logTempRound(request, env, session);
     if (url.pathname === "/api/temps/grid" && request.method === "POST") return logTempGrid(request, env, session);
+    if (url.pathname === "/api/temps/scan" && request.method === "POST") return scanTempLog(request, env, session);
     if (url.pathname === "/api/temps/log/delete" && request.method === "POST") return deleteTempLog(request, env, session);
     if (url.pathname === "/api/temps/log/update" && request.method === "POST") return updateTempLog(request, env, session);
     if (url.pathname === "/api/temps/demo" && request.method === "POST") return setTempDemo(request, env, session);
@@ -3467,6 +3468,121 @@ async function logTempGrid(request, env, session) {
   const res = await sbInsert(env, "temp_logs", rows);
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
   return json({ ok: true, count: rows.length });
+}
+
+// Read a photo of a paper temperature sheet with Claude and return the readings
+// for review (we never save straight from a photo). The page fills the grid with
+// what comes back so a person can check it and hit Save. We pass the client's own
+// unit names so the model maps each column to the right cooler, and match the
+// labels back to asset ids here.
+function normLabel(s) { return (s || "").toString().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+function matchUnit(label, units) {
+  const n = normLabel(label);
+  if (!n) return null;
+  let best = null, bestScore = 0;
+  for (const u of units) {
+    for (const cand of [u.nickname, u.name]) {
+      const c = normLabel(cand);
+      if (!c) continue;
+      let score = 0;
+      if (c === n) score = 100;
+      else if (c.includes(n) || n.includes(c)) score = 70 + Math.min(20, Math.min(c.length, n.length));
+      else {
+        const cw = new Set(c.split(" ")), nw = n.split(" ");
+        const hit = nw.filter((w) => w.length > 2 && cw.has(w)).length;
+        if (hit) score = 40 + hit * 8;
+      }
+      if (score > bestScore) { bestScore = score; best = u; }
+    }
+  }
+  return bestScore >= 48 ? best : null;
+}
+
+const TEMPSCAN_SCHEMA = {
+  type: "object",
+  properties: {
+    readings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          unit: { type: "string" },
+          time: { type: "string" },
+          temp: { type: "number" },
+        },
+        required: ["unit", "time", "temp"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["readings"],
+  additionalProperties: false,
+};
+
+async function scanTempLog(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected. Add the ANTHROPIC_API_KEY in Cloudflare." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const base64 = (body.imageBase64 || "").toString();
+  const ct = (body.contentType || "image/jpeg").toString();
+  if (!base64) return json({ ok: false, error: "No photo." }, 400);
+  const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`);
+  if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
+  if (!units.length) return json({ ok: false, error: "No cold units set up yet. Add them in Manage units first." }, 400);
+
+  const names = units.map((u) => "- " + (u.nickname ? u.nickname + " (" + u.name + ")" : u.name)).join("\n");
+  const prompt =
+    "This is a photo of a paper Cold Storage Temperature Log for a food business. The columns are coolers and freezers " +
+    "(units); each row is a reading at a date and time. Read every handwritten temperature you can see clearly and return one " +
+    "entry per filled cell.\n\n" +
+    "For each reading return:\n" +
+    "- unit: the column header text for that cell, copied as printed.\n" +
+    "- time: the row's time in 24h HH:MM if shown, otherwise an empty string.\n" +
+    "- temp: the handwritten number as a number (may be negative for freezers; keep one decimal if written).\n\n" +
+    "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
+    "This client's known units (match the column to the closest one, but still return the header text you see):\n" + names;
+
+  let read = null;
+  try {
+    const content = [
+      { type: "image", source: { type: "base64", media_type: ct, data: base64 } },
+      { type: "text", text: prompt },
+    ];
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-opus-4-8",
+        max_tokens: 4000,
+        thinking: { type: "adaptive" },
+        messages: [{ role: "user", content }],
+        output_config: { format: { type: "json_schema", schema: TEMPSCAN_SCHEMA } },
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const block = (data.content || []).find((b) => b.type === "text");
+      if (block) read = JSON.parse(block.text);
+    }
+  } catch { read = null; }
+  if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
+
+  const out = [];
+  const unmatched = {};
+  for (const r of read.readings) {
+    const temp = parseFloat(r.temp);
+    if (isNaN(temp)) continue;
+    const u = matchUnit(r.unit, units);
+    const time = /^\d{1,2}:\d{2}$/.test((r.time || "").trim()) ? r.time.trim() : "";
+    if (u) out.push({ assetId: u.id, unitName: u.nickname || u.name, label: r.unit || "", time, temp, out: tempUnitOut(temp, u.temp_min, u.temp_max) });
+    else unmatched[normLabel(r.unit)] = r.unit || "(blank)";
+  }
+  return json({ ok: true, date, readings: out, matched: out.length, unmatched: Object.values(unmatched) });
 }
 
 async function deleteTempLog(request, env, session) {

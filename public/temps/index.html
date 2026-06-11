@@ -55,6 +55,7 @@
   .gcell:focus{border-color:var(--green);outline:none}
   .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep);opacity:1}
   .gcell.logged.out{color:var(--red);background:rgba(138,61,28,.1)}
+  .gcell.scanned{background:rgba(169,99,58,.16);border-color:var(--clay);color:var(--clay)}
   .cell-none{color:var(--muted);font-size:.8rem}
   .daterow{display:flex;gap:8px;align-items:center}
   .daterow input{flex:1;min-width:0}
@@ -127,6 +128,11 @@
     </div>
   </div>
   <div id="note" class="note" style="display:none"></div>
+  <div id="scanRow" style="display:none;margin-bottom:14px">
+    <label class="btn ghost" for="scanInput" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="11" cy="13" r="3.2"/></svg> Scan a paper sheet</label>
+    <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" />
+    <span class="savemsg" id="scanMsg" style="margin-left:10px"></span>
+  </div>
   <div id="units"><div class="empty">Loading…</div></div>
 
   <div class="manage" id="manageWrap" style="display:none">
@@ -239,6 +245,7 @@
 
   function render(){
     var el=document.getElementById("units");
+    var sr=document.getElementById("scanRow"); if(sr) sr.style.display=(CAN_EDIT && UNITS.length)?"":"none";
     if(!UNITS.length){
       el.innerHTML="<div class='empty'>No cold units yet."+(CAN_EDIT?" Use Manage units below to mark a cooler or freezer.":"")+"</div>";
       return;
@@ -337,6 +344,47 @@
         else { if(msg){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't save."; } } })
       .catch(function(){ btn.disabled=false; btn.textContent=old; if(msg){ msg.style.color="var(--red)"; msg.textContent="No connection"; } });
   }
+
+  /* ---- Scan a paper sheet: AI reads it and prefills the grid for review ---- */
+  // Shrink the photo to a reasonable size before sending (handwriting stays legible).
+  function downscaleImage(file, cb){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){ var max=1800,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} } var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(url); cb(c.toDataURL("image/jpeg",0.9).split(",")[1],"image/jpeg"); };
+    img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
+    img.src=url;
+  }
+  // Drop the AI's readings into the grid as unsaved values for the person to check.
+  function fillFromScan(readings){
+    var m=captureGrid();
+    readings.forEach(function(r){ if(r.time && /^\d{1,2}:\d{2}$/.test(r.time)){ var t=slotKey(r.time); if(SLOTS.map(slotKey).indexOf(t)<0) SLOTS.push(t); } });
+    var defSlot=SLOTS.length?slotKey(SLOTS[0]):"06:00";
+    render(); restoreGrid(m);
+    var filled=0, skipped=0;
+    readings.forEach(function(r){
+      var slot=(r.time && /^\d{1,2}:\d{2}$/.test(r.time))?slotKey(r.time):defSlot;
+      var inp=document.querySelector(".gcell.tinput[data-aid='"+r.assetId+"'][data-slot='"+slot+"']");
+      if(inp){ inp.value=r.temp; inp.classList.add("scanned"); filled++; } else skipped++;
+    });
+    return filled;
+  }
+  var scanInput=document.getElementById("scanInput");
+  if(scanInput) scanInput.addEventListener("change", function(e){
+    var f=e.target.files&&e.target.files[0]; this.value="";
+    if(!f) return;
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var msg=document.getElementById("scanMsg"); msg.style.color="var(--muted)"; msg.textContent="Reading the sheet… this takes a few seconds.";
+    downscaleImage(f, function(b64, ct){
+      if(!b64){ msg.style.color="var(--red)"; msg.textContent="Couldn't read that image."; return; }
+      fetch("/api/temps/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,imageBase64:b64,contentType:ct})})
+        .then(function(r){return r.json();}).then(function(d){
+          if(!(d&&d.ok)){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't read the sheet."; return; }
+          var n=fillFromScan(d.readings||[]);
+          var extra=(d.unmatched&&d.unmatched.length)?(" Couldn't match a column to a unit: "+d.unmatched.join(", ")+"."):"";
+          if(n){ msg.style.color="var(--ok)"; msg.textContent="Filled "+n+" reading"+(n===1?"":"s")+" from the photo. Check the highlighted cells, then Save readings."+extra; }
+          else { msg.style.color="var(--red)"; msg.textContent="No readings matched this client's units."+extra; }
+        }).catch(function(){ msg.style.color="var(--red)"; msg.textContent="No connection."; });
+    });
+  });
 
   /* ---- Manage units (edit only) ---- */
   function loadManage(){
