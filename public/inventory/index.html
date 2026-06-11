@@ -309,15 +309,15 @@
     if(/ic layer|\blyr\b| layer /.test(n)) return "Ice Cream Layers";
     if(/roll cake|fudge crunch/.test(n)) return "Ice Cream Cakes";
     if(/cake iw|sheet (choc|confetti|white|fudge)|(rd|round) (choc|confetti|white) cake/.test(n)) return "Non-Ice Cream Cakes";
-    if(/coating|topping|topper|whpd|whip|almond|pastry pride|\bcrm\b/.test(n)) return "Toppings";
     if(/4 ?pk|novelt|\bbars?\b/.test(n)) return "Novelties";
+    if(/coating|topping|topper|whpd|whip|almond|pastry pride|\bcrm\b/.test(n)) return "Toppings";
     if(/blast|cappuc|beverage|smoothie|shake/.test(n)) return "Beverages";
     if(/diced|brownie sheet|pizza crust/.test(n)) return "Miscellaneous";
     return "3 Gallon Tubs";
   }
   function baseKey(product){
     var n=(product||"").toLowerCase();
-    n=n.replace(/\b(3g|3 ?gal|gallon|qt|quart|ic|shb|nsa|6 ?pk|pk|iw|14 ?pk|12|round|layer|sheet|bars|diced|new)\b/g," ");
+    n=n.replace(/\b(3g|3 ?gal|gallon|qt|quart|ic|shb|nsa|6 ?pk|pk|iw|14 ?pk|12|round|rd|lyr|layer|sheet|bars|diced|new|br)\b/g," ");
     return n.replace(/[^a-z0-9]+/g," ").trim();
   }
   function ordKey(product, kind){ return catOf(product,kind)+"|"+baseKey(product); }
@@ -461,15 +461,41 @@
   var ORDERS=[];
   function todayStr(){ var d=new Date(); function p(n){return String(n).padStart(2,"0");} return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
   // Standard Baskin Robbins products (from your order history) for fast entry.
+  // The full Baskin Robbins order form, by section.
   var BR_PRODUCTS=[
-    "Beach Day 3G","Chocolate 3G","Chocolate Chip 3G","Choc Chip Cookie Dough 3G","Cookie Monster 3G","Futbol Fireworks 3G",
-    "Jamoca Almond Fudge 3G","Love Potion #31 3G","Mint Chocolate Chip 3G","Moms Makin Cookies 3G","Old Fashion Butter Pecan 3G",
-    "Oreo 'n Cold Brew 3G","Oreo Cookies 'n Cream 3G","Pineapple Coconut NSA 3G","Pistachio Choc Bar 3G","Pralines 'n Cream 3G",
-    "Rainbow Sherbet 3G","Strawberry Cheesecake 3G","Triple Mango 3G","Twix Caramel Crunch 3G","Vanilla 3G","Very Berry Strawberry 3G",
-    "Beach Day QT","Chocolate QT","Choc Chip Cookie Dough QT","Mint Chocolate Chip QT","Old Fashioned Butter Pecan QT",
-    "Oreo Cookies 'n Cream QT","Peanut Butter 'n Chocolate QT","Pralines 'n Cream QT","Rainbow Sherbet QT","Rocky Road QT",
-    "Strawberry Cheesecake QT","Vanilla QT","8.5\" Round Choc Cake","9\" Round IC Layer Oreo 6PK","Sheet IC Layer Oreo 6PK",
-    "Sheet IC Layer Vanilla 6PK","Sheet White IW 14PK","BR Sheet Choc IW 14PK","4PK Cotton Candy Bars","Mango Diced","Strawberries Diced"
+    // 3 Gallon Tubs
+    "Futbol Fireworks 3G","Americas Birthday Cake 3G","Baseball Nut 3G","Beach Day 3G","Caramel Turtle Truffle NSA 3G",
+    "Cherries Jubilee 3G","Choc Chip Cheesecake 3G","Choc Chip Cookie Dough 3G","Chocolate Chip 3G","Chocolate Fudge 3G",
+    "Chocolate 3G","Cookie Monster 3G","Cotton Candy 3G","Daiquiri Ice 3G","Decorating Vanilla 3G","Galactic Brownie 3G",
+    "Gold Medal Ribbon 3G","Icing on the Cake 3G","Jamoca Almond Fudge 3G","Jamoca 3G","Lemon Custard 3G","Love Potion #31 3G",
+    "Mint Chocolate Chip 3G","Non Dairy Cookie n Cream 3G","Nutty Coconut 3G","Old Fashion Butter Pecan 3G","Oreo Cookies n Cream 3G",
+    "Oreo Monkey Business 3G","Oreo n Cold Brew 3G","Peanut Butter n Chocolate 3G","Pink Bubblegum 3G","Pistachio Almond 3G",
+    "Pistachio Choc Bar 3G","Pralines n Cream 3G","Rainbow Sherbet 3G","Reeses Peanut Butter Cup 3G","Rocky Road 3G","Rum Raisin 3G",
+    "Strawberry Cheesecake 3G","Triple Mango 3G","Twix Caramel Crunch 3G","Vanilla 3G","Very Berry Strawberry 3G",
+    "Wild n Reckless Sherbet 3G","World Class Chocolate 3G",
+    // Quarts
+    "Baseball Nut QT","Beach Day QT","Choc Chip Cookie Dough QT","Chocolate Chip QT","Chocolate QT","Gold Medal Ribbon QT",
+    "Jamoca Almond Fudge QT","Mint Chocolate Chip QT","Old Fashioned Butter Pecan QT","Oreo Cookies n Cream QT",
+    "Peanut Butter n Chocolate QT","Pralines n Cream QT","Rainbow Sherbet QT","Rocky Road QT","Strawberry Cheesecake QT",
+    "Vanilla QT","Very Berry Strawberry QT","Wild n Reckless Sherbet QT",
+    // Beverages
+    "Cappuccino Blast",
+    // Ice Cream Cakes
+    "9 RD Fudge Crunch","Roll Cake Chocolate Chip","Roll Cake Mint Chocolate Chip","Roll Cake Oreo Cookie Cream","Roll Cake Vanilla","Sheet Fudge Crunch",
+    // Ice Cream Layers
+    "6 RD IC Layer Choc Chip 6PK","6 RD IC Layer Cookie Dough 6PK","6 RD IC Layer Oreo 6PK","9 RD IC Layer Chocolate 6PK",
+    "9 RD IC Layer Cookie Dough 6PK","9 RD IC Layer Oreo 6PK","9 RD IC Layer Strawberry 6PK","9 RD IC Layer Vanilla 6PK",
+    "9 RD IC Layer Choc Chip 6PK","9 RD IC Layer Mint Choc Chip 6PK","BR Sheet IC Layer CCCD 6","Sheet IC Layer Choc Chip 6PK",
+    "Sheet IC Layer Chocolate 6PK","Sheet IC Layer Oreo 6PK","Sheet IC Layer Strawberry 6PK","Sheet IC Layer Vanilla 6PK","Sheet IC Layer Mint Choc Chip 6PK",
+    // Miscellaneous
+    "Chocolate Brownie Sheet","Mango Diced","Pizza Crust Choc Chip Cookie","Pizza Crust Dbl Fudge Brownie","Strawberries Diced",
+    // Non-Ice Cream Cakes
+    "8.5 RD Choc Cake IW 12","8.5 RD Confetti Cake IW 12","8.5 RD White Cake IW 12","Sheet Choc IW 14PK","Sheet Confetti IW 14PK","Sheet White IW 14PK",
+    // Novelties
+    "4PK BR Choc Chip Bar","4PK BR Cotton Candy Bars","4PK BR Jamoca Almond Fudge Bar","4PK BR Pralines n Cream Bar","4PK BR Rainbow Sherbet Bar",
+    // Toppings
+    "BR Chocolate Flavored Coating","BR White Coating","Cookie Dough Topping","Dino Tail Choc Topper","Pastry Pride Topping",
+    "Real Whpd Lt Crm","Roasted Diced Almonds Topping","Strawberry Topping","Unicorn Horn Choc Topper"
   ];
   function orderLabel(o){ var d=(o.order_date||"").slice(0,10); var parts=d.split("-"); var dd=parts.length===3?(parts[1]+"/"+parts[2]):d; return dd+(o.label?" "+o.label:""); }
   function qtyOf(o,p){ var t=0; (o.items||[]).forEach(function(it){ if((it.product||"")===p){ var q=parseFloat(it.qty); if(!isNaN(q)) t+=q; } }); return t; }
