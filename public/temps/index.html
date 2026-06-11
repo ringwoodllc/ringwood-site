@@ -367,7 +367,7 @@
     var msg=document.getElementById("scanMsg"); msg.style.color="var(--muted)"; msg.textContent="Reading the sheet and logging it… this takes a few seconds.";
     downscaleImage(f, function(b64, ct){
       if(!b64){ msg.style.color="var(--red)"; msg.textContent="Couldn't read that image."; return; }
-      fetch("/api/temps/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,imageBase64:b64,contentType:ct})})
+      fetch("/api/temps/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,tzOffset:new Date().getTimezoneOffset(),imageBase64:b64,contentType:ct})})
         .then(function(r){return r.json();}).then(function(d){
           if(!(d&&d.ok)){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't read the sheet."; return; }
           msg.style.color="var(--ok)"; msg.textContent=scanSummary(d); load();

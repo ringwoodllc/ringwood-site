@@ -3587,6 +3587,9 @@ async function scanTempLog(request, env, session) {
   if (!base64) return json({ ok: false, error: "No photo." }, 400);
   const today = new Date().toISOString().slice(0, 10);
   const hint = (body.date || "").toString().slice(0, 10) || today;
+  // Minutes to add to local wall time to get UTC (browser's getTimezoneOffset), so
+  // reading_at is stored as a true instant that lands back on the same time slot.
+  const tzOffset = Number.isFinite(+body.tzOffset) ? +body.tzOffset : 0;
   const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`);
   if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
   if (!units.length) return json({ ok: false, error: "No cold units set up yet. Add them in Manage units first." }, 400);
@@ -3635,7 +3638,12 @@ async function scanTempLog(request, env, session) {
     const date = okDate(d) ? d : hint;
     const time = /^\d{1,2}:\d{2}$/.test((r.time || "").trim()) ? r.time.trim() : "";
     const row = { asset_id: u.id, client_id: who.id, log_date: date, temp, logged_by: a.author };
-    if (time) { const t = time.split(":"); row.reading_at = `${date}T${String(+t[0]).padStart(2, "0")}:${String(+t[1]).padStart(2, "0")}:00`; }
+    if (time) {
+      const t = time.split(":");
+      // Local wall time -> UTC instant, the same round-trip the grid does on entry.
+      const utcMs = Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10), +t[0], +t[1]) + tzOffset * 60000;
+      row.reading_at = new Date(utcMs).toISOString();
+    }
     rows.push(row);
     dates[date] = true;
     (byDate[date] = byDate[date] || new Set()).add(u.id);
