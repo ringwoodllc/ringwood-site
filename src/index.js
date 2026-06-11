@@ -93,6 +93,7 @@ export default {
     if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
+    if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
     if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
     if (url.pathname === "/api/temps/log" && request.method === "POST") return logTemp(request, env, session);
     if (url.pathname === "/api/temps/round" && request.method === "POST") return logTempRound(request, env, session);
@@ -3219,6 +3220,28 @@ async function listTemps(url, env, session) {
   const r = (logs || []).map((l) => ({ id: l.id, assetId: l.asset_id, temp: l.temp, by: l.logged_by || "", at: l.reading_at || "", demo: (l.logged_by || "") === DEMO_TAG }));
   const anyDemo = r.some((x) => x.demo);
   return noStore({ ok: true, client: who.name, date, units: u, readings: r, demo: anyDemo });
+}
+
+// Look back at logged readings over a date range (the History panel). Returns the
+// client's cold units plus every reading in [from, to], for the page to lay out.
+async function listTempHistory(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const okDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  let to = url.searchParams.get("to") || ""; if (!okDate(to)) to = new Date().toISOString().slice(0, 10);
+  let from = url.searchParams.get("from") || ""; if (!okDate(from)) { const d = new Date(to + "T00:00:00"); d.setDate(d.getDate() - 6); from = d.toISOString().slice(0, 10); }
+  if (from > to) { const t = from; from = to; to = t; }
+  // Clamp the window so the query stays bounded.
+  const span = (Date.parse(to) - Date.parse(from)) / 86400000;
+  if (span > 92) { const d = new Date(to + "T00:00:00"); d.setDate(d.getDate() - 92); from = d.toISOString().slice(0, 10); }
+  if (!who.id) return noStore({ ok: true, client: who.name, units: [], readings: [], from, to });
+  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max&order=name.asc`);
+  if (units === null) return noStore({ ok: true, client: who.name, units: [], readings: [], from, to, missing: true });
+  const logs = await sbSelect(env, `temp_logs?client_id=eq.${who.id}&log_date=gte.${from}&log_date=lte.${to}&select=asset_id,temp,reading_at,log_date,logged_by&order=reading_at.asc`);
+  if (logs === null) return noStore({ ok: true, client: who.name, units: [], readings: [], from, to, missing: true });
+  const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max }));
+  const r = (logs || []).map((l) => ({ assetId: l.asset_id, temp: l.temp, at: l.reading_at || "", date: l.log_date || "", demo: (l.logged_by || "") === DEMO_TAG }));
+  return noStore({ ok: true, client: who.name, units: u, readings: r, from, to });
 }
 
 async function listTempUnits(url, env, session) {

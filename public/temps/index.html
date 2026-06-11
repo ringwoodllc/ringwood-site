@@ -56,6 +56,18 @@
   .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep);opacity:1}
   .gcell.logged.out{color:var(--red);background:rgba(138,61,28,.1)}
   .cell-none{color:var(--muted);font-size:.8rem}
+  .daterow{display:flex;gap:8px;align-items:center}
+  .daterow input{flex:1;min-width:0}
+  .dstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
+  .dstep:hover{border-color:var(--green)}
+  table.hist th.h-day{text-align:center}
+  .daygo{background:transparent;border:none;color:var(--green-deep);font-weight:700;font-size:.8rem;cursor:pointer;padding:2px 4px}
+  .daygo:hover{text-decoration:underline}
+  .h-cell{text-align:center;white-space:nowrap}
+  .h-val{font-weight:700;font-size:.92rem}
+  .h-val.out{color:var(--red)}
+  .h-n{display:block;color:var(--muted);font-size:.64rem}
+  .h-none{color:var(--muted)}
   tr.flash{animation:flashrow 1.4s ease}
   @keyframes flashrow{0%{background:rgba(169,99,58,.22)}100%{background:transparent}}
   .saverow{display:flex;align-items:center;gap:12px;margin-bottom:18px}
@@ -107,7 +119,9 @@
 
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
   <div class="row2">
-    <div><label for="dateSel">Date</label><input type="date" id="dateSel" /></div>
+    <div><label for="dateSel">Date</label>
+      <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
+    </div>
   </div>
   <div class="toolbar">
     <button type="button" class="btn ghost" id="scanBtn">⃞ Scan a QR code</button>
@@ -121,6 +135,21 @@
       <div class="secbody" id="mgBody" style="display:none">
         <div class="hint">Mark which assets are coolers or freezers and set the safe range (°F). Only cold units show up in the daily log above.</div>
         <div id="mgList"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="manage" id="histWrap" style="display:none">
+    <div class="secwrap">
+      <div class="sechead" id="histToggle"><span class="sectitle">History</span><span class="back">View ▾</span></div>
+      <div class="secbody" id="histBody" style="display:none">
+        <div class="hint">Look back at logged readings. Out-of-range readings are red. Tap a column heading's date to jump there for entry.</div>
+        <div class="row2">
+          <div><label for="histFrom">From</label><input type="date" id="histFrom" /></div>
+          <div><label for="histTo">To</label><input type="date" id="histTo" /></div>
+        </div>
+        <div class="toolbar"><button type="button" class="btn" id="histShow">Show history</button></div>
+        <div id="histOut"><div class="empty">Pick a range and tap Show history.</div></div>
       </div>
     </div>
   </div>
@@ -149,7 +178,10 @@
     DATE = today();
     document.getElementById("dateSel").value = DATE;
     document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
+    document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
+    document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
     if(CAN_EDIT) document.getElementById("manageWrap").style.display="block";
+    document.getElementById("histWrap").style.display="block";
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
@@ -319,6 +351,70 @@
     this.querySelector(".back").textContent = open?"Hide ▴":"Set up ▾";
     if(open) loadManage();
   });
+
+  /* ---- Backfill: step day by day (slot times stay set) ---- */
+  function shiftDate(n){
+    var p=DATE.split("-"); var d=new Date(+p[0], +p[1]-1, +p[2]); d.setDate(d.getDate()+n);
+    DATE=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+    document.getElementById("dateSel").value=DATE; load();
+  }
+
+  /* ---- History: look back over a date range ---- */
+  function daysBetween(from,to){ var out=[]; var d=new Date(from+"T00:00:00"), e=new Date(to+"T00:00:00"); while(d<=e){ out.push(d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())); d.setDate(d.getDate()+1); } return out; }
+  function histDefaults(){
+    var f=document.getElementById("histFrom"), t=document.getElementById("histTo");
+    if(!t.value) t.value=today();
+    if(!f.value){ var d=new Date(); d.setDate(d.getDate()-6); f.value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  }
+  document.getElementById("histToggle").addEventListener("click", function(){
+    var b=document.getElementById("histBody");
+    var open = b.style.display!=="block";
+    b.style.display = open?"block":"none";
+    this.querySelector(".back").textContent = open?"Hide ▴":"View ▾";
+    if(open){ histDefaults(); loadHistory(); }
+  });
+  document.getElementById("histShow").addEventListener("click", loadHistory);
+
+  function loadHistory(){
+    var out=document.getElementById("histOut");
+    if(IS_MASTER && !CLIENT){ out.innerHTML="<div class='empty'>Pick a client first.</div>"; return; }
+    var from=document.getElementById("histFrom").value, to=document.getElementById("histTo").value;
+    out.innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/temps/history?client="+encodeURIComponent(CLIENT)+"&from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to),{cache:"no-store"})
+      .then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok){ out.innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+        if(d.missing){ out.innerHTML="<div class='empty'>The temperature log table isn't set up yet.</div>"; return; }
+        document.getElementById("histFrom").value=d.from; document.getElementById("histTo").value=d.to;
+        renderHistory(d.units||[], d.readings||[], d.from, d.to);
+      }).catch(function(){ out.innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function renderHistory(units, reads, from, to){
+    var out=document.getElementById("histOut");
+    units=(units||[]).slice().sort(byName);
+    if(!units.length){ out.innerHTML="<div class='empty'>No cold units for this client.</div>"; return; }
+    var days=daysBetween(from,to);
+    if(!days.length){ out.innerHTML="<div class='empty'>Empty range.</div>"; return; }
+    var idx={}; reads.forEach(function(r){ (idx[r.assetId+"|"+r.date]=idx[r.assetId+"|"+r.date]||[]).push(r); });
+    var fmtDay=function(ds){ var p=ds.split("-"); return (+p[1])+"/"+(+p[2]); };
+    var head="<th>Unit</th>"+days.map(function(ds){ return "<th class='h-day'><button type='button' class='daygo' data-d='"+ds+"'>"+fmtDay(ds)+"</button></th>"; }).join("");
+    var rows=units.map(function(u){
+      var cells=days.map(function(ds){
+        var rs=idx[u.id+"|"+ds]||[];
+        if(!rs.length) return "<td class='h-cell'><span class='h-none'>·</span></td>";
+        var anyOut=rs.some(function(r){ return outOf(r.temp,u.min,u.max); });
+        var latest=rs[rs.length-1];
+        return "<td class='h-cell'><span class='h-val"+(anyOut?" out":"")+"'>"+esc(latest.temp)+"°</span>"+(rs.length>1?"<span class='h-n'>"+rs.length+"×</span>":"")+"</td>";
+      }).join("");
+      return "<tr><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div><div class='u-range'>"+esc(rangeText(u.min,u.max))+"</div></td>"+cells+"</tr>";
+    }).join("");
+    out.innerHTML="<div class='tlogwrap'><table class='tlog hist'><thead><tr>"+head+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
+    Array.prototype.slice.call(document.querySelectorAll(".daygo")).forEach(function(b){ b.addEventListener("click", function(){
+      DATE=b.getAttribute("data-d"); document.getElementById("dateSel").value=DATE;
+      var hb=document.getElementById("histBody"); hb.style.display="none"; document.querySelector("#histToggle .back").textContent="View ▾";
+      load(); window.scrollTo({top:0,behavior:"smooth"});
+    }); });
+  }
 
   /* ---- Scan a QR code ---- */
   document.getElementById("scanBtn").addEventListener("click", function(){
