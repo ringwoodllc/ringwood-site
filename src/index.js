@@ -96,6 +96,9 @@ export default {
     if (url.pathname === "/api/inventory/photo" && request.method === "POST") return addInventoryPhoto(request, env, session);
     if (url.pathname === "/api/inventory/photo/delete" && request.method === "POST") return deleteInventoryPhoto(request, env, session);
     if (url.pathname === "/api/inventory/item" && request.method === "POST") return saveInventoryItem(request, env, session);
+    if (url.pathname === "/api/inventory/orders" && request.method === "GET") return listInventoryOrders(url, env, session);
+    if (url.pathname === "/api/inventory/order" && request.method === "POST") return saveInventoryOrder(request, env, session);
+    if (url.pathname === "/api/inventory/order/delete" && request.method === "POST") return deleteInventoryOrder(request, env, session);
     if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
     if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
     if (url.pathname === "/api/checklist" && request.method === "GET") return listChecklist(url, env, session);
@@ -3393,7 +3396,7 @@ async function invScope(env, session, clientName, countId) {
 }
 
 async function listInventory(url, env, session) {
-  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!can(session, "foodSafety", "view")) return deny("foodSafety");
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
   if (!who.id) return noStore({ ok: true, client: who.name, counts: [] });
   const countId = (url.searchParams.get("count") || "").trim();
@@ -3414,7 +3417,7 @@ async function listInventory(url, env, session) {
 }
 
 async function createInventoryCount(request, env, session) {
-  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
@@ -3427,7 +3430,7 @@ async function createInventoryCount(request, env, session) {
 }
 
 async function closeInventoryCount(request, env, session) {
-  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const s = await invScope(env, session, body.client, (body.id || "").toString().trim());
@@ -3439,7 +3442,7 @@ async function closeInventoryCount(request, env, session) {
 }
 
 async function addInventoryPhoto(request, env, session) {
-  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
@@ -3477,7 +3480,7 @@ async function addInventoryPhoto(request, env, session) {
 }
 
 async function deleteInventoryPhoto(request, env, session) {
-  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const s = await invScope(env, session, body.client, null);
@@ -3492,7 +3495,7 @@ async function deleteInventoryPhoto(request, env, session) {
 }
 
 async function saveInventoryItem(request, env, session) {
-  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
@@ -3528,6 +3531,67 @@ async function saveInventoryItem(request, env, session) {
   const res = await sbInsert(env, "inventory_items", fields);
   if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
   return json({ ok: true, item: res.data || null });
+}
+
+// Orders / purchase history, by day. Each order is a date + a list of
+// { product, qty } (cost not tracked). The page lays them out as a trend grid so
+// you can see how much of each product you bought over time and when to reorder.
+function cleanOrderItems(arr) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const it of arr) {
+    const product = (it && it.product != null ? it.product : "").toString().trim().slice(0, 160);
+    const qty = parseFloat(it && it.qty);
+    if (!product && (isNaN(qty) || qty === 0)) continue;
+    out.push({ product, qty: isNaN(qty) ? 0 : qty });
+    if (out.length >= 300) break;
+  }
+  return out;
+}
+
+async function listInventoryOrders(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return deny("foodSafety");
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  if (!who.id) return noStore({ ok: true, client: who.name, orders: [] });
+  const rows = await sbSelect(env, `inventory_orders?client_id=eq.${who.id}&select=id,order_date,label,items,created_by,created_at&order=order_date.asc,created_at.asc&limit=200`);
+  if (rows === null) return noStore({ ok: true, client: who.name, missing: true, orders: [] });
+  return noStore({ ok: true, client: who.name, orders: rows || [] });
+}
+
+async function saveInventoryOrder(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, null);
+  if (s.error) return s.error;
+  const date = (body.date || "").toString().slice(0, 10);
+  const order_date = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : new Date().toISOString().slice(0, 10);
+  const label = (body.label || "").toString().slice(0, 120);
+  const items = cleanOrderItems(body.items);
+  const id = (body.id || "").toString().trim();
+  if (id) {
+    const res = await sbUpdate(env, "inventory_orders", id, { order_date, label, items });
+    if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
+    return json({ ok: true });
+  }
+  const a = authorOf(session);
+  const res = await sbInsert(env, "inventory_orders", { client_id: s.who.id, order_date, label, items, created_by: a.author });
+  if (!res.ok) return json({ ok: false, error: "The inventory tables aren't set up yet. Run the latest supabase/inventory.sql once." }, 400);
+  return json({ ok: true, order: res.data || null });
+}
+
+async function deleteInventoryOrder(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, null);
+  if (s.error) return s.error;
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/inventory_orders?id=eq.${id}&client_id=eq.${s.who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
 }
 
 /* ===================== Cold Storage Temperature Log ===================== */

@@ -39,3 +39,16 @@ create table if not exists inventory_items (
   created_at timestamptz not null default now()
 );
 create index if not exists inventory_items_count on inventory_items(count_id, created_at);
+
+-- Order / purchase history, by day. items is a JSON array of { product, qty }
+-- (no cost). The page lays orders out as a trend grid to spot reorder timing.
+create table if not exists inventory_orders (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete cascade,
+  order_date date not null default current_date,
+  label text,
+  items jsonb not null default '[]',
+  created_by text,
+  created_at timestamptz not null default now()
+);
+create index if not exists inventory_orders_client on inventory_orders(client_id, order_date desc);

@@ -66,6 +66,28 @@
   .buyrow:last-child{border-bottom:none}
   .buyrow .q{font-weight:700;color:var(--clay)}
   .hide{display:none}
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tab{flex:0 0 auto;background:var(--bg);color:var(--green-deep);border:1px solid var(--line);border-radius:999px;padding:9px 16px;font:inherit;font-weight:600;font-size:.88rem;cursor:pointer}
+  .tab.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
+  .trendwrap{overflow-x:auto;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:18px}
+  table.trend{border-collapse:collapse;font-size:.86rem;min-width:100%}
+  table.trend th,table.trend td{padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:center}
+  table.trend th{background:rgba(33,68,58,.05);font-size:.72rem;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  table.trend th.prod,table.trend td.prod{text-align:left;position:sticky;left:0;background:var(--bg-2);font-weight:600;color:var(--green-deep);z-index:1;min-width:160px}
+  table.trend th.prod{background:rgba(238,231,217,.98);z-index:2}
+  table.trend td.zero{color:var(--line)}
+  table.trend tr:last-child td{border-bottom:none}
+  table.trend .up{color:var(--green);font-weight:700}
+  table.trend .down{color:var(--clay)}
+  .ordcol{cursor:pointer}
+  .ordcol:hover{text-decoration:underline}
+  .editor{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
+  .editor .row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+  .editor .row>div{flex:1;min-width:120px}
+  .oline{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .oline input.p{flex:1;min-width:100px}
+  .oline input.q{width:72px;text-align:center}
+  .oline button{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:28px;height:28px;font:inherit;cursor:pointer}
   @media(max-width:600px){ .wrap{padding-left:12px;padding-right:12px} table.inv th,table.inv td{padding:6px 4px} }
 </style>
 </head>
@@ -89,6 +111,12 @@
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
   <div id="note" class="note" style="display:none"></div>
 
+  <div class="tabs" id="tabs" style="display:none">
+    <button type="button" class="tab on" data-tab="counts">Photo counts</button>
+    <button type="button" class="tab" data-tab="orders">Orders by day</button>
+  </div>
+
+  <div id="countsTab">
   <!-- Counts list -->
   <div id="listView">
     <div class="toolbar"><button type="button" class="btn" id="newBtn">＋ Start a new count</button><span class="msg" id="listMsg"></span></div>
@@ -114,6 +142,17 @@
     <div class="grp">Buy list</div>
     <div id="buy" class="buy"><div class="empty">Set "Need" on items above and they collect here.</div></div>
   </div>
+  </div><!-- /countsTab -->
+
+  <!-- Orders by day -->
+  <div id="ordersTab" class="hide">
+    <div class="toolbar">
+      <button type="button" class="btn" id="addOrderBtn">＋ Add an order</button>
+      <span class="msg" id="ordersMsg"></span>
+    </div>
+    <div id="orderEditor" class="hide"></div>
+    <div id="trend"><div class="empty">No orders yet. Add one for each day you buy, and the trend builds here.</div></div>
+  </div>
 </main>
 
 <script src="/client-pins.js"></script>
@@ -131,7 +170,7 @@
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
         RWClientPins.mount({ selectEl: document.getElementById("clientSel"), clients:(o&&o.clients)||[], placeholder:"Select a client…",
-          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("counts").innerHTML="<div class='empty'>Pick a client to start.</div>"; } else loadCounts(); } });
+          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("tabs").style.display="none"; document.getElementById("counts").innerHTML="<div class='empty'>Pick a client to start.</div>"; } else loadCounts(); } });
       }).catch(function(){});
     } else { CLIENT=d.client||""; loadCounts(); }
   }).catch(function(){});
@@ -143,6 +182,7 @@
   /* ---- Counts list ---- */
   function loadCounts(){
     if(IS_MASTER && !CLIENT) return;
+    document.getElementById("tabs").style.display="flex";
     var box=document.getElementById("counts"); box.innerHTML="<div class='empty'>Loading…</div>"; setNote("");
     fetch("/api/inventory?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok){ box.innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
@@ -270,6 +310,99 @@
       });
     })();
   });
+
+  /* ===================== Orders by day ===================== */
+  var ORDERS=[];
+  function todayStr(){ var d=new Date(); function p(n){return String(n).padStart(2,"0");} return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+  // Standard Baskin Robbins products (from your order history) for fast entry.
+  var BR_PRODUCTS=[
+    "Beach Day 3G","Chocolate 3G","Chocolate Chip 3G","Choc Chip Cookie Dough 3G","Cookie Monster 3G","Futbol Fireworks 3G",
+    "Jamoca Almond Fudge 3G","Love Potion #31 3G","Mint Chocolate Chip 3G","Moms Makin Cookies 3G","Old Fashion Butter Pecan 3G",
+    "Oreo 'n Cold Brew 3G","Oreo Cookies 'n Cream 3G","Pineapple Coconut NSA 3G","Pistachio Choc Bar 3G","Pralines 'n Cream 3G",
+    "Rainbow Sherbet 3G","Strawberry Cheesecake 3G","Triple Mango 3G","Twix Caramel Crunch 3G","Vanilla 3G","Very Berry Strawberry 3G",
+    "Beach Day QT","Chocolate QT","Choc Chip Cookie Dough QT","Mint Chocolate Chip QT","Old Fashioned Butter Pecan QT",
+    "Oreo Cookies 'n Cream QT","Peanut Butter 'n Chocolate QT","Pralines 'n Cream QT","Rainbow Sherbet QT","Rocky Road QT",
+    "Strawberry Cheesecake QT","Vanilla QT","8.5\" Round Choc Cake","9\" Round IC Layer Oreo 6PK","Sheet IC Layer Oreo 6PK",
+    "Sheet IC Layer Vanilla 6PK","Sheet White IW 14PK","BR Sheet Choc IW 14PK","4PK Cotton Candy Bars","Mango Diced","Strawberries Diced"
+  ];
+  function orderLabel(o){ var d=(o.order_date||"").slice(0,10); var parts=d.split("-"); var dd=parts.length===3?(parts[1]+"/"+parts[2]):d; return dd+(o.label?" "+o.label:""); }
+  function qtyOf(o,p){ var t=0; (o.items||[]).forEach(function(it){ if((it.product||"")===p){ var q=parseFloat(it.qty); if(!isNaN(q)) t+=q; } }); return t; }
+  function fmtQ(n){ return (Math.round(n*100)/100).toString(); }
+
+  Array.prototype.slice.call(document.querySelectorAll(".tab")).forEach(function(t){ t.addEventListener("click", function(){
+    Array.prototype.slice.call(document.querySelectorAll(".tab")).forEach(function(x){x.classList.remove("on");}); t.classList.add("on");
+    var tab=t.getAttribute("data-tab");
+    document.getElementById("countsTab").classList.toggle("hide", tab!=="counts");
+    document.getElementById("ordersTab").classList.toggle("hide", tab!=="orders");
+    if(tab==="orders") loadOrders();
+  }); });
+
+  function loadOrders(){
+    if(IS_MASTER && !CLIENT) return;
+    var box=document.getElementById("trend"); box.innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/inventory/orders?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ box.innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      if(d.missing){ setNote("The inventory tables aren't set up yet. Run the latest supabase/inventory.sql once."); }
+      ORDERS=d.orders||[]; renderTrend();
+    }).catch(function(){ box.innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function renderTrend(){
+    var box=document.getElementById("trend");
+    if(!ORDERS.length){ box.innerHTML="<div class='empty'>No orders yet. Add one for each day you buy, and the trend builds here.</div>"; return; }
+    var prods={}; ORDERS.forEach(function(o){ (o.items||[]).forEach(function(it){ var p=(it.product||"").trim(); if(p) prods[p]=true; }); });
+    var products=Object.keys(prods).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    var head="<tr><th class='prod'>Flavor</th>"+ORDERS.map(function(o,i){ return "<th class='ordcol' data-i='"+i+"' title='Tap to edit'>"+esc(orderLabel(o))+"</th>"; }).join("")+"<th>Total</th></tr>";
+    var body=products.map(function(p){
+      var total=0;
+      var cells=ORDERS.map(function(o){ var q=qtyOf(o,p); total+=q; return q?("<td>"+fmtQ(q)+"</td>"):"<td class='zero'>·</td>"; }).join("");
+      return "<tr><td class='prod'>"+esc(p)+"</td>"+cells+"<td><b>"+fmtQ(total)+"</b></td></tr>";
+    }).join("");
+    box.innerHTML="<div class='trendwrap'><table class='trend'><thead>"+head+"</thead><tbody>"+body+"</tbody></table></div>";
+    Array.prototype.slice.call(box.querySelectorAll(".ordcol")).forEach(function(th){ th.addEventListener("click", function(){ editOrder(ORDERS[+th.getAttribute("data-i")]); }); });
+  }
+
+  document.getElementById("addOrderBtn").addEventListener("click", function(){ if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; } editOrder(null); });
+
+  function lineHtml(p,q){ return "<div class='oline'><input class='p' list='brlist' value='"+esc(p||"")+"' placeholder='Flavor' /><input class='q' type='number' step='1' min='0' value='"+(q==null||q===''?"":esc(q))+"' placeholder='qty' /><button type='button' class='lx'>×</button></div>"; }
+  function editOrder(o){
+    var ed=document.getElementById("orderEditor"); ed.classList.remove("hide");
+    var date=o?(o.order_date||"").slice(0,10):todayStr();
+    var label=o?(o.label||""):"";
+    var items=o&&o.items&&o.items.length?o.items:[{product:"",qty:""}];
+    var datalist="<datalist id='brlist'>"+BR_PRODUCTS.map(function(x){return "<option value='"+esc(x)+"'>";}).join("")+"</datalist>";
+    ed.innerHTML="<div class='editor'>"+datalist+
+      "<div class='row'><div><label>Order date</label><input type='date' id='oDate' value='"+esc(date)+"' /></div><div><label>Label (optional)</label><input type='text' id='oLabel' value='"+esc(label)+"' placeholder='e.g. Order 1, AM truck' /></div></div>"+
+      "<label>Flavors and quantities</label><div id='oLines'>"+items.map(function(it){return lineHtml(it.product,it.qty);}).join("")+"</div>"+
+      "<div class='toolbar'><button type='button' class='btn ghost' id='oAddLine'>＋ Add line</button><button type='button' class='btn ghost' id='oLoadList'>Load BR flavor list</button></div>"+
+      "<div class='toolbar'><button type='button' class='btn' id='oSave'>Save order</button>"+(o?"<button type='button' class='btn ghost' id='oDelete'>Delete</button>":"")+"<button type='button' class='btn ghost' id='oCancel'>Cancel</button><span class='msg' id='oMsg'></span></div>"+
+    "</div>";
+    var lines=document.getElementById("oLines");
+    function wireLine(el){ el.querySelector(".lx").addEventListener("click", function(){ el.remove(); }); }
+    Array.prototype.slice.call(lines.querySelectorAll(".oline")).forEach(wireLine);
+    document.getElementById("oAddLine").addEventListener("click", function(){ var t=document.createElement("div"); t.innerHTML=lineHtml("",""); var el=t.firstChild; lines.appendChild(el); wireLine(el); el.querySelector(".p").focus(); });
+    document.getElementById("oLoadList").addEventListener("click", function(){
+      var have={}; Array.prototype.slice.call(lines.querySelectorAll(".oline .p")).forEach(function(i){ have[(i.value||"").trim()]=true; });
+      BR_PRODUCTS.forEach(function(p){ if(!have[p]){ var t=document.createElement("div"); t.innerHTML=lineHtml(p,""); var el=t.firstChild; lines.appendChild(el); wireLine(el); } });
+    });
+    document.getElementById("oCancel").addEventListener("click", function(){ ed.classList.add("hide"); ed.innerHTML=""; });
+    if(o) document.getElementById("oDelete").addEventListener("click", function(){
+      if(!confirm("Delete this order?")) return;
+      fetch("/api/inventory/order/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:o.id})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ed.classList.add("hide"); ed.innerHTML=""; loadOrders(); } else alert((d&&d.error)||"Couldn't delete."); });
+    });
+    document.getElementById("oSave").addEventListener("click", function(){
+      var its=[]; Array.prototype.slice.call(lines.querySelectorAll(".oline")).forEach(function(el){ var p=(el.querySelector(".p").value||"").trim(); var q=el.querySelector(".q").value; if(p && q!=="" && !isNaN(parseFloat(q))) its.push({product:p,qty:parseFloat(q)}); });
+      if(!its.length){ document.getElementById("oMsg").textContent="Add at least one flavor with a quantity."; return; }
+      var body={client:CLIENT,date:document.getElementById("oDate").value,label:document.getElementById("oLabel").value,items:its};
+      if(o) body.id=o.id;
+      var b=document.getElementById("oSave"); b.disabled=true; b.textContent="Saving…";
+      fetch("/api/inventory/order",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+        .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save order"; if(d&&d.ok){ ed.classList.add("hide"); ed.innerHTML=""; loadOrders(); } else document.getElementById("oMsg").textContent=(d&&d.error)||"Couldn't save."; })
+        .catch(function(){ b.disabled=false; b.textContent="Save order"; document.getElementById("oMsg").textContent="No connection"; });
+    });
+    ed.scrollIntoView({behavior:"smooth",block:"nearest"});
+  }
 </script>
 <script src="/lightbox.js"></script>
 <script src="/whoami-badge.js"></script>
