@@ -107,6 +107,7 @@ export default {
     if (url.pathname === "/api/hotholding" && request.method === "GET") return listHotHolding(url, env, session);
     if (url.pathname === "/api/hotholding/add" && request.method === "POST") return addHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/delete" && request.method === "POST") return deleteHotHolding(request, env, session);
+    if (url.pathname === "/api/foodsafety/summary" && request.method === "GET") return foodSafetySummary(url, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -3821,6 +3822,94 @@ async function deleteFoodLogRow(request, env, session, table) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
+}
+
+/* ===================== Food Safety today-summary ===================== */
+// One call that rolls up the day's state across every food-safety log for a
+// client, so the Red Book hub can show live status on each card. The page sends
+// ?date= from the browser's local clock (same convention as the log pages).
+// Each block reports missing:true if its table isn't set up yet.
+
+// Effective safe range for a cold unit: its own if set, else a generic by name
+// (mirrors unitRange() on the Temp Log page — keep the two in sync).
+function effTempRange(name, min, max) {
+  if (min != null || max != null) return { min, max };
+  const n = (name || "").toLowerCase();
+  if (/freezer|flash/.test(n)) return { min: -15, max: 0 };
+  if (/dipping/.test(n)) return { min: -5, max: 5 };
+  return { min: 33, max: 41 };
+}
+
+async function foodSafetySummary(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  if (!who.id) return noStore({ ok: true, client: who.name, date });
+
+  const cid = who.id;
+  const [units, reads, secs, days, aQs, aDay, recv, hot] = await Promise.all([
+    sbSelect(env, `assets?client_id=eq.${cid}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`),
+    sbSelect(env, `temp_logs?client_id=eq.${cid}&log_date=eq.${date}&select=asset_id,temp`),
+    sbSelect(env, `checklist_sections?client_id=eq.${cid}&select=id,mode`),
+    sbSelect(env, `checklist_days?client_id=eq.${cid}&log_date=eq.${date}&select=data&limit=1`),
+    sbSelect(env, `assessment_questions?client_id=eq.${cid}&select=id`),
+    sbSelect(env, `assessment_days?client_id=eq.${cid}&select=log_date,data&order=log_date.desc&limit=1`),
+    sbSelect(env, `receiving_logs?client_id=eq.${cid}&log_date=eq.${date}&select=status`),
+    sbSelect(env, `hotholding_logs?client_id=eq.${cid}&log_date=eq.${date}&select=kind,temp`),
+  ]);
+
+  // Cold storage: units checked today + any reading outside its effective range.
+  let temps = { missing: true };
+  if (units !== null && reads !== null) {
+    const byId = {}; (units || []).forEach((u) => { byId[u.id] = u; });
+    const checked = new Set(); let out = 0;
+    for (const r of (reads || [])) {
+      const u = byId[r.asset_id]; if (!u) continue;
+      checked.add(r.asset_id);
+      const rg = effTempRange(u.nickname || u.name, u.temp_min, u.temp_max);
+      if (r.temp != null && ((rg.min != null && r.temp < rg.min) || (rg.max != null && r.temp > rg.max))) out++;
+    }
+    temps = { missing: false, units: (units || []).length, checked: checked.size, out };
+  }
+
+  // Pre-shift checklist: boxes checked vs expected (shift sections count 3).
+  let checklist = { missing: true };
+  if (secs !== null && days !== null) {
+    const ids = new Set(); let expected = 0;
+    (secs || []).forEach((s) => { ids.add(s.id); expected += s.mode === "shift" ? 3 : 1; });
+    const data = (days && days[0] && days[0].data) || {};
+    const marks = data.marks || {};
+    let done = 0;
+    for (const k of Object.keys(marks)) { if (marks[k] && ids.has(k.split(":")[0])) done++; }
+    const assign = data.assign || {};
+    checklist = { missing: false, expected, done, assigned: !!(assign.open || assign.mid || assign.close) };
+  }
+
+  // Self-assessment: the most recent one, whenever it was.
+  let assessment = { missing: true };
+  if (aQs !== null && aDay !== null) {
+    const total = (aQs || []).length;
+    const last = (aDay || [])[0];
+    if (!last) assessment = { missing: false, total, date: "" };
+    else {
+      const ans = (last.data && last.data.ans) || {};
+      let no = 0, answered = 0;
+      for (const k of Object.keys(ans)) { answered++; if (ans[k] === "no") no++; }
+      assessment = { missing: false, total, date: last.log_date || "", answered, no };
+    }
+  }
+
+  // Receiving and hot holding: today's entries.
+  let receiving = { missing: true };
+  if (recv !== null) receiving = { missing: false, count: (recv || []).length, rejected: (recv || []).filter((r) => r.status === "Rejected").length };
+  let hotholding = { missing: true };
+  if (hot !== null) {
+    let low = 0;
+    for (const h of (hot || [])) { const min = h.kind === "cooking" ? 165 : 135; if (h.temp != null && h.temp < min) low++; }
+    hotholding = { missing: false, count: (hot || []).length, low };
+  }
+
+  return noStore({ ok: true, client: who.name, date, temps, checklist, assessment, receiving, hotholding });
 }
 
 async function saveAssessmentDay(request, env, session) {

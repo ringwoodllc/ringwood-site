@@ -102,6 +102,11 @@
   .logtitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
   .logdesc{color:var(--muted);font-size:.86rem;margin-top:3px}
   .loggo{flex:0 0 auto;color:var(--green-deep);font-weight:600;font-size:.9rem;border-bottom:1px solid var(--clay)}
+  .logstat{font-size:.8rem;font-weight:600;margin-top:5px;color:var(--muted)}
+  .logstat:empty{display:none}
+  .logstat.ok{color:var(--green)}
+  .logstat.warn{color:#7a5a12}
+  .logstat.bad{color:var(--red)}
 </style>
 </head>
 <body>
@@ -130,6 +135,7 @@
     <div>
       <div class="logtitle">Cold Storage Temperature Log</div>
       <div class="logdesc">Mark coolers and freezers, set a safe range, and log readings each day. Out-of-range readings flag red.</div>
+      <div class="logstat" id="st_temps"></div>
     </div>
     <span class="loggo">Open →</span>
   </a>
@@ -137,6 +143,7 @@
     <div>
       <div class="logtitle">Daily Pre-Shift Checklist</div>
       <div class="logdesc">Walk the store and check off each area for the day, with Open / Mid / Close assignments. Sections are editable.</div>
+      <div class="logstat" id="st_check"></div>
     </div>
     <span class="loggo">Open →</span>
   </a>
@@ -144,6 +151,7 @@
     <div>
       <div class="logtitle">Self-Assessment</div>
       <div class="logdesc">A Yes/No food-safety review by section, with findings. Imminent health risk, cleaning, employee health, time and temperature, and more.</div>
+      <div class="logstat" id="st_assess"></div>
     </div>
     <span class="loggo">Open →</span>
   </a>
@@ -151,6 +159,7 @@
     <div>
       <div class="logtitle">Receiving Log</div>
       <div class="logdesc">Log each delivery: vendor, item, temperature, and accepted or rejected.</div>
+      <div class="logstat" id="st_recv"></div>
     </div>
     <span class="loggo">Open →</span>
   </a>
@@ -158,6 +167,7 @@
     <div>
       <div class="logtitle">Hot Holding / Cooking</div>
       <div class="logdesc">Log cooking and hot-holding temperatures. Flags below 165°F (cooking) or 135°F (holding).</div>
+      <div class="logstat" id="st_hot"></div>
     </div>
     <span class="loggo">Open →</span>
   </a>
@@ -200,15 +210,59 @@
           placeholder: "Select a client…",
           onPick: function(name){
             CLIENT=name;
-            if(!name){ document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>"; }
-            else { load(); }
+            if(!name){ document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>"; clearStats(); }
+            else { load(); loadStats(); }
           }
         });
       }).catch(function(){});
     } else {
-      CLIENT = d.client||""; load();
+      CLIENT = d.client||""; load(); loadStats();
     }
   }).catch(function(){});
+
+  /* ---- Live "today" status on each log card ---- */
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function todayLocal(){ var d=new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+  function setStat(id, text, cls){ var el=document.getElementById(id); if(!el) return; el.textContent=text||""; el.className="logstat"+(cls?(" "+cls):""); }
+  function clearStats(){ ["st_temps","st_check","st_assess","st_recv","st_hot"].forEach(function(id){ setStat(id,""); }); }
+  function loadStats(){
+    clearStats();
+    fetch("/api/foodsafety/summary?client="+encodeURIComponent(CLIENT)+"&date="+encodeURIComponent(todayLocal()),{cache:"no-store"})
+      .then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok) return;
+        var t=d.temps||{};
+        if(!t.missing){
+          if(!t.units) setStat("st_temps","No cold units set up yet","");
+          else if(t.out) setStat("st_temps",t.checked+" of "+t.units+" units checked today · "+t.out+" out of range","bad");
+          else if(t.checked>=t.units) setStat("st_temps","All "+t.units+" units checked today · in range","ok");
+          else setStat("st_temps",t.checked+" of "+t.units+" units checked today","warn");
+        }
+        var c=d.checklist||{};
+        if(!c.missing && c.expected){
+          if(c.done>=c.expected) setStat("st_check","Complete today ("+c.done+" of "+c.expected+")","ok");
+          else if(c.done) setStat("st_check",c.done+" of "+c.expected+" checked today","warn");
+          else setStat("st_check","Not started today","warn");
+        }
+        var a=d.assessment||{};
+        if(!a.missing){
+          if(!a.date) setStat("st_assess","No assessment yet","");
+          else {
+            var p=a.date.split("-"); var ds=(+p[1])+"/"+(+p[2])+"/"+p[0];
+            setStat("st_assess","Last: "+ds+" · "+(a.answered||0)+" of "+(a.total||0)+" answered"+(a.no?(" · "+a.no+" No"):""), a.no?"bad":"ok");
+          }
+        }
+        var rv=d.receiving||{};
+        if(!rv.missing){
+          if(!rv.count) setStat("st_recv","No deliveries logged today","");
+          else setStat("st_recv",rv.count+" deliver"+(rv.count===1?"y":"ies")+" today"+(rv.rejected?(" · "+rv.rejected+" rejected"):""), rv.rejected?"bad":"ok");
+        }
+        var hh=d.hotholding||{};
+        if(!hh.missing){
+          if(!hh.count) setStat("st_hot","No readings logged today","");
+          else setStat("st_hot",hh.count+" reading"+(hh.count===1?"":"s")+" today"+(hh.low?(" · "+hh.low+" below temp"):" · all OK"), hh.low?"bad":"ok");
+        }
+      }).catch(function(){});
+  }
 
   function load(){
     if(IS_MASTER && !CLIENT){ document.getElementById("sections").innerHTML="<div class='empty'>Pick a client to view its Red Book.</div>"; return; }
