@@ -191,6 +191,22 @@
     </tbody>
   </table>
 
+  <h2>Data safety and security</h2>
+  <p>What protects the data, in plain terms, so a partner can judge it honestly. The short version: passwords are hashed, sessions are tamper-proof, the keys to the data live only on the server, and clients only ever see their own records.</p>
+  <table>
+    <thead><tr><th>Area</th><th>How it is handled</th></tr></thead>
+    <tbody>
+      <tr><td>Passwords</td><td>Never stored as text. Hashed with PBKDF2-HMAC-SHA256, 100,000 rounds, a unique salt per user. Even if the database leaked, the passwords could not be read.</td></tr>
+      <tr><td>Sign-in sessions</td><td>A signed, tamper-proof cookie (HMAC). Change one character and it is rejected. "View as a client" is only honored for a real master account.</td></tr>
+      <tr><td>Secrets</td><td>The database service key and the AI key live only on the Cloudflare Worker as encrypted secrets. They are never sent to the phone or the browser, and never put in the code or the repo.</td></tr>
+      <tr><td>Transport</td><td>Everything is HTTPS (TLS) end to end, handled by Cloudflare.</td></tr>
+      <tr><td>Who sees what</td><td>A client login only ever sees its own client's tickets, assets, and service records. Status, assignment, AI activity, and the revision history are admin-only. The rules are enforced on the server, not just hidden in the screen.</td></tr>
+      <tr><td>Per-login permissions</td><td>Each login carries view/edit settings per area (tickets, assets, service), so you can give a client read-only or let a trusted person edit.</td></tr>
+      <tr><td>Archive and delete</td><td>Archiving a client hides its data and blocks its logins (reversible). Deleting unlinks the records as "Unassigned" rather than destroying history.</td></tr>
+      <tr><td>The one gap to know</td><td>Photos sit in a <strong>public-read</strong> bucket. The web addresses are long and unguessable, so nobody stumbles onto them, but there is no login check on the file itself. That is fine for equipment photos. It is <strong>not</strong> right for contracts, leases, or anything sensitive. Those should go in a private bucket with short-lived, sign-in-checked links before we store them. Worth doing before any document feature ships.</td></tr>
+    </tbody>
+  </table>
+
   <h2>The database at a glance (table matrix)</h2>
   <p>Every table, what it holds, and how it connects. A → arrow means "points at" (a foreign key).</p>
   <table>
