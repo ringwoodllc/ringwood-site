@@ -90,6 +90,12 @@ export default {
     if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/rename" && request.method === "POST") return renameRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/read-doc" && request.method === "POST") return readRedbookDoc(request, env, session);
+    if (url.pathname === "/api/inventory" && request.method === "GET") return listInventory(url, env, session);
+    if (url.pathname === "/api/inventory/count" && request.method === "POST") return createInventoryCount(request, env, session);
+    if (url.pathname === "/api/inventory/count/close" && request.method === "POST") return closeInventoryCount(request, env, session);
+    if (url.pathname === "/api/inventory/photo" && request.method === "POST") return addInventoryPhoto(request, env, session);
+    if (url.pathname === "/api/inventory/photo/delete" && request.method === "POST") return deleteInventoryPhoto(request, env, session);
+    if (url.pathname === "/api/inventory/item" && request.method === "POST") return saveInventoryItem(request, env, session);
     if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
     if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
     if (url.pathname === "/api/checklist" && request.method === "GET") return listChecklist(url, env, session);
@@ -179,6 +185,7 @@ export default {
       "/assessment": "/assessment/",
       "/receiving": "/receiving/",
       "/hotholding": "/hotholding/",
+      "/inventory": "/inventory/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -3316,6 +3323,211 @@ async function renameRedbookDoc(request, env, session) {
   const res = await sbUpdate(env, "redbook_docs", id, patch);
   if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
   return json({ ok: true });
+}
+
+/* ===================== Baskin Robbins Inventory ===================== */
+// Photo-driven inventory. A "count" is one session; photos are filed under it
+// and Claude reads each photo into line items (3-gallon tubs, 8-packs, or a
+// dipping-cabinet partial with a fullness estimate). Items carry a "need to buy"
+// quantity. Degrades gracefully until the inventory_* tables exist (run
+// supabase/inventory.sql once).
+
+const INVENTORY_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          product: { type: "string" },
+          label: { type: "string" },
+          kind: { type: "string" },
+          count: { type: "number" },
+          fullness: { type: "string" },
+          placement: { type: "string" },
+        },
+        required: ["product", "label", "kind", "count", "fullness", "placement"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+};
+
+const INVENTORY_PROMPT =
+  "You are taking inventory at a Baskin Robbins ice cream shop from a photo. The photo shows one of:\n" +
+  "- 3-gallon tubs of ice cream (round cardboard tubs; the flavor is printed or written on the side, often abbreviated, " +
+  "like 'B-R STRBY CHS' or 'B-R PRLN B CRML' or 'B-R CKY MONSTER'),\n" +
+  "- a case, shelf, or 8-pack box of pre-packed pints/quarts,\n" +
+  "- the dipping cabinet (open round tubs you scoop from, each with a small name tag; you can see how full each tub is).\n\n" +
+  "For every distinct product you can clearly see, return one item:\n" +
+  "- product: the readable flavor name, expanded from the abbreviation when you can (examples: 'STRBY CHS' -> 'Strawberry " +
+  "Cheesecake', 'PRLN B CRML' -> 'Pralines n Cream', 'CKY DOUGH'/'CKYDOH' -> 'Cookie Dough', 'MNT CHOC CHP' -> 'Mint " +
+  "Chocolate Chip', 'ORE'/'ORED' -> 'Oreo Cookies n Cream', 'CKY MONSTER' -> 'Cookie Monster', 'VAN' -> 'Vanilla', " +
+  "'CHOC' -> 'Chocolate'). If you are not sure, keep the text you can read.\n" +
+  "- label: the exact text on the tub or tag, as written.\n" +
+  "- kind: 'tub' for a 3-gallon tub, 'pack' for a pre-pack or 8-pack box, 'cabinet' for an open dipping-cabinet tub, else 'other'.\n" +
+  "- count: how many of that item are visible (count the tubs or packs of that flavor). For a single dipping-cabinet tub use 1.\n" +
+  "- fullness: ONLY for a dipping-cabinet tub, estimate how full it is: 'full' (more than half), 'half' (about half), or " +
+  "'low' (less than half). Leave it an empty string for sealed tubs and packs.\n" +
+  "- placement: a short note on where it is in the photo (e.g. 'top shelf left', 'cabinet front row', 'freezer door').\n\n" +
+  "Read carefully and do not invent flavors you cannot see. If a label is unreadable, use 'Unknown' for product and put what " +
+  "you can make out in label.";
+
+const INV_KINDS = { tub: 1, pack: 1, cabinet: 1, other: 1 };
+
+// Resolve the client and confirm a count belongs to it. Returns { who, count } or
+// a Response error to return directly.
+async function invScope(env, session, clientName, countId) {
+  const who = await redbookClientId(env, session, (clientName || "").toString().trim());
+  if (!who.id) return { error: json({ ok: false, error: "Pick a client first." }, 400) };
+  if (countId) {
+    const rows = await sbSelect(env, `inventory_counts?id=eq.${countId}&client_id=eq.${who.id}&select=id,status`);
+    if (rows === null) return { error: json({ ok: false, error: "The inventory tables aren't set up yet. Run supabase/inventory.sql once." }, 400) };
+    if (!rows[0]) return { error: json({ ok: false, error: "Count not found." }, 404) };
+    return { who, count: rows[0] };
+  }
+  return { who };
+}
+
+async function listInventory(url, env, session) {
+  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  if (!who.id) return noStore({ ok: true, client: who.name, counts: [] });
+  const countId = (url.searchParams.get("count") || "").trim();
+  if (countId) {
+    const [counts, photos, items] = await Promise.all([
+      sbSelect(env, `inventory_counts?id=eq.${countId}&client_id=eq.${who.id}&select=id,status,note,created_by,created_at,finished_at&limit=1`),
+      sbSelect(env, `inventory_photos?count_id=eq.${countId}&select=id,url,kind,created_at&order=created_at.asc`),
+      sbSelect(env, `inventory_items?count_id=eq.${countId}&select=id,photo_id,product,label,kind,qty,fullness,placement,need,created_at&order=created_at.asc`),
+    ]);
+    if (counts === null) return noStore({ ok: true, client: who.name, missing: true, counts: [] });
+    const c = counts[0];
+    if (!c) return noStore({ ok: false, error: "Count not found." }, 404);
+    return noStore({ ok: true, client: who.name, count: c, photos: photos || [], items: items || [] });
+  }
+  const counts = await sbSelect(env, `inventory_counts?client_id=eq.${who.id}&select=id,status,note,created_by,created_at,finished_at&order=created_at.desc&limit=60`);
+  if (counts === null) return noStore({ ok: true, client: who.name, missing: true, counts: [] });
+  return noStore({ ok: true, client: who.name, counts: counts || [] });
+}
+
+async function createInventoryCount(request, env, session) {
+  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, null);
+  if (s.error) return s.error;
+  const a = authorOf(session);
+  const res = await sbInsert(env, "inventory_counts", { client_id: s.who.id, status: "open", note: (body.note || "").toString().slice(0, 300), created_by: a.author });
+  if (!res.ok) return json({ ok: false, error: "The inventory tables aren't set up yet. Run supabase/inventory.sql once." }, 400);
+  return json({ ok: true, count: res.data || null });
+}
+
+async function closeInventoryCount(request, env, session) {
+  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, (body.id || "").toString().trim());
+  if (s.error) return s.error;
+  const done = body.reopen ? "open" : "done";
+  const res = await sbUpdate(env, "inventory_counts", s.count.id, { status: done, finished_at: done === "done" ? new Date().toISOString() : null });
+  if (!res.ok) return json({ ok: false, error: "Could not update." }, 502);
+  return json({ ok: true, status: done });
+}
+
+async function addInventoryPhoto(request, env, session) {
+  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, (body.count || "").toString().trim());
+  if (s.error) return s.error;
+  const base64 = (body.imageBase64 || "").toString();
+  const ct = (body.contentType || "image/jpeg").toString();
+  if (!base64) return json({ ok: false, error: "No photo." }, 400);
+  const ext = ct.indexOf("png") >= 0 ? "png" : "jpg";
+  const path = `inventory/${s.who.id}/${Date.now()}-${Math.floor(Math.random() * 1e4)}.${ext}`;
+  const fileUrl = await uploadToStorage(env, path, base64, ct);
+  if (!fileUrl) return json({ ok: false, error: "Upload failed." }, 502);
+  const pRes = await sbInsert(env, "inventory_photos", { count_id: s.count.id, client_id: s.who.id, url: fileUrl, kind: (body.kind || "").toString().slice(0, 20) || null });
+  if (!pRes.ok) return json({ ok: false, error: "Saved the photo, but couldn't record it." }, 502);
+  const photo = pRes.data || {};
+  // Read the photo with Claude into line items.
+  let items = [];
+  if (env.ANTHROPIC_API_KEY) {
+    const read = await claudeReadSheet(base64, ct, INVENTORY_PROMPT, INVENTORY_SCHEMA, env);
+    if (read && Array.isArray(read.items)) {
+      const rows = [];
+      for (const it of read.items) {
+        const kind = INV_KINDS[(it.kind || "").toLowerCase()] ? (it.kind || "").toLowerCase() : "tub";
+        const qty = kind === "cabinet" ? 1 : Math.max(1, Math.round(parseFloat(it.count) || 1));
+        const fullness = kind === "cabinet" ? (["full", "half", "low"].indexOf((it.fullness || "").toLowerCase()) >= 0 ? (it.fullness || "").toLowerCase() : "half") : null;
+        rows.push({ count_id: s.count.id, client_id: s.who.id, photo_id: photo.id || null, product: (it.product || "").toString().slice(0, 160), label: (it.label || "").toString().slice(0, 160), kind, qty, fullness, placement: (it.placement || "").toString().slice(0, 160) });
+      }
+      if (rows.length) {
+        const iRes = await sbInsert(env, "inventory_items", rows);
+        items = (iRes.ok && Array.isArray(iRes.data)) ? iRes.data : rows;
+      }
+    }
+  }
+  return json({ ok: true, photo, items, read: items.length });
+}
+
+async function deleteInventoryPhoto(request, env, session) {
+  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, null);
+  if (s.error) return s.error;
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  // Scope: only delete a photo (and its items) that belongs to this client.
+  await fetch(`${env.SUPABASE_URL}/rest/v1/inventory_items?photo_id=eq.${id}&client_id=eq.${s.who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/inventory_photos?id=eq.${id}&client_id=eq.${s.who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+async function saveInventoryItem(request, env, session) {
+  if (!session) return json({ ok: false, error: "Sign in first." }, 401);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const s = await invScope(env, session, body.client, null);
+  if (s.error) return s.error;
+  const id = (body.id || "").toString().trim();
+  if (body.delete && id) {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/inventory_items?id=eq.${id}&client_id=eq.${s.who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+    return json({ ok: true });
+  }
+  const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const fields = {};
+  if ("product" in body) fields.product = (body.product || "").toString().slice(0, 160);
+  if ("label" in body) fields.label = (body.label || "").toString().slice(0, 160);
+  if ("kind" in body) fields.kind = INV_KINDS[(body.kind || "").toLowerCase()] ? (body.kind || "").toLowerCase() : "tub";
+  if ("qty" in body) fields.qty = num(body.qty) == null ? 1 : num(body.qty);
+  if ("fullness" in body) fields.fullness = (["full", "half", "low"].indexOf((body.fullness || "").toLowerCase()) >= 0) ? (body.fullness || "").toLowerCase() : null;
+  if ("placement" in body) fields.placement = (body.placement || "").toString().slice(0, 160);
+  if ("need" in body) fields.need = num(body.need);
+  if (id) {
+    const res = await sbUpdate(env, "inventory_items", id, fields);
+    if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
+    return json({ ok: true });
+  }
+  // New manual item: requires a count.
+  const cid = (body.count || "").toString().trim();
+  const cs = await invScope(env, session, body.client, cid);
+  if (cs.error) return cs.error;
+  fields.count_id = cs.count.id; fields.client_id = s.who.id;
+  if (!("kind" in fields)) fields.kind = "tub";
+  if (!("qty" in fields)) fields.qty = 1;
+  const res = await sbInsert(env, "inventory_items", fields);
+  if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
+  return json({ ok: true, item: res.data || null });
 }
 
 /* ===================== Cold Storage Temperature Log ===================== */

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Inventory" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);--red:#8a3d1c;--ok:#2f5d50;--pink:#e0497f}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:760px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px;cursor:pointer}
+  .intro{margin:16px 0 14px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 14px}
+  label{display:block;font-weight:600;font-size:.86rem;color:var(--green-deep);margin-bottom:6px}
+  select,input[type=text],input[type=number]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:12px 18px;font:inherit;font-weight:600;font-size:.92rem}
+  .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .msg{font-size:.86rem;font-weight:600;color:var(--muted);margin-left:8px}
+  .empty{color:var(--muted);padding:14px 0;font-size:.92rem}
+
+  .counts{display:flex;flex-direction:column;gap:10px}
+  .countcard{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;cursor:pointer}
+  .countcard:hover{border-color:var(--green)}
+  .countcard .t{font-weight:600;color:var(--green-deep)}
+  .countcard .s{color:var(--muted);font-size:.84rem;margin-top:2px}
+  .pill{font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .pill.open{background:#e3efe7;color:var(--green-deep)}
+  .pill.done{background:#e7e2d4;color:var(--muted)}
+
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 16px}
+  .photos{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .ph{position:relative}
+  .ph img{width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block;cursor:zoom-in}
+  .ph .x{position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer}
+
+  table.inv{width:100%;border-collapse:collapse;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:8px}
+  table.inv th{text-align:left;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:8px 8px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05)}
+  table.inv td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.inv tr:last-child td{border-bottom:none}
+  .pname{font:inherit;font-size:.92rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:7px 8px;width:100%;min-width:120px}
+  .pkind{font:inherit;font-size:.84rem;padding:6px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .pqty{width:58px;font:inherit;font-size:.9rem;text-align:center;padding:6px 4px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .pneed{width:62px;font:inherit;font-size:.95rem;font-weight:700;text-align:center;padding:6px 4px;border:1px solid var(--clay);border-radius:5px;background:var(--bg);color:var(--clay)}
+  .pwhere{font:inherit;font-size:.82rem;padding:6px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);width:100%;min-width:90px}
+  .idel{background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .thumb{width:40px;height:40px;object-fit:cover;border-radius:5px;border:1px solid var(--line);cursor:zoom-in;display:block}
+  .grp{font-family:"Spectral",serif;font-size:1.05rem;color:var(--green-deep);margin:18px 0 8px}
+  .buy{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:6px 14px;margin-bottom:24px}
+  .buyrow{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+  .buyrow:last-child{border-bottom:none}
+  .buyrow .q{font-weight:700;color:var(--clay)}
+  .hide{display:none}
+  @media(max-width:600px){ .wrap{padding-left:12px;padding-right:12px} table.inv th,table.inv td{padding:6px 4px} }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Home</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Baskin Robbins</div>
+    <h1>Inventory</h1>
+    <p class="lead">Snap the freezer shelves and the dipping cabinet. The AI reads the flavors and how much is there, then you set how many to buy.</p>
+  </div>
+
+  <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
+  <div id="note" class="note" style="display:none"></div>
+
+  <!-- Counts list -->
+  <div id="listView">
+    <div class="toolbar"><button type="button" class="btn" id="newBtn">＋ Start a new count</button><span class="msg" id="listMsg"></span></div>
+    <div id="counts" class="counts"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- Count detail -->
+  <div id="detailView" class="hide">
+    <div class="toolbar">
+      <a class="back" id="backToList">← All counts</a>
+      <span id="detailWhen" class="msg"></span>
+      <span style="flex:1"></span>
+      <button type="button" class="btn ghost" id="closeBtn">Mark done</button>
+    </div>
+    <div class="toolbar">
+      <label class="btn" for="photoInput" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="11" cy="13" r="3.2"/></svg> Add photos</label>
+      <input type="file" id="photoInput" accept="image/*" multiple style="display:none" />
+      <button type="button" class="btn ghost" id="addItemBtn">＋ Add item by hand</button>
+      <span class="msg" id="photoMsg"></span>
+    </div>
+    <div id="photos" class="photos"></div>
+    <div id="items"></div>
+    <div class="grp">Buy list</div>
+    <div id="buy" class="buy"><div class="empty">Set "Need" on items above and they collect here.</div></div>
+  </div>
+</main>
+
+<script src="/client-pins.js"></script>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  var IS_MASTER=false, CAN_EDIT=true, CLIENT="", CUR=null, PHOTOS=[], ITEMS=[];
+  var KINDS=[["tub","3-gal tub"],["pack","8-pack"],["cabinet","Dipping cabinet"],["other","Other"]];
+  function kindLabel(k){ for(var i=0;i<KINDS.length;i++) if(KINDS[i][0]===k) return KINDS[i][1]; return k; }
+  function fmtDate(s){ if(!s) return ""; var d=new Date(s); return isNaN(d)?"":d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/inventory"); return; }
+    IS_MASTER = d.role==="master";
+    if(IS_MASTER){
+      document.getElementById("clientPick").style.display="block";
+      fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+        RWClientPins.mount({ selectEl: document.getElementById("clientSel"), clients:(o&&o.clients)||[], placeholder:"Select a client…",
+          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("counts").innerHTML="<div class='empty'>Pick a client to start.</div>"; } else loadCounts(); } });
+      }).catch(function(){});
+    } else { CLIENT=d.client||""; loadCounts(); }
+  }).catch(function(){});
+
+  function setNote(t){ var n=document.getElementById("note"); if(!t){ n.style.display="none"; return; } n.style.display="block"; n.textContent=t; }
+  function showList(){ document.getElementById("detailView").classList.add("hide"); document.getElementById("listView").classList.remove("hide"); CUR=null; }
+  function showDetail(){ document.getElementById("listView").classList.add("hide"); document.getElementById("detailView").classList.remove("hide"); }
+
+  /* ---- Counts list ---- */
+  function loadCounts(){
+    if(IS_MASTER && !CLIENT) return;
+    var box=document.getElementById("counts"); box.innerHTML="<div class='empty'>Loading…</div>"; setNote("");
+    fetch("/api/inventory?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ box.innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      if(d.missing){ setNote("The inventory tables aren't set up yet. Run supabase/inventory.sql in Supabase once, then start a count."); }
+      var cs=d.counts||[];
+      if(!cs.length){ box.innerHTML="<div class='empty'>No counts yet. Start one and add photos.</div>"; return; }
+      box.innerHTML=cs.map(function(c){
+        return "<div class='countcard' data-id='"+esc(c.id)+"'><div><div class='t'>Count · "+esc(fmtDate(c.created_at))+"</div><div class='s'>"+(c.created_by?esc(c.created_by)+" · ":"")+(c.note?esc(c.note):"Photo inventory")+"</div></div><span class='pill "+(c.status==="done"?"done":"open")+"'>"+(c.status==="done"?"Done":"Open")+"</span></div>";
+      }).join("");
+      Array.prototype.slice.call(box.querySelectorAll(".countcard")).forEach(function(el){ el.addEventListener("click", function(){ openCount(el.getAttribute("data-id")); }); });
+    }).catch(function(){ box.innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  document.getElementById("newBtn").addEventListener("click", function(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var b=this; b.disabled=true; var msg=document.getElementById("listMsg"); msg.textContent="Creating…";
+    fetch("/api/inventory/count",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; msg.textContent="";
+        if(d&&d.ok&&d.count){ openCount(d.count.id); } else { setNote((d&&d.error)||"Couldn't start a count."); } })
+      .catch(function(){ b.disabled=false; msg.textContent="No connection"; });
+  });
+
+  /* ---- Count detail ---- */
+  function openCount(id){
+    showDetail();
+    document.getElementById("photos").innerHTML=""; document.getElementById("items").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/inventory?client="+encodeURIComponent(CLIENT)+"&count="+encodeURIComponent(id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ document.getElementById("items").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      CUR=d.count; PHOTOS=d.photos||[]; ITEMS=d.items||[];
+      document.getElementById("detailWhen").textContent=fmtDate(CUR.created_at);
+      document.getElementById("closeBtn").textContent=CUR.status==="done"?"Reopen":"Mark done";
+      renderPhotos(); renderItems(); renderBuy();
+    }).catch(function(){ document.getElementById("items").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+  document.getElementById("backToList").addEventListener("click", function(){ showList(); loadCounts(); });
+  document.getElementById("closeBtn").addEventListener("click", function(){
+    if(!CUR) return; var reopen=CUR.status==="done";
+    fetch("/api/inventory/count/close",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:CUR.id,reopen:reopen})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ CUR.status=d.status; document.getElementById("closeBtn").textContent=d.status==="done"?"Reopen":"Mark done"; } });
+  });
+
+  function renderPhotos(){
+    var box=document.getElementById("photos");
+    box.innerHTML=PHOTOS.map(function(p){ return "<div class='ph'><img src='"+esc(p.url)+"' alt='inventory photo' data-lb='"+esc(p.url)+"' /><button type='button' class='x' data-id='"+esc(p.id)+"'>×</button></div>"; }).join("");
+    Array.prototype.slice.call(box.querySelectorAll(".x")).forEach(function(b){ b.addEventListener("click", function(){
+      if(!confirm("Remove this photo and the items read from it?")) return;
+      fetch("/api/inventory/photo/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:b.getAttribute("data-id")})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) openCount(CUR.id); else alert((d&&d.error)||"Couldn't remove."); });
+    }); });
+  }
+
+  function renderItems(){
+    var box=document.getElementById("items");
+    if(!ITEMS.length){ box.innerHTML="<div class='empty'>No items yet. Add photos and the AI fills this in.</div>"; return; }
+    var rows=ITEMS.map(function(it){
+      var ph=PHOTOS.filter(function(p){return p.id===it.photo_id;})[0];
+      var thumb=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"";
+      var kindSel="<select class='pkind' data-f='kind'>"+KINDS.map(function(k){ return "<option value='"+k[0]+"'"+(k[0]===it.kind?" selected":"")+">"+k[1]+"</option>"; }).join("")+"</select>";
+      var onhand = it.kind==="cabinet"
+        ? "<select class='pkind' data-f='fullness'><option value='full'"+(it.fullness==="full"?" selected":"")+">Full</option><option value='half'"+(it.fullness==="half"||!it.fullness?" selected":"")+">~Half</option><option value='low'"+(it.fullness==="low"?" selected":"")+">Low</option></select>"
+        : "<input class='pqty' data-f='qty' type='number' step='1' min='0' value='"+esc(it.qty)+"' />";
+      return "<tr data-id='"+esc(it.id)+"'>"+
+        "<td>"+thumb+"</td>"+
+        "<td><input class='pname' data-f='product' value='"+esc(it.product)+"' placeholder='Flavor' />"+(it.label?"<div style='font-size:.7rem;color:var(--muted);margin-top:2px'>"+esc(it.label)+"</div>":"")+"</td>"+
+        "<td>"+kindSel+"</td>"+
+        "<td>"+onhand+"</td>"+
+        "<td><input class='pwhere' data-f='placement' value='"+esc(it.placement||"")+"' placeholder='where' /></td>"+
+        "<td><input class='pneed' data-f='need' type='number' step='1' min='0' value='"+(it.need==null?"":esc(it.need))+"' placeholder='0' /></td>"+
+        "<td><button type='button' class='idel'>×</button></td>"+
+      "</tr>";
+    }).join("");
+    box.innerHTML="<table class='inv'><thead><tr><th></th><th>Flavor</th><th>Type</th><th>On hand</th><th>Where</th><th>Need</th><th></th></tr></thead><tbody>"+rows+"</tbody></table>";
+    Array.prototype.slice.call(box.querySelectorAll("tr[data-id]")).forEach(function(tr){
+      var id=tr.getAttribute("data-id");
+      tr.querySelectorAll("[data-f]").forEach(function(inp){
+        inp.addEventListener("change", function(){
+          var f=inp.getAttribute("data-f"); var body={client:CLIENT,id:id}; body[f]=inp.value;
+          var it=ITEMS.filter(function(z){return z.id===id;})[0]; if(it){ it[f]=inp.value; }
+          fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+            .then(function(r){return r.json();}).then(function(d){ if(f==="kind"){ renderItems(); } if(f==="need"||f==="product"){ renderBuy(); } });
+        });
+      });
+      tr.querySelector(".idel").addEventListener("click", function(){
+        if(!confirm("Remove this item?")) return;
+        fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})})
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ITEMS=ITEMS.filter(function(z){return z.id!==id;}); renderItems(); renderBuy(); } });
+      });
+    });
+  }
+
+  function renderBuy(){
+    var box=document.getElementById("buy");
+    var by={};
+    ITEMS.forEach(function(it){ var n=parseFloat(it.need); if(!isNaN(n)&&n>0){ var k=(it.product||"?").trim().toLowerCase()||"?"; if(!by[k]) by[k]={name:it.product||"?",n:0}; by[k].n+=n; } });
+    var keys=Object.keys(by).sort(function(a,b){ return by[b].n-by[a].n; });
+    if(!keys.length){ box.innerHTML="<div class='empty'>Set \"Need\" on items above and they collect here.</div>"; return; }
+    box.innerHTML=keys.map(function(k){ return "<div class='buyrow'><span>"+esc(by[k].name)+"</span><span class='q'>"+by[k].n+"</span></div>"; }).join("");
+  }
+
+  document.getElementById("addItemBtn").addEventListener("click", function(){
+    if(!CUR) return;
+    fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,product:"",kind:"tub",qty:1})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.item){ ITEMS.push(d.item); renderItems(); } else alert((d&&d.error)||"Couldn't add."); });
+  });
+
+  /* ---- Add photos (AI reads each into items) ---- */
+  function downscale(file, cb){
+    var img=new Image(), url=URL.createObjectURL(file);
+    img.onload=function(){ var max=1800,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} } var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(url); cb(c.toDataURL("image/jpeg",0.88).split(",")[1],"image/jpeg"); };
+    img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
+    img.src=url;
+  }
+  document.getElementById("photoInput").addEventListener("change", function(e){
+    var files=Array.prototype.slice.call(e.target.files||[]); this.value="";
+    if(!files.length||!CUR) return;
+    var msg=document.getElementById("photoMsg"); var i=0, added=0;
+    (function next(){
+      if(i>=files.length){ msg.style.color="var(--ok)"; msg.textContent="Read "+added+" item"+(added===1?"":"s")+" from "+files.length+" photo"+(files.length===1?"":"s")+"."; openCount(CUR.id); return; }
+      var f=files[i++]; msg.style.color="var(--muted)"; msg.textContent="Reading photo "+i+" of "+files.length+"…";
+      downscale(f, function(b64, ct){
+        if(!b64){ next(); return; }
+        fetch("/api/inventory/photo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,imageBase64:b64,contentType:ct})})
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ added+=(d.read||0); } else if(d&&d.error){ msg.style.color="var(--red)"; msg.textContent=d.error; } next(); })
+          .catch(function(){ next(); });
+      });
+    })();
+  });
+</script>
+<script src="/lightbox.js"></script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
