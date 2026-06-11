@@ -93,6 +93,7 @@ export default {
     if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
     if (url.pathname === "/api/temps/log" && request.method === "POST") return logTemp(request, env, session);
     if (url.pathname === "/api/temps/log/delete" && request.method === "POST") return deleteTempLog(request, env, session);
+    if (url.pathname === "/api/temps/demo" && request.method === "POST") return setTempDemo(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
@@ -3080,8 +3081,9 @@ async function listTemps(url, env, session) {
   const logs = await sbSelect(env, `temp_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,asset_id,temp,logged_by,reading_at&order=reading_at.asc`);
   if (logs === null) return noStore({ ok: true, client: who.name, date, units: [], readings: [], missing: true });
   const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max }));
-  const r = (logs || []).map((l) => ({ id: l.id, assetId: l.asset_id, temp: l.temp, by: l.logged_by || "", at: l.reading_at || "" }));
-  return noStore({ ok: true, client: who.name, date, units: u, readings: r });
+  const r = (logs || []).map((l) => ({ id: l.id, assetId: l.asset_id, temp: l.temp, by: l.logged_by || "", at: l.reading_at || "", demo: (l.logged_by || "") === DEMO_TAG }));
+  const anyDemo = r.some((x) => x.demo);
+  return noStore({ ok: true, client: who.name, date, units: u, readings: r, demo: anyDemo });
 }
 
 async function listTempUnits(url, env, session) {
@@ -3129,6 +3131,52 @@ async function logTemp(request, env, session) {
   const r = res.data || {};
   const out = tempUnitOut(temp, inScope.temp_min, inScope.temp_max);
   return json({ ok: true, reading: { id: r.id, assetId, temp, by: a.author, at: r.reading_at || "", out } });
+}
+
+// Sample data for client demos. Every demo reading is stamped with this tag in
+// logged_by so it's clearly labeled as demo (never mistaken for a real check)
+// and can be wiped in one call. Demo mode is master-only.
+const DEMO_TAG = "Demo";
+
+async function setTempDemo(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  // Always clear any existing demo rows first (so toggling on never piles up).
+  await fetch(`${env.SUPABASE_URL}/rest/v1/temp_logs?client_id=eq.${who.id}&logged_by=eq.${encodeURIComponent(DEMO_TAG)}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!body.on) return json({ ok: true, on: false, count: 0 });
+  // Build a believable history: the last 14 days, two rounds a day, one reading
+  // per cold unit, each a random value inside that unit's safe range (to 0.1).
+  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,temp_min,temp_max`);
+  if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
+  const ranged = (units || []).filter((u) => u.temp_min != null && u.temp_max != null && u.temp_max >= u.temp_min);
+  if (!ranged.length) return json({ ok: false, error: "No cold units with a safe range set. Add ranges in Manage units first." }, 400);
+  const rnd = (min, max) => Math.round((min + Math.random() * (max - min)) * 10) / 10;
+  const pad = (n) => String(n).padStart(2, "0");
+  const rows = [];
+  const now = new Date();
+  for (let d = 0; d < 14; d++) {
+    const day = new Date(now.getTime() - d * 86400000);
+    const ds = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+    // Two rounds: morning ~7am, afternoon ~2pm, with a little jitter.
+    const rounds = [{ h: 7, m: 5 + Math.floor(Math.random() * 40) }, { h: 14, m: 5 + Math.floor(Math.random() * 40) }];
+    for (const rd of rounds) {
+      const at = `${ds}T${pad(rd.h)}:${pad(rd.m)}:00`;
+      for (const u of ranged) {
+        rows.push({ asset_id: u.id, client_id: who.id, log_date: ds, temp: rnd(u.temp_min, u.temp_max), logged_by: DEMO_TAG, reading_at: at });
+      }
+    }
+  }
+  // Insert in chunks so the request body stays small.
+  let count = 0;
+  for (let i = 0; i < rows.length; i += 200) {
+    const res = await sbInsert(env, "temp_logs", rows.slice(i, i + 200));
+    if (res.ok) count += Math.min(200, rows.length - i);
+  }
+  return json({ ok: true, on: true, count });
 }
 
 async function deleteTempLog(request, env, session) {
