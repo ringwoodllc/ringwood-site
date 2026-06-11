@@ -36,22 +36,25 @@
   .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:11px 16px;font:inherit;font-weight:600;font-size:.9rem}
   .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
   .btn:hover{filter:brightness(1.05)}
-  .tlogwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:14px}
+  .tlogwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow-x:auto;margin-bottom:14px}
   table.tlog{width:100%;border-collapse:collapse}
-  table.tlog th{text-align:left;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05)}
-  table.tlog th:nth-child(2){width:96px;text-align:center}
-  table.tlog th:nth-child(3){width:108px;text-align:right}
-  table.tlog td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.tlog th{text-align:left;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 10px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05);white-space:nowrap}
+  table.tlog td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
   table.tlog tr:last-child td{border-bottom:none}
-  .u-name{font-weight:600;color:var(--green-deep);font-size:.98rem;line-height:1.2}
-  .u-range{color:var(--muted);font-size:.76rem;margin-top:1px}
-  .c-in{text-align:center}
-  .tinput{width:80px;font:inherit;font-size:1.05rem;font-weight:600;text-align:center;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 6px;-webkit-appearance:none;appearance:none}
-  .tinput:focus{border-color:var(--green);outline:none}
-  .c-last{text-align:right;white-space:nowrap}
-  .cell-temp{font-weight:700;font-size:1rem}
-  .cell-temp.out{color:var(--red)}
-  .cell-time{display:block;color:var(--muted);font-size:.72rem}
+  .c-unit{min-width:140px;position:sticky;left:0;background:var(--bg-2);z-index:1}
+  table.tlog th:first-child{position:sticky;left:0;background:rgba(238,231,217,.98);z-index:2}
+  .u-name{font-weight:600;color:var(--green-deep);font-size:.96rem;line-height:1.2}
+  .u-range{color:var(--muted);font-size:.74rem;margin-top:1px}
+  .c-slot{text-align:center}
+  .slottime{font:inherit;font-size:.82rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:3px 5px;width:96px}
+  .slotdel{margin-left:4px;background:transparent;border:none;color:var(--muted);font-size:1rem;line-height:1;cursor:pointer;vertical-align:middle}
+  .slotdel:hover{color:var(--red)}
+  .c-addslot button{background:transparent;border:1px solid var(--line);border-radius:6px;width:30px;height:30px;font:inherit;font-size:1rem;color:var(--green-deep);cursor:pointer}
+  .c-cell{text-align:center}
+  .gcell{width:62px;font:inherit;font-size:1rem;font-weight:600;text-align:center;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 4px;-webkit-appearance:none;appearance:none}
+  .gcell:focus{border-color:var(--green);outline:none}
+  .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep);opacity:1}
+  .gcell.logged.out{color:var(--red);background:rgba(138,61,28,.1)}
   .cell-none{color:var(--muted);font-size:.8rem}
   tr.flash{animation:flashrow 1.4s ease}
   @keyframes flashrow{0%{background:rgba(169,99,58,.22)}100%{background:transparent}}
@@ -127,8 +130,15 @@
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", UNITS=[], READS=[], MISSING=false;
+  // The time-slot columns of the grid (24h "HH:MM"). You record on paper at these
+  // times, then transcribe down each column. Editable, and you can add/remove slots.
+  var SLOTS=["06:00","10:00","14:00","18:00"];
 
-  function today(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function slotKey(s){ var t=String(s).split(":"); return pad(+t[0])+":"+pad(+t[1]); }
+  function isoAt(slot){ var p=DATE.split("-"), t=slot.split(":"); return new Date(+p[0], +p[1]-1, +p[2], +t[0], +t[1]).toISOString(); }
+  function nextSlot(){ if(!SLOTS.length) return "06:00"; var last=SLOTS[SLOTS.length-1].split(":"); return pad((+last[0]+4)%24)+":"+pad(+last[1]); }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/temps"); return; }
@@ -186,35 +196,50 @@
       el.innerHTML="<div class='empty'>No cold units yet."+(CAN_EDIT?" Use Manage units below to mark a cooler or freezer.":"")+"</div>";
       return;
     }
-    var byUnit={}; READS.forEach(function(r){ (byUnit[r.assetId]=byUnit[r.assetId]||[]).push(r); });
-    // One row per unit: name + range, a new-reading box, and the latest reading today.
-    var rows = UNITS.map(function(u){
-      var rs=byUnit[u.id]||[];
-      var latest = rs.length ? rs[rs.length-1] : null;
-      var lastCell;
-      if(latest){
-        var out=outOf(latest.temp,u.min,u.max);
-        lastCell="<span class='cell-temp"+(out?" out":"")+"'>"+esc(latest.temp)+"°</span>"+
-          "<span class='cell-time'>"+esc(timeOf(latest.at))+(latest.demo?" · DEMO":"")+(rs.length>1?" · "+rs.length+"×":"")+"</span>";
-      } else lastCell="<span class='cell-none'>not checked</span>";
-      var inputCell = CAN_EDIT ? "<input type='number' inputmode='decimal' step='0.1' class='tinput' data-aid='"+esc(u.id)+"' placeholder='—' aria-label='Temperature for "+esc(u.name)+"' />" : "";
-      return "<tr id='row_"+esc(u.id)+"'>"+
-        "<td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div><div class='u-range'>"+esc(rangeText(u.min,u.max))+"</div></td>"+
-        "<td class='c-in'>"+inputCell+"</td>"+
-        "<td class='c-last'>"+lastCell+"</td>"+
-      "</tr>";
+    // Index readings by unit, and by unit+slot-time so logged values prefill the grid.
+    var byUnit={}, byUnitSlot={};
+    READS.forEach(function(r){
+      (byUnit[r.assetId]=byUnit[r.assetId]||[]).push(r);
+      var dt=new Date(r.at); var key=pad(dt.getHours())+":"+pad(dt.getMinutes());
+      (byUnitSlot[r.assetId]=byUnitSlot[r.assetId]||{})[key]=r;
+    });
+    var ths = SLOTS.map(function(s,si){
+      return "<th class='c-slot'><input type='time' class='slottime' data-si='"+si+"' value='"+esc(s)+"' />"+
+        (CAN_EDIT&&SLOTS.length>1?"<button type='button' class='slotdel' data-si='"+si+"' title='Remove time'>×</button>":"")+"</th>";
     }).join("");
-    var table="<div class='tlogwrap'><table class='tlog'><thead><tr><th>Unit</th><th>New °F</th><th>Latest today</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+    var addTh = CAN_EDIT ? "<th class='c-addslot'><button type='button' id='addSlot' title='Add a time'>＋</button></th>" : "";
+    var rows = UNITS.map(function(u){
+      var cells = SLOTS.map(function(s){
+        var key=slotKey(s);
+        var ex=(byUnitSlot[u.id]||{})[key];
+        if(ex){ var out=outOf(ex.temp,u.min,u.max); return "<td class='c-cell'><input type='number' class='gcell logged"+(out?" out":"")+"' value='"+esc(ex.temp)+"' disabled title='Logged "+esc(timeOf(ex.at))+"' /></td>"; }
+        return "<td class='c-cell'>"+(CAN_EDIT?"<input type='number' inputmode='decimal' step='0.1' class='gcell tinput' data-aid='"+esc(u.id)+"' data-slot='"+esc(key)+"' placeholder='—' />":"<span class='cell-none'>—</span>")+"</td>";
+      }).join("");
+      return "<tr id='row_"+esc(u.id)+"'><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div><div class='u-range'>"+esc(rangeText(u.min,u.max))+"</div></td>"+cells+(addTh?"<td></td>":"")+"</tr>";
+    }).join("");
+    var table="<div class='tlogwrap'><table class='tlog'><thead><tr><th>Unit</th>"+ths+addTh+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
     var saveBtn = CAN_EDIT ? "<div class='saverow'><button type='button' class='btn savebtn' id='saveRound'>✓ Save readings</button><span class='savemsg' id='saveMsg'></span></div>" : "";
     el.innerHTML = table + saveBtn + buildTodayLog(byUnit);
 
     var sb=document.getElementById("saveRound");
-    if(sb) sb.addEventListener("click", saveRound);
-    Array.prototype.slice.call(document.querySelectorAll(".tinput")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveRound(); } }); });
+    if(sb) sb.addEventListener("click", saveGrid);
+    Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveGrid(); } }); });
+    // editable slot times: update the column's cells in place (don't wipe typed values)
+    Array.prototype.slice.call(document.querySelectorAll(".slottime")).forEach(function(inp){ inp.addEventListener("change", function(){
+      var si=+this.getAttribute("data-si"), oldKey=slotKey(SLOTS[si]); var v=this.value||SLOTS[si]; var nk=slotKey(v);
+      SLOTS[si]=nk; this.value=nk;
+      Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput[data-slot='"+oldKey+"']")).forEach(function(c){ c.setAttribute("data-slot", nk); });
+    }); });
+    Array.prototype.slice.call(document.querySelectorAll(".slotdel")).forEach(function(b){ b.addEventListener("click", function(){ var si=+b.getAttribute("data-si"); var m=captureGrid(); SLOTS.splice(si,1); render(); restoreGrid(m); }); });
+    var asb=document.getElementById("addSlot"); if(asb) asb.addEventListener("click", function(){ var m=captureGrid(); SLOTS.push(nextSlot()); render(); restoreGrid(m); });
     var tl=document.getElementById("todayToggle");
     if(tl) tl.addEventListener("click", function(){ var b=document.getElementById("todayBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; this.querySelector(".tlmore").textContent=open?"Hide ▴":"Show ▾"; });
     Array.prototype.slice.call(document.querySelectorAll(".rdel")).forEach(function(b){ b.addEventListener("click", function(){ if(!confirm("Remove this reading?")) return; fetch("/api/temps/log/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
   }
+
+  // Preserve typed-but-unsaved cells (keyed by unit + slot time) across a re-render.
+  function captureGrid(){ var m={}; Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")).forEach(function(i){ if(i.value!=="") m[i.getAttribute("data-aid")+"#"+i.getAttribute("data-slot")]=i.value; }); return m; }
+  function restoreGrid(m){ Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")).forEach(function(i){ var k=i.getAttribute("data-aid")+"#"+i.getAttribute("data-slot"); if(m[k]!=null) i.value=m[k]; }); }
 
   // Collapsible full list of every reading logged for the selected date.
   function buildTodayLog(byUnit){
@@ -232,14 +257,14 @@
       "<div class='secbody' id='todayBody' style='display:none'>"+items+"</div></div>";
   }
 
-  function saveRound(){
-    var inputs=Array.prototype.slice.call(document.querySelectorAll(".tinput"));
-    var readings=[];
-    inputs.forEach(function(i){ var v=parseFloat(i.value); if(!isNaN(v)) readings.push({assetId:i.getAttribute("data-aid"), temp:v}); });
+  function saveGrid(){
+    var inputs=Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput"));
+    var cells=[];
+    inputs.forEach(function(i){ var v=parseFloat(i.value); if(isNaN(v)) return; cells.push({assetId:i.getAttribute("data-aid"), at:isoAt(i.getAttribute("data-slot")), temp:v}); });
     var msg=document.getElementById("saveMsg");
-    if(!readings.length){ if(msg){ msg.style.color="var(--muted)"; msg.textContent="Enter a temperature first."; } return; }
+    if(!cells.length){ if(msg){ msg.style.color="var(--muted)"; msg.textContent="Enter a temperature first."; } return; }
     var btn=document.getElementById("saveRound"); btn.disabled=true; var old=btn.textContent; btn.textContent="Saving…";
-    fetch("/api/temps/round",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,readings:readings})})
+    fetch("/api/temps/grid",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,cells:cells})})
       .then(function(r){return r.json();}).then(function(d){ btn.disabled=false; btn.textContent=old;
         if(d&&d.ok){ if(msg){ msg.style.color="var(--ok)"; msg.textContent="Saved "+d.count+" reading"+(d.count===1?"":"s")+" ✓"; } load(); }
         else { if(msg){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't save."; } } })
