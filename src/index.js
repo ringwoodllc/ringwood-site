@@ -3560,6 +3560,20 @@ async function insertChunks(env, table, rows) {
   return saved;
 }
 
+// Re-scanning a sheet replaces, not stacks: before inserting, clear the existing
+// rows for exactly the cells this scan covers (the matched column on that date),
+// so values are overwritten while anything the scan didn't read is left alone.
+// byDate maps a log_date to the set of column values (asset id, item, vendor).
+async function clearScannedCells(env, table, colField, byDate, cid) {
+  for (const date of Object.keys(byDate)) {
+    const vals = Array.from(byDate[date]);
+    if (!vals.length) continue;
+    const list = "in.(" + vals.map((v) => '"' + String(v).replace(/["\\]/g, "") + '"').join(",") + ")";
+    await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?client_id=eq.${cid}&log_date=eq.${date}&${colField}=${encodeURIComponent(list)}`,
+      { method: "DELETE", headers: sbHeaders(env) });
+  }
+}
+
 async function scanTempLog(request, env, session) {
   if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
   if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
@@ -3597,6 +3611,7 @@ async function scanTempLog(request, env, session) {
   const rows = [];
   const unmatched = {};
   const dates = {};
+  const byDate = {};
   for (const r of read.readings) {
     const temp = parseFloat(r.temp);
     if (isNaN(temp)) continue;
@@ -3609,8 +3624,10 @@ async function scanTempLog(request, env, session) {
     if (time) { const t = time.split(":"); row.reading_at = `${date}T${String(+t[0]).padStart(2, "0")}:${String(+t[1]).padStart(2, "0")}:00`; }
     rows.push(row);
     dates[date] = true;
+    (byDate[date] = byDate[date] || new Set()).add(u.id);
   }
   if (!rows.length) return json({ ok: false, error: "Couldn't match any readings to your units." + (Object.keys(unmatched).length ? " Columns seen: " + Object.values(unmatched).join(", ") : ""), unmatched: Object.values(unmatched) }, 200);
+  await clearScannedCells(env, "temp_logs", "asset_id", byDate, who.id);
   const saved = await insertChunks(env, "temp_logs", rows);
   return json({ ok: true, saved, dates: Object.keys(dates).sort(), unmatched: Object.values(unmatched) });
 }
@@ -3667,6 +3684,7 @@ async function scanWeekSheet(request, env, session, opts) {
   const rows = [];
   const unmatched = {};
   const dates = {};
+  const byDate = {};
   for (const r of read.readings) {
     const temp = parseFloat(r.temp);
     if (isNaN(temp)) continue;
@@ -3676,8 +3694,10 @@ async function scanWeekSheet(request, env, session, opts) {
     if (!okDate(date)) continue;
     rows.push(opts.row(col, date, temp, who.id, a.author));
     dates[date] = true;
+    (byDate[date] = byDate[date] || new Set()).add(col.name);
   }
   if (!rows.length) return json({ ok: false, error: "Couldn't match any readings to your columns." + (Object.keys(unmatched).length ? " Columns seen: " + Object.values(unmatched).join(", ") : ""), unmatched: Object.values(unmatched) }, 200);
+  await clearScannedCells(env, opts.table, opts.colField, byDate, who.id);
   let saved = await insertChunks(env, opts.table, rows);
   // Pre-migration fallback (e.g. receiving_logs without the storage column).
   if (saved === 0 && opts.retryWithout) {
@@ -3690,6 +3710,7 @@ async function scanWeekSheet(request, env, session, opts) {
 async function scanHotHolding(request, env, session) {
   return scanWeekSheet(request, env, session, {
     table: "hotholding_logs",
+    colField: "item",
     loadColumns: (cid) => sbSelect(env, `hotholding_items?client_id=eq.${cid}&select=id,name,kind,min_temp`),
     missingError: "The hot holding table isn't set up yet.",
     emptyError: "No items set up yet. Add them in Edit items first.",
@@ -3711,6 +3732,7 @@ async function scanReceiving(request, env, session) {
   return scanWeekSheet(request, env, session, {
     table: "receiving_logs",
     retryWithout: ["storage"],
+    colField: "vendor",
     loadColumns: (cid) => sbSelect(env, `receiving_vendors?client_id=eq.${cid}&select=id,name,storage`),
     missingError: "The receiving table isn't set up yet.",
     emptyError: "No vendor lines set up yet. Add them in Edit vendors first.",
