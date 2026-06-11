@@ -100,6 +100,9 @@ export default {
     if (url.pathname === "/api/inventory/orders" && request.method === "GET") return listInventoryOrders(url, env, session);
     if (url.pathname === "/api/inventory/order" && request.method === "POST") return saveInventoryOrder(request, env, session);
     if (url.pathname === "/api/inventory/order/delete" && request.method === "POST") return deleteInventoryOrder(request, env, session);
+    if (url.pathname === "/api/inventory/order/scan" && request.method === "POST") return scanOrder(request, env, session);
+    if (url.pathname === "/api/inventory/catalog" && request.method === "GET") return listInventoryCatalog(url, env, session);
+    if (url.pathname === "/api/inventory/catalog" && request.method === "POST") return saveInventoryCatalog(request, env, session);
     if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
     if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
     if (url.pathname === "/api/checklist" && request.method === "GET") return listChecklist(url, env, session);
@@ -3566,8 +3569,12 @@ async function listInventoryOrders(url, env, session) {
   if (!can(session, "foodSafety", "view")) return deny("foodSafety");
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
   if (!who.id) return noStore({ ok: true, client: who.name, orders: [] });
-  const rows = await sbSelect(env, `inventory_orders?client_id=eq.${who.id}&select=id,order_date,label,items,created_by,created_at&order=order_date.asc,created_at.asc&limit=200`);
-  if (rows === null) return noStore({ ok: true, client: who.name, missing: true, orders: [] });
+  const base = `inventory_orders?client_id=eq.${who.id}&order=order_date.asc,created_at.asc&limit=200`;
+  let rows = await sbSelect(env, `${base}&select=id,order_date,label,items,order_no,amount,ordered_on,created_by,created_at`);
+  if (rows === null) { // pre-migration: columns order_no/amount/ordered_on may not exist
+    rows = await sbSelect(env, `${base}&select=id,order_date,label,items,created_by,created_at`);
+    if (rows === null) return noStore({ ok: true, client: who.name, missing: true, orders: [] });
+  }
   return noStore({ ok: true, client: who.name, orders: rows || [] });
 }
 
@@ -3582,14 +3589,21 @@ async function saveInventoryOrder(request, env, session) {
   const order_date = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : new Date().toISOString().slice(0, 10);
   const label = (body.label || "").toString().slice(0, 120);
   const items = cleanOrderItems(body.items);
+  const extra = {};
+  if ("orderNo" in body) extra.order_no = (body.orderNo || "").toString().slice(0, 40) || null;
+  if ("amount" in body) { const a2 = parseFloat(body.amount); extra.amount = isNaN(a2) ? null : a2; }
+  if ("orderedOn" in body) { const od = (body.orderedOn || "").toString().slice(0, 10); extra.ordered_on = /^\d{4}-\d{2}-\d{2}$/.test(od) ? od : null; }
   const id = (body.id || "").toString().trim();
   if (id) {
-    const res = await sbUpdate(env, "inventory_orders", id, { order_date, label, items });
+    let res = await sbUpdate(env, "inventory_orders", id, Object.assign({ order_date, label, items }, extra));
+    if (!res.ok && Object.keys(extra).length) res = await sbUpdate(env, "inventory_orders", id, { order_date, label, items }); // pre-migration fallback
     if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
     return json({ ok: true });
   }
   const a = authorOf(session);
-  const res = await sbInsert(env, "inventory_orders", { client_id: s.who.id, order_date, label, items, created_by: a.author });
+  const row = Object.assign({ client_id: s.who.id, order_date, label, items, created_by: a.author }, extra);
+  let res = await sbInsert(env, "inventory_orders", row);
+  if (!res.ok && Object.keys(extra).length) { const r2 = { client_id: s.who.id, order_date, label, items, created_by: a.author }; res = await sbInsert(env, "inventory_orders", r2); }
   if (!res.ok) return json({ ok: false, error: "The inventory tables aren't set up yet. Run the latest supabase/inventory.sql once." }, 400);
   return json({ ok: true, order: res.data || null });
 }
@@ -3605,6 +3619,99 @@ async function deleteInventoryOrder(request, env, session) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/inventory_orders?id=eq.${id}&client_id=eq.${s.who.id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
+}
+
+// The product catalog (the order form's list). It grows when you identify an
+// unknown line on an uploaded order.
+async function listInventoryCatalog(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return deny("foodSafety");
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  if (!who.id) return noStore({ ok: true, products: [] });
+  const rows = await sbSelect(env, `inventory_products?client_id=eq.${who.id}&select=name,category&order=name.asc`);
+  if (rows === null) return noStore({ ok: true, products: [], missing: true });
+  return noStore({ ok: true, products: rows || [] });
+}
+
+async function saveInventoryCatalog(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  let arr = Array.isArray(body.products) ? body.products : (body.name ? [{ name: body.name, category: body.category }] : []);
+  arr = arr.map((p) => ({ name: (p.name || "").toString().trim().slice(0, 160), category: (p.category || "").toString().slice(0, 40) || null })).filter((p) => p.name);
+  if (!arr.length) return json({ ok: true, added: 0 });
+  const existing = await sbSelect(env, `inventory_products?client_id=eq.${who.id}&select=name`);
+  if (existing === null) return json({ ok: false, error: "The inventory_products table isn't set up yet. Run the latest supabase/inventory.sql once." }, 400);
+  const have = {}; (existing || []).forEach((r) => { have[(r.name || "").toLowerCase()] = 1; });
+  const rows = []; const seen = {};
+  arr.forEach((p) => { const k = p.name.toLowerCase(); if (have[k] || seen[k]) return; seen[k] = 1; rows.push({ client_id: who.id, name: p.name, category: p.category }); });
+  if (!rows.length) return json({ ok: true, added: 0 });
+  const added = await insertChunks(env, "inventory_products", rows);
+  return json({ ok: true, added });
+}
+
+// Read a photo or PDF of an order/invoice into line items, mapping each to the
+// client's known product list (unmatched lines come back for the user to
+// identify). Suggests Order 1 / Order 2 / Last from how many orders exist. Saves
+// nothing; the page opens the order editor prefilled for review.
+const ORDERSCAN_SCHEMA = {
+  type: "object",
+  properties: {
+    date: { type: "string" },
+    orderDate: { type: "string" },
+    orderNo: { type: "string" },
+    amount: { type: "number" },
+    items: { type: "array", items: { type: "object", properties: { label: { type: "string" }, product: { type: "string" }, qty: { type: "number" } }, required: ["label", "product", "qty"], additionalProperties: false } },
+  },
+  required: ["date", "orderDate", "orderNo", "amount", "items"],
+  additionalProperties: false,
+};
+
+async function scanOrder(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected. Add the ANTHROPIC_API_KEY in Cloudflare." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const base64 = (body.imageBase64 || "").toString();
+  const ct = (body.contentType || "image/jpeg").toString();
+  if (!base64) return json({ ok: false, error: "No file." }, 400);
+  const catalog = Array.isArray(body.catalog) ? body.catalog.slice(0, 500) : [];
+  const isPdf = ct.indexOf("pdf") >= 0;
+  const block = isPdf ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } } : { type: "image", source: { type: "base64", media_type: ct, data: base64 } };
+  const prompt =
+    "This is a Baskin Robbins order or invoice (for example an Order History Detail). Read the whole order.\n" +
+    "Return:\n" +
+    "- date: the DELIVERY date as YYYY-MM-DD if shown, else empty string.\n" +
+    "- orderDate: the date the order was placed as YYYY-MM-DD if shown, else empty string.\n" +
+    "- orderNo: the order number if shown, else empty string.\n" +
+    "- amount: the order total as a number if shown, else 0.\n" +
+    "- items: one entry per line: { label (the product description exactly as printed), qty (quantity ordered as a number), " +
+    "product (map it to the closest name in the known product list below if it clearly is the same item, matching the size such " +
+    "as 3G vs QT; if it does not clearly match any known product, leave product an empty string) }.\n" +
+    "Read every line; do not skip any.\n\n" +
+    "Known products:\n" + (catalog.length ? catalog.map((n) => "- " + n).join("\n") : "(none yet)");
+  let read = null;
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 4500, thinking: { type: "adaptive" }, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema: ORDERSCAN_SCHEMA } } }),
+    });
+    if (res.ok) { const data = await res.json(); const tb = (data.content || []).find((b) => b.type === "text"); if (tb) read = JSON.parse(tb.text); }
+  } catch { read = null; }
+  if (!read || !Array.isArray(read.items)) return json({ ok: false, error: "Couldn't read the order. Try a clearer photo or PDF." }, 502);
+  const okDate = (x) => /^\d{4}-\d{2}-\d{2}$/.test((x || "").slice(0, 10));
+  const items = read.items.map((it) => { const qty = parseFloat(it.qty); return { label: (it.label || "").toString().slice(0, 160), product: (it.product || "").toString().slice(0, 160), qty: isNaN(qty) ? 1 : qty }; }).filter((it) => it.label || it.product);
+  const existing = await sbSelect(env, `inventory_orders?client_id=eq.${who.id}&select=id`);
+  const n = (existing || []).length;
+  const suggestLabel = n === 0 ? "Order 1" : (n === 1 ? "Order 2" : "Last");
+  const amt = parseFloat(read.amount);
+  return json({ ok: true, date: okDate(read.date) ? read.date.slice(0, 10) : "", orderedOn: okDate(read.orderDate) ? read.orderDate.slice(0, 10) : "", orderNo: (read.orderNo || "").toString().slice(0, 40), amount: isNaN(amt) ? null : amt, suggestLabel, items, unknownCount: items.filter((i) => !i.product).length });
 }
 
 /* ===================== Cold Storage Temperature Log ===================== */

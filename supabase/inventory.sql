@@ -52,3 +52,19 @@ create table if not exists inventory_orders (
   created_at timestamptz not null default now()
 );
 create index if not exists inventory_orders_client on inventory_orders(client_id, order_date desc);
+-- order_date holds the DELIVERY date (what the trend and "last delivered" sort by).
+-- These keep the DFA order number and dollar amount alongside it.
+alter table inventory_orders add column if not exists order_no text;
+alter table inventory_orders add column if not exists amount numeric;
+alter table inventory_orders add column if not exists ordered_on date;
+
+-- Product catalog (the order form's list). Seeded from the app's built-in list;
+-- grows when you identify an unknown line on an uploaded order.
+create table if not exists inventory_products (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete cascade,
+  name text not null,
+  category text,
+  created_at timestamptz not null default now()
+);
+create index if not exists inventory_products_client on inventory_products(client_id, name);
