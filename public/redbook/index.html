@@ -62,6 +62,7 @@
   .dexp.exp-bad{color:var(--red)}
   .dexplbl{display:block;font-weight:600;font-size:.8rem;color:var(--green-deep);margin:8px 0 4px}
   .dexp-edit{font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:7px 9px}
+  .dsec-edit{width:100%;font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 9px}
   .expbanner{border-radius:8px;padding:11px 14px;font-size:.9rem;font-weight:600;margin-bottom:14px}
   .expbanner.warn{background:rgba(169,99,58,.12);border:1px solid rgba(169,99,58,.4);color:#7a4a26}
   .expbanner.bad{background:rgba(138,61,28,.12);border:1px solid rgba(138,61,28,.4);color:var(--red)}
@@ -140,7 +141,14 @@
       </div>
       <span class="loggo">Open →</span>
     </a>
-    <div class="cwrap" style="margin-top:10px">Receiving Log, Hot Holding / Cooking Temps, and the Daily Pre-Shift Checklist are coming next as fillable, asset-linked logs. For now, keep their PDFs in the sections above.</div>
+    <a href="/checklist" class="logcard" id="checklistLink" style="margin-top:10px">
+      <div>
+        <div class="logtitle">Daily Pre-Shift Checklist</div>
+        <div class="logdesc">Walk the store and check off each area for the day, with Open / Mid / Close assignments. Sections are editable.</div>
+      </div>
+      <span class="loggo">Open →</span>
+    </a>
+    <div class="cwrap" style="margin-top:10px">Receiving Log and Hot Holding / Cooking Temps are coming next as fillable logs. For now, keep their PDFs in the sections above.</div>
   </div>
 </main>
 <script>
@@ -257,10 +265,13 @@
     var doc=DOCS.filter(function(z){return z.id===id;})[0]||{};
     var cur=doc.title||btn.getAttribute("data-title")||"";
     var curExp=(doc.expires||"").slice(0,10);
+    var curSec=doc.section||"";
+    var secHtml = "<label class='dexplbl' for='dsec_"+esc(id)+"'>Section (move it)</label><select id='dsec_"+esc(id)+"' class='dsec-edit'>"+SECTIONS.map(function(s){ return "<option"+(s===curSec?" selected":"")+">"+esc(s)+"</option>"; }).join("")+"</select>";
     var expHtml = EXPIRY_ON ? "<label class='dexplbl' for='dexp_"+esc(id)+"'>Expires (optional)</label><input id='dexp_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curExp)+"' />" : "";
-    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
+    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+secHtml+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dtidy'>✨ Tidy</button><button type='button' class='dcancel'>Cancel</button><span class='dtidymsg'></span></div>";
     var inp=main.querySelector(".dtitle-edit"); inp.focus(); inp.select();
     var expInp=main.querySelector(".dexp-edit");
+    var secInp=main.querySelector(".dsec-edit");
     var tidyBtn=main.querySelector(".dtidy"), tidyMsg=main.querySelector(".dtidymsg");
     tidyBtn.addEventListener("click", function(){
       var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
@@ -274,11 +285,12 @@
     function commit(){
       var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
       var e=expInp?(expInp.value||""):null;
-      if(t===cur && (!EXPIRY_ON || e===curExp)){ render(); return; }
+      var sec=secInp?secInp.value:curSec;
+      if(t===cur && sec===curSec && (!EXPIRY_ON || e===curExp)){ render(); return; }
       inp.disabled=true;
-      var body={id:id,title:t}; if(EXPIRY_ON) body.expires=e;
+      var body={id:id,title:t,section:sec}; if(EXPIRY_ON) body.expires=e;
       fetch("/api/redbook/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(doc){ doc.title=t; if(EXPIRY_ON) doc.expires=e; } render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't save."); } })
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(doc){ doc.title=t; doc.section=sec; if(EXPIRY_ON) doc.expires=e; } render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't save."); } })
         .catch(function(){ inp.disabled=false; alert("Couldn't reach the server."); });
     }
     inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); commit(); } else if(e.key==="Escape"){ render(); } });

@@ -91,6 +91,9 @@ export default {
     if (url.pathname === "/api/redbook/rename" && request.method === "POST") return renameRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/tidy-title" && request.method === "POST") return tidyRedbookTitle(request, env, session);
     if (url.pathname === "/api/redbook/tidy-all" && request.method === "POST") return tidyAllRedbook(request, env, session);
+    if (url.pathname === "/api/checklist" && request.method === "GET") return listChecklist(url, env, session);
+    if (url.pathname === "/api/checklist/section" && request.method === "POST") return saveChecklistSection(request, env, session);
+    if (url.pathname === "/api/checklist/day" && request.method === "POST") return saveChecklistDay(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -148,6 +151,7 @@ export default {
       "/parts": "/parts/",
       "/redbook": "/redbook/",
       "/temps": "/temps/",
+      "/checklist": "/checklist/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -3175,6 +3179,11 @@ async function renameRedbookDoc(request, env, session) {
     if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
   }
   const patch = { title };
+  // Optional move to another section.
+  if ("section" in body) {
+    const sec = (body.section || "").toString().trim().slice(0, 120);
+    if (sec) patch.section = sec;
+  }
   // Optional expiry date (YYYY-MM-DD). Only set it when the caller sends the key,
   // and only when the column exists (the page passes it only if supported).
   if ("expires" in body) {
@@ -3416,6 +3425,102 @@ async function deleteTempLog(request, env, session) {
   }
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/temp_logs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+/* ===================== Daily Pre-Shift Checklist ===================== */
+// A simple per-client checklist. The template (the list of sections) lives in
+// checklist_sections and is editable; each section is either "single" (one box)
+// or "shift" (Open / Mid / Close boxes). The day's checked boxes and the Open/
+// Mid/Close assignments are stored as one JSON blob per date in checklist_days.
+// Degrades gracefully until those tables exist.
+const CHECKLIST_DEFAULTS = [
+  ["Exterior & Entrance", "shift"],
+  ["Dining Room", "single"],
+  ["Restrooms", "shift"],
+  ["Front Counter / POS", "single"],
+  ["Beverage Station", "single"],
+  ["Food Prep / Line", "shift"],
+  ["Kitchen / Cook Line", "shift"],
+  ["Coolers & Freezers", "single"],
+  ["Dry & Chemical Storage", "single"],
+  ["Handwashing & Sanitation", "shift"],
+  ["Trash & Dumpster Area", "shift"],
+  ["Equipment Check", "single"],
+  ["Staff Readiness", "single"],
+];
+
+async function listChecklist(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  if (!who.id) return noStore({ ok: true, client: who.name, date, sections: [], marks: {}, assign: { open: "", mid: "", close: "" } });
+  let secs = await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id,name,mode,sort&order=sort.asc,created_at.asc`);
+  if (secs === null) return noStore({ ok: true, client: who.name, date, sections: [], marks: {}, assign: { open: "", mid: "", close: "" }, missing: true });
+  // First time for this client: seed the default sections so there's something to edit.
+  if (secs.length === 0 && can(session, "foodSafety", "edit")) {
+    const rows = CHECKLIST_DEFAULTS.map((d, i) => ({ client_id: who.id, name: d[0], mode: d[1], sort: i * 10 }));
+    await sbInsert(env, "checklist_sections", rows);
+    secs = await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id,name,mode,sort&order=sort.asc,created_at.asc`) || [];
+  }
+  const days = await sbSelect(env, `checklist_days?client_id=eq.${who.id}&log_date=eq.${date}&select=data&limit=1`);
+  const data = (days && days[0] && days[0].data) || {};
+  const assign = Object.assign({ open: "", mid: "", close: "" }, data.assign || {});
+  return noStore({ ok: true, client: who.name, date, sections: (secs || []).map((s) => ({ id: s.id, name: s.name || "", mode: s.mode === "shift" ? "shift" : "single", sort: s.sort || 0 })), marks: data.marks || {}, assign });
+}
+
+async function saveChecklistSection(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const id = (body.id || "").toString().trim();
+  if (body.delete && id) {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/checklist_sections?id=eq.${id}&client_id=eq.${who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+    return json({ ok: true });
+  }
+  const name = (body.name || "").toString().trim().slice(0, 120);
+  const mode = body.mode === "shift" ? "shift" : "single";
+  if (!name) return json({ ok: false, error: "Enter a name." }, 400);
+  if (id) {
+    const patch = { name, mode };
+    if (body.sort != null && !isNaN(parseInt(body.sort, 10))) patch.sort = parseInt(body.sort, 10);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/checklist_sections?id=eq.${id}&client_id=eq.${who.id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=representation" }), body: JSON.stringify(patch) });
+    if (!r.ok) return json({ ok: false, error: "Could not save." }, 502);
+    const d = await r.json();
+    return json({ ok: true, section: Array.isArray(d) ? d[0] : d });
+  }
+  const sort = body.sort != null && !isNaN(parseInt(body.sort, 10)) ? parseInt(body.sort, 10) : 9990;
+  const res = await sbInsert(env, "checklist_sections", { client_id: who.id, name, mode, sort });
+  if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
+  return json({ ok: true, section: res.data || null });
+}
+
+async function saveChecklistDay(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const marks = (body.marks && typeof body.marks === "object") ? body.marks : {};
+  const assignIn = (body.assign && typeof body.assign === "object") ? body.assign : {};
+  const assign = { open: (assignIn.open || "").toString().slice(0, 80), mid: (assignIn.mid || "").toString().slice(0, 80), close: (assignIn.close || "").toString().slice(0, 80) };
+  const data = { marks, assign };
+  const a = authorOf(session);
+  const existing = await sbSelect(env, `checklist_days?client_id=eq.${who.id}&log_date=eq.${date}&select=id&limit=1`);
+  if (existing === null) return json({ ok: false, error: "The checklist table isn't set up yet." }, 400);
+  if (existing[0]) {
+    const res = await sbUpdate(env, "checklist_days", existing[0].id, { data, updated_by: a.author });
+    if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
+  } else {
+    const res = await sbInsert(env, "checklist_days", { client_id: who.id, log_date: date, data, updated_by: a.author });
+    if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
+  }
   return json({ ok: true });
 }
 

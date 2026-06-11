@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Pre-Shift" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Daily Pre-Shift Checklist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);--red:#8a3d1c;--ok:#2f5d50}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:16px 0 14px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 14px}
+  label{display:block;font-weight:600;font-size:.88rem;color:var(--green-deep);margin-bottom:6px}
+  select,input[type=date],input[type=text]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  .row2{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .row2>div{flex:1;min-width:160px}
+  .daterow{display:flex;gap:8px;align-items:center}
+  .daterow input{flex:1;min-width:0}
+  .dstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
+  .dstep:hover{border-color:var(--green)}
+  .card{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .cardhd{font-family:"Spectral",serif;font-weight:500;font-size:1.05rem;color:var(--green-deep);padding:12px 15px;border-bottom:1px solid var(--line)}
+  .assign{display:flex;gap:10px;flex-wrap:wrap;padding:13px 15px}
+  .assign>div{flex:1;min-width:150px}
+  .assign label{font-size:.78rem;letter-spacing:.03em;text-transform:uppercase;color:var(--clay)}
+  table.cl{width:100%;border-collapse:collapse}
+  table.cl th{text-align:center;font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:8px 6px;border-bottom:1px solid var(--line);background:rgba(33,68,58,.05)}
+  table.cl th:first-child{text-align:left;padding-left:15px}
+  table.cl td{padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.cl tr:last-child td{border-bottom:none}
+  .sname{font-weight:600;color:var(--green-deep);font-size:.98rem;padding-left:15px}
+  .smode{display:block;color:var(--muted);font-size:.72rem;font-weight:400}
+  .c-box{text-align:center;width:62px}
+  .cbx{width:26px;height:26px;cursor:pointer;accent-color:var(--green)}
+  .single-td{text-align:center}
+  .savebar{display:flex;align-items:center;gap:10px;margin:2px 0 18px}
+  .savemsg{font-size:.84rem;font-weight:600;color:var(--muted)}
+  .secwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:8px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
+  .sechead:hover{background:rgba(33,68,58,.04)}
+  .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .hint{color:var(--muted);font-size:.82rem;margin:8px 0}
+  .mgrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}
+  .mgrow:last-child{border-bottom:none}
+  .mgname{flex:1;min-width:140px;font:inherit;font-size:.95rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .modetoggle{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .modetoggle button{background:var(--bg);border:none;font:inherit;font-size:.8rem;font-weight:600;color:var(--muted);padding:7px 11px;cursor:pointer}
+  .modetoggle button.on{background:var(--green);color:#f6f2e8}
+  .mgdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:28px;height:28px;font:inherit;cursor:pointer}
+  .addrow{display:flex;gap:8px;margin-top:12px}
+  .addrow input{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:10px 15px;font:inherit;font-weight:600;font-size:.9rem}
+  .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
+  .empty{color:var(--muted);padding:10px 0;font-size:.9rem}
+  .manage{margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/redbook">Red Book</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Food safety · Logs</div>
+    <h1>Daily Pre-Shift Checklist</h1>
+    <p class="lead">Walk the store and check off each area for the day. Some areas are one check; others are checked at Open, Mid, and Close.</p>
+  </div>
+
+  <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
+  <div class="row2">
+    <div><label for="dateSel">Date</label>
+      <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
+    </div>
+  </div>
+  <div id="note" class="note" style="display:none"></div>
+
+  <div id="assignCard" class="card" style="display:none">
+    <div class="cardhd">Assigned today</div>
+    <div class="assign">
+      <div><label for="aOpen">Open</label><input type="text" id="aOpen" placeholder="Name" autocomplete="off" /></div>
+      <div><label for="aMid">Mid</label><input type="text" id="aMid" placeholder="Name" autocomplete="off" /></div>
+      <div><label for="aClose">Close</label><input type="text" id="aClose" placeholder="Name" autocomplete="off" /></div>
+    </div>
+  </div>
+
+  <div id="list"><div class="empty">Loading…</div></div>
+  <div class="savebar" id="saveBar" style="display:none"><button type="button" class="btn" id="saveBtn">✓ Save checklist</button><span class="savemsg" id="saveMsg"></span></div>
+
+  <div class="manage" id="manageWrap" style="display:none">
+    <div class="secwrap">
+      <div class="sechead" id="mgToggle"><span class="sectitle">Edit sections</span><span class="back">Edit ▾</span></div>
+      <div class="secbody" id="mgBody" style="display:none">
+        <div class="hint">Rename a section, switch it between one box and Open / Mid / Close, add new areas, or remove ones you don't use. Changes apply to this client's checklist every day.</div>
+        <div id="mgList"><div class="empty">Loading…</div></div>
+        <div class="addrow"><input type="text" id="newName" placeholder="New section name" autocomplete="off" /><button type="button" class="btn ghost" id="addSec">＋ Add</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", SECTIONS=[], MARKS={}, ASSIGN={open:"",mid:"",close:""}, MISSING=false, saveT=null;
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/checklist"); return; }
+    IS_MASTER = d.role==="master";
+    var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
+    if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
+    CAN_EDIT = IS_MASTER || lvl==="edit";
+    DATE = today(); document.getElementById("dateSel").value = DATE;
+    document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
+    document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
+    document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
+    if(CAN_EDIT) document.getElementById("manageWrap").style.display="block";
+    if(IS_MASTER){
+      document.getElementById("clientPick").style.display="block";
+      fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+        RWClientPins.mount({ selectEl: document.getElementById("clientSel"), clients: (o&&o.clients)||[], placeholder: "Select a client…",
+          onPick: function(name){ CLIENT=name; if(!name){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to see its checklist.</div>"; document.getElementById("assignCard").style.display="none"; document.getElementById("saveBar").style.display="none"; } else load(); } });
+      }).catch(function(){});
+    } else { CLIENT=d.client||""; load(); }
+
+    // Assignment fields auto-save (debounced).
+    ["aOpen","aMid","aClose"].forEach(function(id){ document.getElementById(id).addEventListener("input", function(){ ASSIGN={open:val("aOpen"),mid:val("aMid"),close:val("aClose")}; queueSave(); }); });
+    document.getElementById("saveBtn").addEventListener("click", function(){ saveDay(true); });
+  }).catch(function(){});
+
+  function val(id){ return (document.getElementById(id).value||"").trim(); }
+  function shiftDate(n){ var p=DATE.split("-"); var d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); DATE=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); document.getElementById("dateSel").value=DATE; load(); }
+
+  function load(){
+    if(IS_MASTER && !CLIENT){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to see its checklist.</div>"; return; }
+    document.getElementById("list").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/checklist?client="+encodeURIComponent(CLIENT)+"&date="+encodeURIComponent(DATE),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      var note=document.getElementById("note");
+      if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      MISSING=!!d.missing;
+      if(MISSING){ note.style.display="block"; note.textContent="The checklist tables aren't set up yet. Add them in Supabase (one-time), then checks save."; } else note.style.display="none";
+      SECTIONS=d.sections||[]; MARKS=d.marks||{}; ASSIGN=Object.assign({open:"",mid:"",close:""}, d.assign||{});
+      document.getElementById("aOpen").value=ASSIGN.open||""; document.getElementById("aMid").value=ASSIGN.mid||""; document.getElementById("aClose").value=ASSIGN.close||"";
+      render(); renderManage();
+    }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function render(){
+    var el=document.getElementById("list");
+    document.getElementById("assignCard").style.display = (SECTIONS.length||MISSING)?"block":"block";
+    if(!SECTIONS.length){
+      el.innerHTML="<div class='empty'>No sections yet."+(CAN_EDIT?" Use Edit sections below to add areas.":"")+"</div>";
+      document.getElementById("saveBar").style.display="none";
+      return;
+    }
+    var anyShift=SECTIONS.some(function(s){ return s.mode==="shift"; });
+    var head="<tr><th>Area</th>"+(anyShift?"<th>Open</th><th>Mid</th><th>Close</th>":"<th>Done</th>")+"</tr>";
+    var rows=SECTIONS.map(function(s){
+      var cells;
+      if(s.mode==="shift"){
+        cells=["open","mid","close"].map(function(sl){ return "<td class='c-box'>"+box(s.id,sl)+"</td>"; }).join("");
+      } else {
+        var one="<td class='single-td'"+(anyShift?" colspan='3'":"")+">"+box(s.id,"all")+"</td>";
+        cells=one;
+      }
+      return "<tr><td class='sname'>"+esc(s.name)+(s.mode==="single"?"<span class='smode'>whole area</span>":"")+"</td>"+cells+"</tr>";
+    }).join("");
+    el.innerHTML="<div class='card'><div class='cardhd'>Areas</div><table class='cl'><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div>";
+    Array.prototype.slice.call(el.querySelectorAll(".cbx")).forEach(function(c){ c.addEventListener("change", function(){ queueSave(); }); });
+    document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
+  }
+
+  function box(secId, slot){
+    var key=secId+":"+slot; var on=!!MARKS[key];
+    return "<input type='checkbox' class='cbx' data-key='"+esc(key)+"'"+(on?" checked":"")+(CAN_EDIT?"":" disabled")+" aria-label='"+esc(slot)+"' />";
+  }
+
+  function collectMarks(){
+    var m={}; Array.prototype.slice.call(document.querySelectorAll(".cbx")).forEach(function(c){ if(c.checked) m[c.getAttribute("data-key")]=true; }); return m;
+  }
+  function queueSave(){ if(!CAN_EDIT) return; if(saveT) clearTimeout(saveT); setMsg("Saving…","var(--muted)"); saveT=setTimeout(function(){ saveDay(false); }, 700); }
+  function setMsg(t,c){ var m=document.getElementById("saveMsg"); if(m){ m.textContent=t; m.style.color=c||"var(--muted)"; } }
+  function saveDay(manual){
+    if(!CAN_EDIT) return;
+    if(IS_MASTER && !CLIENT){ return; }
+    if(saveT){ clearTimeout(saveT); saveT=null; }
+    MARKS=collectMarks(); ASSIGN={open:val("aOpen"),mid:val("aMid"),close:val("aClose")};
+    setMsg("Saving…","var(--muted)");
+    fetch("/api/checklist/day",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,marks:MARKS,assign:ASSIGN})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Saved ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1500); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
+      .catch(function(){ setMsg("No connection","var(--red)"); });
+  }
+
+  /* ---- Edit sections (template) ---- */
+  document.getElementById("mgToggle").addEventListener("click", function(){
+    var b=document.getElementById("mgBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none";
+    this.querySelector(".back").textContent=open?"Hide ▴":"Edit ▾";
+  });
+  document.getElementById("addSec").addEventListener("click", function(){
+    var name=val("newName"); if(!name) return; if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var sort=(SECTIONS.length?SECTIONS[SECTIONS.length-1].sort:0)+10;
+    fetch("/api/checklist/section",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,name:name,mode:"single",sort:sort})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ document.getElementById("newName").value=""; load(); } else alert((d&&d.error)||"Couldn't add."); });
+  });
+  function renderManage(){
+    if(!CAN_EDIT) return;
+    var box=document.getElementById("mgList");
+    if(IS_MASTER && !CLIENT){ box.innerHTML="<div class='empty'>Pick a client first.</div>"; return; }
+    if(!SECTIONS.length){ box.innerHTML="<div class='empty'>No sections. Add one below.</div>"; return; }
+    box.innerHTML=SECTIONS.map(function(s){
+      return "<div class='mgrow' data-id='"+esc(s.id)+"'>"+
+        "<input class='mgname' value='"+esc(s.name)+"' />"+
+        "<span class='modetoggle'><button type='button' data-mode='single' class='"+(s.mode==='single'?'on':'')+"'>One box</button><button type='button' data-mode='shift' class='"+(s.mode==='shift'?'on':'')+"'>O / M / C</button></span>"+
+        "<button type='button' class='mgdel' title='Remove'>×</button>"+
+      "</div>";
+    }).join("");
+    Array.prototype.slice.call(box.querySelectorAll(".mgrow")).forEach(function(row){
+      var id=row.getAttribute("data-id");
+      var nameInp=row.querySelector(".mgname");
+      nameInp.addEventListener("change", function(){ saveSection(id, nameInp.value, curMode(row)); });
+      Array.prototype.slice.call(row.querySelectorAll(".modetoggle button")).forEach(function(b){ b.addEventListener("click", function(){
+        Array.prototype.slice.call(row.querySelectorAll(".modetoggle button")).forEach(function(x){ x.classList.remove("on"); }); b.classList.add("on");
+        saveSection(id, nameInp.value, b.getAttribute("data-mode"));
+      }); });
+      row.querySelector(".mgdel").addEventListener("click", function(){ if(!confirm("Remove this section?")) return; fetch("/api/checklist/section",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't remove."); }); });
+    });
+  }
+  function curMode(row){ var on=row.querySelector(".modetoggle button.on"); return on?on.getAttribute("data-mode"):"single"; }
+  function saveSection(id, name, mode){
+    name=(name||"").trim(); if(!name) return;
+    fetch("/api/checklist/section",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,name:name,mode:mode})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ var s=SECTIONS.filter(function(z){return z.id===id;})[0]; if(s){ s.name=name; s.mode=mode; } render(); } else alert((d&&d.error)||"Couldn't save."); });
+  }
+</script>
+<script src="/client-pins.js"></script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
