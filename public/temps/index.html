@@ -178,7 +178,7 @@
     document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
     document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
     if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
-    document.getElementById("histWrap").style.display="block";
+    if(IS_MASTER) document.getElementById("histWrap").style.display="block";
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
@@ -227,6 +227,7 @@
   function rangeDisplay(u){ var r=unitRange(u); return rangeText(r.min,r.max)+(r.generic?" (generic)":""); }
 
   function timeOf(s){ return s?new Date(s).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""; }
+  function slotLabel(s){ var t=String(s).split(":"); var h=+t[0], ap=h<12?"AM":"PM", h12=h%12; if(h12===0) h12=12; return h12+":"+t[1]+" "+ap; }
 
   function render(){
     var el=document.getElementById("units");
@@ -241,11 +242,15 @@
       var dt=new Date(r.at); var key=pad(dt.getHours())+":"+pad(dt.getMinutes());
       (byUnitSlot[r.assetId]=byUnitSlot[r.assetId]||{})[key]=r;
     });
+    // Editing the times (and adding/removing columns) is admin-only; staff see them fixed.
     var ths = SLOTS.map(function(s,si){
-      return "<th class='c-slot'><input type='time' class='slottime' data-si='"+si+"' value='"+esc(s)+"' />"+
-        (CAN_EDIT&&SLOTS.length>1?"<button type='button' class='slotdel' data-si='"+si+"' title='Remove time'>×</button>":"")+"</th>";
+      if(IS_MASTER){
+        return "<th class='c-slot'><input type='time' class='slottime' data-si='"+si+"' value='"+esc(s)+"' />"+
+          (SLOTS.length>1?"<button type='button' class='slotdel' data-si='"+si+"' title='Remove time'>×</button>":"")+"</th>";
+      }
+      return "<th class='c-slot'><span class='slotlabel'>"+esc(slotLabel(s))+"</span></th>";
     }).join("");
-    var addTh = CAN_EDIT ? "<th class='c-addslot'><button type='button' id='addSlot' title='Add a time'>＋</button></th>" : "";
+    var addTh = IS_MASTER ? "<th class='c-addslot'><button type='button' id='addSlot' title='Add a time'>＋</button></th>" : "";
     var rows = UNITS.map(function(u){
       var rg=unitRange(u);
       var cells = SLOTS.map(function(s){
@@ -264,7 +269,7 @@
     }).join("");
     var table="<div class='tlogwrap'><table class='tlog'><thead><tr><th>Unit</th>"+ths+addTh+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
     var saveBtn = CAN_EDIT ? "<div class='saverow'><button type='button' class='btn savebtn' id='saveRound'>✓ Save readings</button><span class='savemsg' id='saveMsg'></span></div>" : "";
-    el.innerHTML = table + saveBtn + buildTodayLog(byUnit);
+    el.innerHTML = table + saveBtn + (IS_MASTER ? buildTodayLog(byUnit) : "");
 
     var sb=document.getElementById("saveRound");
     if(sb) sb.addEventListener("click", saveGrid);
