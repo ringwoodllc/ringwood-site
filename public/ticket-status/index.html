@@ -113,6 +113,21 @@
   .lgbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:3px 11px;font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
   .lgbtn:hover{border-color:var(--green)}
   .lgbtn.del{color:#8a3d1c}
+  .navbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:4px 0 14px}
+  .navbar .back{margin:0}
+  .navrt{display:flex;align-items:center;gap:8px}
+  .navb{background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font:inherit;font-size:.85rem;font-weight:600;cursor:pointer}
+  .navb:hover{border-color:var(--green)}
+  .navb:disabled{opacity:.4;cursor:default}
+  .navpos{color:var(--muted);font-size:.82rem;min-width:54px;text-align:center}
+  .navside{display:none}
+  @media(min-width:900px){
+    .navside{display:flex;align-items:center;justify-content:center;position:fixed;top:50%;transform:translateY(-50%);width:46px;height:80px;border:1px solid var(--line);background:var(--bg-2);color:var(--green-deep);font-size:2rem;line-height:1;cursor:pointer;z-index:50;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+    .navside:hover{border-color:var(--green);background:var(--bg)}
+    .navside:disabled{opacity:.3;cursor:default}
+    .navside.left{left:max(12px, calc(50% - 560px))}
+    .navside.right{right:max(12px, calc(50% - 560px))}
+  }
   .lblrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
   .lblrow label{margin-bottom:0}
   .aibtn{flex:0 0 auto;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:5px 12px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
@@ -264,6 +279,7 @@
   var CLIENTS = [];
   var LOCATIONS = [];
   var ALL_TICKETS = [];
+  var CUR_TID = "", lastNavIndex = 0;  // for Next/Prev within the filtered view
 
   var STATUSES = ["Open","Scheduled","In Progress","Complete","Archived"];
   function statusTok(s){ return ({"Open":"open","Scheduled":"sched","In Progress":"prog","Complete":"done","Closed":"done","Archived":"arch"})[s] || "open"; }
@@ -404,33 +420,36 @@
     clientSel.style.color = sel || ""; clientSel.style.fontWeight = sel ? "700" : "";
   }
 
-  function render(){
-    editWrap.innerHTML = "";
-    showChrome(true);
-    buildClientFilter();
-    colorClientSelect();
+  // The current filtered + sorted list. Used by the list AND by Next/Prev so
+  // stepping through tickets follows exactly what you're looking at.
+  function filteredTickets(){
     var client = clientSel.value, sort = sortSel.value;
     var showArch = !!(showArchEl && showArchEl.checked);
-    renderChips();
     var rows = ALL_TICKETS.filter(function(t){
-      // Archived is an advanced view: hidden unless "Show archived" is on.
       if (!showArch && t.status === "Archived") return false;
-      // Status buckets, driven by the chips: open work, the review queue, closed, or all.
       var closed = CLOSED.indexOf(t.status) >= 0;
-      if (curStatus === "all") { /* show all (within the archive setting) */ }
-      else if (curStatus === "review") { if (t.reviewed || closed) return false; }  // review queue = active tickets only
+      if (curStatus === "all") {}
+      else if (curStatus === "review") { if (t.reviewed || closed) return false; }
       else if (curStatus === "open") { if (closed) return false; }
       else if (curStatus === "closed") { if (!closed) return false; }
       if (client === "__unassigned") { if (t.client) return false; }
       else if (client) { if (t.client !== client) return false; }
       return true;
     });
-    // Sort: latest activity (newest note/change on top), or by entry date.
     rows.sort(function(a,b){
       if (sort === "old") return (a.created||"").localeCompare(b.created||"");
       if (sort === "new") return (b.created||"").localeCompare(a.created||"");
-      return (b.lastActivity||b.created||"").localeCompare(a.lastActivity||a.created||"");  // latest activity
+      return (b.lastActivity||b.created||"").localeCompare(a.lastActivity||a.created||"");
     });
+    return rows;
+  }
+  function render(){
+    editWrap.innerHTML = "";
+    showChrome(true);
+    buildClientFilter();
+    colorClientSelect();
+    renderChips();
+    var rows = filteredTickets();
     if(!rows.length){ listEl.innerHTML = "<div class='empty'>No tickets match.</div>"; countEl.textContent = ""; return; }
     countEl.textContent = rows.length + " ticket" + (rows.length===1?"":"s");
     listEl.innerHTML = rows.map(function(t){
@@ -478,6 +497,7 @@
   };
 
   window.openEdit = function(t, push){
+    CUR_TID = t.id;
     // Record the ticket in history so the phone's back/swipe returns to the list
     // instead of leaving the app. push=true when the user taps into a ticket;
     // deep links and the back gesture replace in place.
@@ -507,7 +527,16 @@
       "<option value='__new'>＋ New asset…</option>";
 
     editWrap.innerHTML =
-      "<a href='#' class='back' style='display:inline-block;margin:4px 0 14px' onclick='__ticketBack();return false;'>&larr; Back to list</a>" +
+      "<div class='navbar'>" +
+        "<a href='#' class='back' onclick='__ticketBack();return false;'>&larr; Back to list</a>" +
+        "<div class='navrt'>" +
+          "<button type='button' class='navb' id='e_prev'>&larr; Prev</button>" +
+          "<span class='navpos' id='e_navpos'></span>" +
+          "<button type='button' class='navb' id='e_next'>Next &rarr;</button>" +
+        "</div>" +
+      "</div>" +
+      "<button type='button' class='navside left' id='e_prevSide' aria-label='Previous ticket'>&lsaquo;</button>" +
+      "<button type='button' class='navside right' id='e_nextSide' aria-label='Next ticket'>&rsaquo;</button>" +
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
@@ -583,11 +612,36 @@
         "</div>" +
         "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
         "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
+        "<div style='margin-top:8px'><button class='btn ghost' id='e_saveNext' type='button' style='width:100%'>Save &amp; next &rarr;</button></div>" +
         "<div class='msg' id='e_msg'></div>" +
         (IS_CLIENT ? "" : "<button class='btn' id='e_del' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);margin-top:16px'>Delete ticket</button>" +
           "<div id='e_rev'></div>") +
       "</div>";
     window.scrollTo(0,0);
+
+    // ---- Next / Prev within the current filtered view ----
+    function navTo(dir){
+      var list = filteredTickets();
+      var idx = -1; for(var i=0;i<list.length;i++){ if(list[i].id===CUR_TID){ idx=i; break; } }
+      var target;
+      if(idx<0){ var anchor=Math.min(Math.max(lastNavIndex,0), list.length-1); target = dir>0 ? anchor : anchor-1; }
+      else { target = idx+dir; }
+      if(target<0 || target>=list.length) return;
+      var noteEl=document.getElementById("e_note"), unsaved=newPhotos.length||notePhotos.length||(noteEl&&noteEl.value.trim());
+      if(unsaved && !confirm("You have unsaved photos or a note. Leave without saving them?")) return;
+      lastNavIndex=target; openEdit(list[target], true);
+    }
+    (function(){
+      var list=filteredTickets(), idx=-1; for(var i=0;i<list.length;i++){ if(list[i].id===CUR_TID){ idx=i; break; } }
+      if(idx>=0) lastNavIndex=idx;
+      var pos=document.getElementById("e_navpos");
+      if(pos) pos.textContent = idx>=0 ? ((idx+1)+" of "+list.length) : "";
+      var atStart = idx>=0 && idx<=0, atEnd = idx>=0 && idx>=list.length-1;
+      ["e_prev","e_prevSide"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atStart; b.addEventListener("click",function(){ navTo(-1); }); } });
+      ["e_next","e_nextSide"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atEnd; b.addEventListener("click",function(){ navTo(1); }); } });
+      window.__navNext = function(){ navTo(1); };
+      var sn=document.getElementById("e_saveNext"); if(sn){ if(atEnd) sn.textContent="Save"; sn.addEventListener("click", function(){ window.__pendingNext=true; document.getElementById("e_save").click(); }); }
+    })();
 
     // Human review: a ticket is "Needs review" until a person confirms it.
     var reviewed = !!t.reviewed;
@@ -1033,10 +1087,14 @@
 
       function finish(warn){
         b.disabled = false; b.textContent = "Save";
-        // Stay on this ticket; refresh the list quietly for when you go Back.
-        fetch("/api/tickets/list?archived=1", { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){ if(Array.isArray(rows)) ALL_TICKETS = rows; }).catch(function(){});
         msgEl.style.color = warn ? "#8a3d1c" : "var(--green-deep)";
         msgEl.textContent = "Saved." + (warn ? " " + warn : "");
+        // Refresh the list quietly (for Back, and so Next re-filters on fresh data),
+        // then step to the next ticket if this was a "Save & next".
+        fetch("/api/tickets/list?archived=1", { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){
+          if(Array.isArray(rows)) ALL_TICKETS = rows;
+          if(window.__pendingNext){ window.__pendingNext=false; if(window.__navNext) window.__navNext(); }
+        }).catch(function(){ if(window.__pendingNext){ window.__pendingNext=false; if(window.__navNext) window.__navNext(); } });
       }
 
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
