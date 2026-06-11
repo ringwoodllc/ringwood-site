@@ -3405,11 +3405,12 @@ async function listInventory(url, env, session) {
   if (!who.id) return noStore({ ok: true, client: who.name, counts: [] });
   const countId = (url.searchParams.get("count") || "").trim();
   if (countId) {
-    const [counts, photos, items] = await Promise.all([
+    const [counts, photos] = await Promise.all([
       sbSelect(env, `inventory_counts?id=eq.${countId}&client_id=eq.${who.id}&select=id,status,note,created_by,created_at,finished_at&limit=1`),
       sbSelect(env, `inventory_photos?count_id=eq.${countId}&select=id,url,kind,created_at&order=created_at.asc`),
-      sbSelect(env, `inventory_items?count_id=eq.${countId}&select=id,photo_id,product,label,kind,qty,fullness,placement,need,created_at&order=created_at.asc`),
     ]);
+    let items = await sbSelect(env, `inventory_items?count_id=eq.${countId}&select=id,photo_id,product,label,kind,qty,fullness,placement,need,onhand,created_at&order=created_at.asc`);
+    if (items === null) items = await sbSelect(env, `inventory_items?count_id=eq.${countId}&select=id,photo_id,product,label,kind,qty,fullness,placement,need,created_at&order=created_at.asc`); // pre-migration (no onhand)
     if (counts === null) return noStore({ ok: true, client: who.name, missing: true, counts: [] });
     const c = counts[0];
     if (!c) return noStore({ ok: false, error: "Count not found." }, 404);
@@ -3532,8 +3533,10 @@ async function saveInventoryItem(request, env, session) {
   if ("fullness" in body) fields.fullness = (["full", "half", "low"].indexOf((body.fullness || "").toLowerCase()) >= 0) ? (body.fullness || "").toLowerCase() : null;
   if ("placement" in body) fields.placement = (body.placement || "").toString().slice(0, 160);
   if ("need" in body) fields.need = num(body.need);
+  if ("onhand" in body) fields.onhand = num(body.onhand);
   if (id) {
-    const res = await sbUpdate(env, "inventory_items", id, fields);
+    let res = await sbUpdate(env, "inventory_items", id, fields);
+    if (!res.ok && "onhand" in fields) { const f2 = Object.assign({}, fields); delete f2.onhand; res = await sbUpdate(env, "inventory_items", id, f2); } // pre-migration fallback
     if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
     return json({ ok: true });
   }
@@ -3544,7 +3547,8 @@ async function saveInventoryItem(request, env, session) {
   fields.count_id = cs.count.id; fields.client_id = s.who.id;
   if (!("kind" in fields)) fields.kind = "tub";
   if (!("qty" in fields)) fields.qty = 1;
-  const res = await sbInsert(env, "inventory_items", fields);
+  let res = await sbInsert(env, "inventory_items", fields);
+  if (!res.ok && "onhand" in fields) { const f2 = Object.assign({}, fields); delete f2.onhand; res = await sbInsert(env, "inventory_items", f2); } // pre-migration fallback
   if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
   return json({ ok: true, item: res.data || null });
 }

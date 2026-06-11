@@ -39,6 +39,8 @@ create table if not exists inventory_items (
   created_at timestamptz not null default now()
 );
 create index if not exists inventory_items_count on inventory_items(count_id, created_at);
+-- Optional manual on-hand override (when you correct the AI's estimate by hand).
+alter table inventory_items add column if not exists onhand numeric;
 
 -- Order / purchase history, by day. items is a JSON array of { product, qty }
 -- (no cost). The page lays orders out as a trend grid to spot reorder timing.

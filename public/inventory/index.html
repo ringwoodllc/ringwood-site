@@ -88,6 +88,7 @@
   table.plan .zero{color:var(--line)}
   table.plan .pname{width:100%;min-width:130px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 8px}
   table.plan .pneed{width:58px;text-align:center;font:inherit;font-size:.95rem;font-weight:700;color:var(--clay);background:var(--bg);border:1px solid var(--clay);border-radius:5px;padding:6px 4px}
+  table.plan .ponhand{width:56px;text-align:center;font:inherit;font-size:.92rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 4px}
   table.plan .detail{font:inherit;font-size:.82rem;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);max-width:140px}
   table.plan .idel{background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:24px;height:24px;font:inherit;cursor:pointer}
   table.plan .estv{font-weight:600;color:var(--green-deep)}
@@ -176,8 +177,7 @@
   <!-- Orders by day -->
   <div id="ordersTab" class="hide">
     <div class="toolbar">
-      <button type="button" class="btn" id="addOrderBtn">＋ Add an order</button>
-      <label class="btn ghost" for="orderScanInput" style="cursor:pointer">⤓ Upload an order</label>
+      <label class="btn" for="orderScanInput" style="cursor:pointer">⤓ Upload an order</label>
       <input type="file" id="orderScanInput" accept="image/*,application/pdf" style="display:none" />
       <a class="btn ghost" href="https://brorders.dfamilk.com/" target="_blank" rel="noopener">Order here ↗</a>
       <span class="msg" id="ordersMsg"></span>
@@ -323,6 +323,8 @@
 
   function catKind(cat){ return cat==="Quarts & Packs"?"pack":(cat==="Cakes & Novelty"?"other":"tub"); }
   function estVal(items){ var t=0; items.forEach(function(it){ t+= it.kind==="cabinet"?fullVal(it.fullness):(parseFloat(it.qty)||0); }); return t; }
+  // On-hand = your manual override if set, otherwise the AI estimate from photos.
+  function ohOf(items){ if(items.length && items[0].onhand!=null && items[0].onhand!==""){ var v=parseFloat(items[0].onhand); if(!isNaN(v)) return v; } return items.length?estVal(items):0; }
 
   function renderPlan(){
     var box=document.getElementById("items");
@@ -349,35 +351,44 @@
       var rows="";
       ps.forEach(function(p){
         var items=groups[p.key]||[];
-        var onhandVal=estVal(items);
+        var onhandVal=ohOf(items);
         var orderedAny=maps.some(function(x){ return (x.m[p.key]||0)>0; });
         var needVal=items.length?(parseFloat(items[0].need)||0):0;
         if(hideEmpty && onhandVal===0 && !orderedAny && needVal===0) return;
         shown++;
         var ocells = maps.length ? maps.map(function(x){ var q=x.m[p.key]; return "<td>"+(q?fmtQ(q):"<span class='zero'>·</span>")+"</td>"; }).join("") : "<td class='zero'>·</td><td class='zero'>·</td><td class='zero'>·</td>";
-        var onhand = items.length ? ("<span class='estv'>"+esc(estimateOf({items:items}))+"</span> <button type='button' class='expand' title='Show the photos behind this'>+</button>") : "<span class='zero'>0</span>";
+        var ohShown = items.length ? fmtQ(onhandVal) : "";
+        var exp = items.length ? " <button type='button' class='expand' title='Show the photos behind this'>+</button>" : "";
+        var onhand = "<input class='ponhand' type='number' min='0' step='0.25' value='"+(ohShown===""?"":esc(ohShown))+"' placeholder='0' />"+exp;
         var need=items.length?items[0].need:null;
-        var del=items.length?"<button type='button' class='idel' title='Clear on-hand'>×</button>":"";
-        rows+="<tr data-key='"+esc(p.key)+"'><td class='prod'>"+esc(p.name)+"</td>"+ocells+"<td>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td><td>"+del+"</td></tr>";
+        rows+="<tr data-key='"+esc(p.key)+"'><td class='prod'>"+esc(p.name)+"</td>"+ocells+"<td class='ohcell'>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td></tr>";
         if(items.length){
           var cards=items.map(function(it){ var ph=PHOTOS.filter(function(z){return z.id===it.photo_id;})[0]; var img=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"<div class='nopic'>added by hand</div>"; var dd=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+(kindShort(it.kind)||"unit")); return "<div class='pcard'>"+img+"<div class='pcap'><b>"+esc(dd)+"</b><br>"+esc(it.placement||"somewhere")+"</div></div>"; }).join("");
-          rows+="<tr class='detailrow hide'><td colspan='"+(ncols+4)+"'><div class='pcards'>"+cards+"</div></td></tr>";
+          rows+="<tr class='detailrow hide'><td colspan='"+(ncols+3)+"'><div class='pcards'>"+cards+"</div></td></tr>";
         }
       });
       if(!rows) return;
-      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th><th></th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
     });
     if(!shown){ box.innerHTML="<div class='empty'>"+(hideEmpty?"Nothing on hand or on order yet. Untick the hide box to see the full order form.":"Loading the order form…")+"</div>"; return; }
     box.innerHTML=html;
     Array.prototype.slice.call(box.querySelectorAll("tr[data-key]")).forEach(function(tr){
       var key=tr.getAttribute("data-key"), p=seen[key], g={items:groups[key]||[]};
-      var needInp=tr.querySelector(".pneed"), exp=tr.querySelector(".expand"), del=tr.querySelector(".idel");
+      var needInp=tr.querySelector(".pneed"), ohInp=tr.querySelector(".ponhand"), exp=tr.querySelector(".expand");
       if(exp) exp.addEventListener("click", function(){ var dr=tr.nextElementSibling; if(!dr||dr.className.indexOf("detailrow")<0) return; var open=dr.classList.toggle("hide")===false; exp.textContent=open?"−":"+"; });
+      // Edit On hand. Stored as an override on the flavor's item; does NOT touch Order.
+      if(ohInp) ohInp.addEventListener("change", function(){
+        var v=ohInp.value;
+        if(g.items.length){ var it=g.items[0]; it.onhand=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,onhand:v})}); }
+        else { if(v===""||isNaN(parseFloat(v))) return; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,product:p.name,kind:catKind(p.cat),qty:0,onhand:v})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.item){ ITEMS.push(d.item); g.items.push(d.item); groups[key]=g.items; } }); }
+      });
+      // Edit Order (need). Collects into the buy list; does NOT touch On hand.
       needInp.addEventListener("change", function(){
         var v=needInp.value;
         if(g.items.length){
           var it=g.items[0];
-          if((v===""||parseFloat(v)===0) && (parseFloat(it.qty)||0)===0 && !it.photo_id && g.items.length===1){
+          // A blank placeholder we created only for ordering (no photo, no on-hand): drop it when emptied.
+          if((v===""||parseFloat(v)===0) && (parseFloat(it.qty)||0)===0 && !it.photo_id && (it.onhand==null||it.onhand==="") && g.items.length===1){
             var id=it.id; ITEMS=ITEMS.filter(function(z){return z.id!==id;}); g.items=[]; groups[key]=[];
             fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}); renderBuy(); return;
           }
@@ -387,11 +398,6 @@
           fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,product:p.name,kind:catKind(p.cat),qty:0,need:v})})
             .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.item){ ITEMS.push(d.item); g.items.push(d.item); groups[key]=g.items; renderBuy(); } });
         }
-      });
-      if(del) del.addEventListener("click", function(){
-        if(!confirm("Clear on-hand for "+p.name+"?")) return;
-        var ids=g.items.map(function(it){return it.id;});
-        Promise.all(ids.map(function(id){ return fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}); })).then(function(){ ITEMS=ITEMS.filter(function(z){return ids.indexOf(z.id)<0;}); renderPlan(); renderBuy(); });
       });
     });
   }
@@ -481,26 +487,36 @@
 
   function renderTrend(){
     var box=document.getElementById("trend");
-    if(!ORDERS.length){ box.innerHTML="<div class='empty'>No orders yet. Add one for each day you buy, and the trend builds here.</div>"; return; }
+    if(!ORDERS.length){ box.innerHTML="<div class='empty'>No orders yet. Upload an order and the trend builds here.</div>"; return; }
+    // Group products by the same categories as the plan (3 Gallon, Quarts & Packs, …).
     var prods={}; ORDERS.forEach(function(o){ (o.items||[]).forEach(function(it){ var p=(it.product||"").trim(); if(p) prods[p]=true; }); });
-    var products=Object.keys(prods).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    var cats=["3 Gallon","Quarts & Packs","Cakes & Novelty","Other"];
+    var byCat={}; cats.forEach(function(c){byCat[c]=[];});
+    Object.keys(prods).forEach(function(p){ (byCat[catOf(p,"")]||byCat["Other"]).push(p); });
     var head="<tr><th class='prod'>Flavor</th>"+ORDERS.map(function(o,i){ var amt=(o.amount!=null&&o.amount!=="")?("<div style='font-weight:400;text-transform:none;font-size:.68rem;color:var(--muted)'>$"+esc(o.amount)+"</div>"):""; return "<th class='ordcol' data-i='"+i+"' title='Tap to edit'>"+esc(orderLabel(o))+amt+"</th>"; }).join("")+"</tr>";
-    var body=products.map(function(p){
-      var cells=ORDERS.map(function(o){ var q=qtyOf(o,p); return q?("<td>"+fmtQ(q)+"</td>"):"<td class='zero'>·</td>"; }).join("");
-      return "<tr><td class='prod'>"+esc(p)+"</td>"+cells+"</tr>";
-    }).join("");
-    box.innerHTML="<div class='trendwrap'><table class='trend'><thead>"+head+"</thead><tbody>"+body+"</tbody></table></div>";
+    var html="";
+    cats.forEach(function(c){
+      var ps=byCat[c]; if(!ps.length) return;
+      ps.sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+      var body=ps.map(function(p){
+        var cells=ORDERS.map(function(o){ var q=qtyOf(o,p); return q?("<td>"+fmtQ(q)+"</td>"):"<td class='zero'>·</td>"; }).join("");
+        return "<tr><td class='prod'>"+esc(p)+"</td>"+cells+"</tr>";
+      }).join("");
+      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='trend'><thead>"+head+"</thead><tbody>"+body+"</tbody></table></div>";
+    });
+    box.innerHTML=html;
     Array.prototype.slice.call(box.querySelectorAll(".ordcol")).forEach(function(th){ th.addEventListener("click", function(){ editOrder(ORDERS[+th.getAttribute("data-i")]); }); });
   }
 
-  document.getElementById("addOrderBtn").addEventListener("click", function(){ if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; } editOrder(null); });
 
   function isKnownProduct(name){ name=(name||"").trim().toLowerCase(); if(!name) return true; for(var i=0;i<ALL_PRODUCTS.length;i++){ if(ALL_PRODUCTS[i].toLowerCase()===name) return true; } return false; }
   function lineHtml(p,q){ return "<div class='oline'><input class='p' list='brlist' value='"+esc(p||"")+"' placeholder='Flavor' /><input class='q' type='number' step='1' min='0' value='"+(q==null||q===''?"":esc(q))+"' placeholder='qty' /><button type='button' class='lx'>×</button></div>"; }
   function editOrder(o){
     var ed=document.getElementById("orderEditor"); ed.classList.remove("hide");
     var isNew=!(o&&o.id);
-    var date=o?((o.order_date||"").slice(0,10)||todayStr()):todayStr();
+    // Leave the delivery date blank when it wasn't read, so we ask for it (it's
+    // what files the order in the right spot in the log).
+    var date=o?((o.order_date||"").slice(0,10)):todayStr();
     var orderedOn=o?((o.ordered_on||o.orderedOn||"")+"").slice(0,10):"";
     var orderNo=o?(o.order_no||o.orderNo||""):"";
     var amount=(o&&o.amount!=null)?o.amount:"";
@@ -509,7 +525,7 @@
     var datalist="<datalist id='brlist'>"+ALL_PRODUCTS.map(function(x){return "<option value='"+esc(x)+"'>";}).join("")+"</datalist>";
     ed.innerHTML="<div class='editor'>"+datalist+
       "<div class='row'>"+
-        "<div><label>Delivery date</label><input type='date' id='oDate' value='"+esc(date)+"' /></div>"+
+        "<div><label>Delivery date (required)</label><input type='date' id='oDate' value='"+esc(date)+"' /></div>"+
         "<div><label>Order date</label><input type='date' id='oOrdered' value='"+esc(orderedOn)+"' /></div>"+
       "</div>"+
       "<div class='row'>"+
@@ -526,6 +542,8 @@
     function markNew(){ var c=0; Array.prototype.slice.call(lines.querySelectorAll(".oline .p")).forEach(function(i){ var bad=!isKnownProduct(i.value); i.classList.toggle("newp", bad); if(bad) c++; }); var h=document.getElementById("oHint"); if(h) h.textContent=c?(c+" highlighted line"+(c===1?" is":"s are")+" new — fix the name or keep it; new names get added to your list on Save."):""; }
     function wireLine(el){ el.querySelector(".lx").addEventListener("click", function(){ el.remove(); markNew(); }); el.querySelector(".p").addEventListener("input", markNew); }
     Array.prototype.slice.call(lines.querySelectorAll(".oline")).forEach(wireLine); markNew();
+    // Ask for the delivery date if we don't have one yet.
+    var dInp=document.getElementById("oDate"); if(!dInp.value){ document.getElementById("oMsg").textContent="Enter the delivery date for this order."; setTimeout(function(){ dInp.focus(); }, 150); }
     document.getElementById("oAddLine").addEventListener("click", function(){ var t=document.createElement("div"); t.innerHTML=lineHtml("",""); var el=t.firstChild; lines.appendChild(el); wireLine(el); el.querySelector(".p").focus(); });
     document.getElementById("oLoadList").addEventListener("click", function(){
       var have={}; Array.prototype.slice.call(lines.querySelectorAll(".oline .p")).forEach(function(i){ have[(i.value||"").trim()]=true; });
@@ -538,6 +556,7 @@
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ed.classList.add("hide"); ed.innerHTML=""; loadOrders(); } else alert((d&&d.error)||"Couldn't delete."); });
     });
     document.getElementById("oSave").addEventListener("click", function(){
+      if(!document.getElementById("oDate").value){ document.getElementById("oMsg").textContent="Enter the delivery date first."; document.getElementById("oDate").focus(); return; }
       var its=[]; Array.prototype.slice.call(lines.querySelectorAll(".oline")).forEach(function(el){ var p=(el.querySelector(".p").value||"").trim(); var q=el.querySelector(".q").value; if(p && q!=="" && !isNaN(parseFloat(q))) its.push({product:p,qty:parseFloat(q)}); });
       if(!its.length){ document.getElementById("oMsg").textContent="Add at least one flavor with a quantity."; return; }
       var body={client:CLIENT,date:document.getElementById("oDate").value,orderedOn:document.getElementById("oOrdered").value,orderNo:document.getElementById("oNo").value,amount:document.getElementById("oAmt").value,label:document.getElementById("oLabel").value,items:its};
