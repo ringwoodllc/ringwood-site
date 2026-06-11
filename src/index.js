@@ -3718,6 +3718,7 @@ async function scanTempLog(request, env, session) {
   const unmatched = {};
   const dates = {};
   const byDate = {};
+  const times = {}; // diagnostic: wall-clock times read per date
   for (const r of read.readings) {
     const temp = parseFloat(r.temp);
     if (isNaN(temp)) continue;
@@ -3736,11 +3737,13 @@ async function scanTempLog(request, env, session) {
     rows.push(row);
     dates[date] = true;
     (byDate[date] = byDate[date] || new Set()).add(u.id);
+    (times[date] = times[date] || new Set()).add(time || "(no time)");
   }
-  if (!rows.length) return json({ ok: false, error: "Couldn't match any readings to your units." + (Object.keys(unmatched).length ? " Columns seen: " + Object.values(unmatched).join(", ") : ""), unmatched: Object.values(unmatched) }, 200);
+  if (!rows.length) return json({ ok: false, error: "Couldn't match any readings to your units." + (Object.keys(unmatched).length ? " Columns seen: " + Object.values(unmatched).join(", ") : ""), unmatched: Object.values(unmatched), rawCount: read.readings.length }, 200);
   await clearScannedCells(env, "temp_logs", "asset_id", byDate, who.id);
   const saved = await insertChunks(env, "temp_logs", rows);
-  return json({ ok: true, saved, dates: Object.keys(dates).sort(), unmatched: Object.values(unmatched) });
+  const timesOut = {}; Object.keys(times).forEach((k) => { timesOut[k] = Array.from(times[k]).sort(); });
+  return json({ ok: true, saved, dates: Object.keys(dates).sort(), unmatched: Object.values(unmatched), times: timesOut, rawCount: read.readings.length });
 }
 
 // A reading on a weekly sheet: a column label, the row's date, and the number.

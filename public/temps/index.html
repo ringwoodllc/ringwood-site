@@ -363,7 +363,12 @@
     var saved=d.saved||0, ds=d.dates||[];
     var span=ds.length>1?(" across "+ds.length+" dates ("+ds[0]+" to "+ds[ds.length-1]+")"):(ds.length===1?(" for "+ds[0]):"");
     var extra=(d.unmatched&&d.unmatched.length)?(" Couldn't match a column: "+d.unmatched.join(", ")+"."):"";
-    return "Logged "+saved+" reading"+(saved===1?"":"s")+span+", saved automatically. Tap any logged value to correct it."+extra;
+    // Diagnostic: show the times read for the day you're viewing, so a missing
+    // round (e.g. no 06:00) is obvious.
+    var diag="";
+    if(d.times && d.times[DATE]) diag=" Times read for "+DATE+": "+d.times[DATE].join(", ")+".";
+    else if(d.times && Object.keys(d.times).length) diag=" Nothing read for "+DATE+" (read: "+Object.keys(d.times).sort().join(", ")+").";
+    return "Logged "+saved+" reading"+(saved===1?"":"s")+span+", saved automatically. Tap any logged value to correct it."+extra+diag;
   }
   var scanInput=document.getElementById("scanInput");
   if(scanInput) scanInput.addEventListener("change", function(e){
