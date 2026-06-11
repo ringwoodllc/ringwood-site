@@ -121,6 +121,7 @@
     </div>
   </div>
 
+  <div id="clTools" style="display:none;margin-bottom:12px"><button type="button" class="btn ghost" id="populateBtn">✦ Populate suggested items</button><span class="savemsg" id="popMsg" style="margin-left:10px"></span></div>
   <div id="list"><div class="empty">Loading…</div></div>
   <div class="savebar" id="saveBar" style="display:none"><button type="button" class="btn" id="saveBtn">✓ Save checklist</button><span class="savemsg" id="saveMsg"></span></div>
 
@@ -213,6 +214,8 @@
     Array.prototype.slice.call(el.querySelectorAll(".exptog")).forEach(function(b){ b.addEventListener("click", function(){ var id=b.getAttribute("data-id"); EXP[id]=!EXP[id]; var det=document.getElementById("det_"+id); if(det) det.style.display=EXP[id]?"table-row":"none"; b.textContent=EXP[id]?"−":"+"; }); });
     SECTIONS.forEach(function(s){ if(ITEMS_ON) wireDetail(s); });
     document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
+    var anyEmpty=SECTIONS.some(function(s){ return !(s.items&&s.items.length); });
+    document.getElementById("clTools").style.display = (CAN_EDIT && ITEMS_ON && anyEmpty) ? "block" : "none";
   }
 
   // The expandable "what to check" panel under a section.
@@ -269,6 +272,17 @@
       .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Saved ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1500); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
       .catch(function(){ setMsg("No connection","var(--red)"); });
   }
+
+  document.getElementById("populateBtn").addEventListener("click", function(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var b=document.getElementById("populateBtn"), m=document.getElementById("popMsg");
+    b.disabled=true; var old=b.textContent; b.textContent="Working…"; m.textContent="";
+    fetch("/api/checklist/populate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent=old;
+        if(d&&d.ok){ m.style.color="var(--ok)"; m.textContent="Filled "+d.count+" area"+(d.count===1?"":"s")+" ✓"; load(); }
+        else { m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't populate."; } })
+      .catch(function(){ b.disabled=false; b.textContent=old; m.style.color="var(--red)"; m.textContent="No connection"; });
+  });
 
   /* ---- Edit sections (template) ---- */
   document.getElementById("mgToggle").addEventListener("click", function(){

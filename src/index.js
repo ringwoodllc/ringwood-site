@@ -94,6 +94,7 @@ export default {
     if (url.pathname === "/api/checklist" && request.method === "GET") return listChecklist(url, env, session);
     if (url.pathname === "/api/checklist/section" && request.method === "POST") return saveChecklistSection(request, env, session);
     if (url.pathname === "/api/checklist/day" && request.method === "POST") return saveChecklistDay(request, env, session);
+    if (url.pathname === "/api/checklist/populate" && request.method === "POST") return populateChecklist(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -3511,6 +3512,32 @@ async function saveChecklistSection(request, env, session) {
   const res = await sbInsert(env, "checklist_sections", insert);
   if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
   return json({ ok: true, section: res.data || null });
+}
+
+// Fill the suggested item list into any section that currently has none, matching
+// by section name. Never overwrites sections that already have items.
+async function populateChecklist(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const secs = await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id,name,items`);
+  if (secs === null) return json({ ok: false, error: "Add the items column first (run the SQL), then try again." }, 400);
+  const defMap = {};
+  CHECKLIST_DEFAULTS.forEach((d) => { defMap[d[0].toLowerCase()] = d[2]; });
+  let count = 0;
+  for (const s of (secs || [])) {
+    const cur = Array.isArray(s.items) ? s.items : [];
+    if (cur.length) continue;
+    const def = defMap[(s.name || "").toLowerCase()];
+    if (def && def.length) {
+      const r = await fetch(`${env.SUPABASE_URL}/rest/v1/checklist_sections?id=eq.${s.id}&client_id=eq.${who.id}`, { method: "PATCH", headers: sbHeaders(env), body: JSON.stringify({ items: def }) });
+      if (r.ok) count++;
+    }
+  }
+  return json({ ok: true, count });
 }
 
 async function saveChecklistDay(request, env, session) {
