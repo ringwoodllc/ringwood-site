@@ -3585,7 +3585,8 @@ async function scanTempLog(request, env, session) {
   const base64 = (body.imageBase64 || "").toString();
   const ct = (body.contentType || "image/jpeg").toString();
   if (!base64) return json({ ok: false, error: "No photo." }, 400);
-  const hint = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const hint = (body.date || "").toString().slice(0, 10) || today;
   const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`);
   if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
   if (!units.length) return json({ ok: false, error: "No cold units set up yet. Add them in Manage units first." }, 400);
@@ -3597,9 +3598,13 @@ async function scanTempLog(request, env, session) {
     "computer printed, and return one entry per filled cell. Read every date on the sheet, not just one day.\n\n" +
     "For each reading return:\n" +
     "- unit: the column header text for that cell, copied as printed.\n" +
-    "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", so use that for the year.\n" +
+    "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", and today is " + today + ", so use that for the year.\n" +
     "- time: the row's time in 24h HH:MM if shown, otherwise an empty string.\n" +
     "- temp: the number as a number (may be negative for freezers; keep one decimal if written).\n\n" +
+    "The rows are in calendar order, normally one day after another. If a row's date is blank or unreadable, work it out from " +
+    "the rows around it by counting days in sequence (the row above is the day before, the row below the day after; the latest " +
+    "filled row is usually today, " + today + ", the one above it yesterday). Always give your best date; do not drop a reading " +
+    "just because its date cell is hard to read.\n\n" +
     "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
     "This client's known units (match the column to the closest one, but still return the header text you see):\n" + names;
 
@@ -3675,8 +3680,9 @@ async function scanWeekSheet(request, env, session, opts) {
   if (cols === null) return json({ ok: false, error: opts.missingError }, 400);
   if (!cols.length) return json({ ok: false, error: opts.emptyError }, 400);
 
+  const today = new Date().toISOString().slice(0, 10);
   const names = cols.map((c) => "- " + c.name).join("\n");
-  const prompt = opts.prompt(names, hint);
+  const prompt = opts.prompt(names, hint, today);
   const read = await claudeReadSheet(base64, ct, prompt, WEEKSCAN_SCHEMA, env);
   if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
 
@@ -3714,14 +3720,18 @@ async function scanHotHolding(request, env, session) {
     loadColumns: (cid) => sbSelect(env, `hotholding_items?client_id=eq.${cid}&select=id,name,kind,min_temp`),
     missingError: "The hot holding table isn't set up yet.",
     emptyError: "No items set up yet. Add them in Edit items first.",
-    prompt: (names, hint) =>
+    prompt: (names, hint, today) =>
       "This is a photo of a Hot Holding / Cooking Temperature sheet for a food business. The columns are food items; " +
       "each row is a date. Read every temperature you can see clearly, handwritten or computer printed, and return one entry " +
       "per filled cell. Read every date on the sheet, not just one.\n\n" +
       "For each reading return:\n" +
       "- column: the item's column header text, copied as printed.\n" +
-      "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", so use that for the year.\n" +
+      "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", and today is " + today + ", so use that for the year.\n" +
       "- temp: the number as a number (keep one decimal if written).\n\n" +
+      "The rows are in calendar order, normally one day after another. If a row's date is blank or unreadable, work it out from " +
+      "the rows around it by counting days in sequence (the row above is the day before, the row below the day after; the latest " +
+      "filled row is usually today, " + today + ", the one above it yesterday). Always give your best date; do not drop a reading " +
+      "just because its date cell is hard to read.\n\n" +
       "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
       "This client's known items (match each column to the closest one):\n" + names,
     row: (col, date, temp, cid, author) => ({ client_id: cid, log_date: date, kind: col.kind === "cooking" ? "cooking" : "holding", item: col.name, temp, logged_by: author }),
@@ -3736,14 +3746,18 @@ async function scanReceiving(request, env, session) {
     loadColumns: (cid) => sbSelect(env, `receiving_vendors?client_id=eq.${cid}&select=id,name,storage`),
     missingError: "The receiving table isn't set up yet.",
     emptyError: "No vendor lines set up yet. Add them in Edit vendors first.",
-    prompt: (names, hint) =>
+    prompt: (names, hint, today) =>
       "This is a photo of a Receiving Log for a food business: deliveries checked in by vendor. The columns are vendor " +
       "delivery lines; each row is a date; the cells are the temperature of that delivery. Read every temperature you can see " +
       "clearly, handwritten or computer printed, and return one entry per filled cell. Read every date on the sheet, not just one.\n\n" +
       "For each reading return:\n" +
       "- column: the vendor line's column header text, copied as printed.\n" +
-      "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", so use that for the year.\n" +
+      "- date: the row's date as YYYY-MM-DD. The sheet may show it as M/D; this log is from around " + hint + ", and today is " + today + ", so use that for the year.\n" +
       "- temp: the number as a number (keep one decimal if written).\n\n" +
+      "The rows are in calendar order, normally one day after another. If a row's date is blank or unreadable, work it out from " +
+      "the rows around it by counting days in sequence (the row above is the day before, the row below the day after; the latest " +
+      "filled row is usually today, " + today + ", the one above it yesterday). Always give your best date; do not drop a reading " +
+      "just because its date cell is hard to read.\n\n" +
       "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
       "This client's known vendor lines (match each column to the closest one):\n" + names,
     row: (col, date, temp, cid, author) => ({ client_id: cid, log_date: date, vendor: col.name, storage: col.storage === "frozen" ? "frozen" : "refrigerated", temp, status: "Accepted", logged_by: author }),
