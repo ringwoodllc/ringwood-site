@@ -214,10 +214,15 @@
       var docHtml = ds.length ? ds.map(function(x){
         var isImg=(x.type||"").indexOf("image")===0;
         var ei = EXPIRY_ON ? expInfo(x.expires) : null;
-        var expChip = ei ? " · <span class='dexp "+ei.cls+"'>"+esc(ei.label)+"</span>" : "";
+        // Uploader and upload date are internal: only the admin (master) view sees them.
+        // The expiry is useful to the client, so it always shows.
+        var parts=[];
+        if(IS_MASTER){ if(x.uploadedBy) parts.push(esc(x.uploadedBy)); if(x.created) parts.push(esc(new Date(x.created).toLocaleDateString())); }
+        if(ei) parts.push("<span class='dexp "+ei.cls+"'>"+esc(ei.label)+"</span>");
+        var metaHtml=parts.join(" · ");
         return "<div class='doc'><span class='dtype "+(isImg?"img":"pdf")+"'>"+(isImg?"IMG":"PDF")+"</span>"+
           "<div class='dmain'><a class='dlink' href='"+esc(x.url)+"' target='_blank' rel='noopener'>"+esc(x.title)+"</a>"+
-          "<div class='dmeta'>"+(x.uploadedBy?esc(x.uploadedBy)+" · ":"")+esc(x.created?new Date(x.created).toLocaleDateString():"")+expChip+"</div></div>"+
+          (metaHtml?"<div class='dmeta'>"+metaHtml+"</div>":"")+"</div>"+
           (CAN_EDIT?"<button type='button' class='dedit' data-id='"+esc(x.id)+"' data-title='"+esc(x.title)+"' title='Rename'>✎</button>":"")+
           (CAN_EDIT?"<button type='button' class='ddel' data-id='"+esc(x.id)+"' title='Remove'>×</button>":"")+
         "</div>";

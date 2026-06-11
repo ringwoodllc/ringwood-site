@@ -123,9 +123,6 @@
       <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
     </div>
   </div>
-  <div class="toolbar">
-    <button type="button" class="btn ghost" id="scanBtn">⃞ Scan a QR code</button>
-  </div>
   <div id="note" class="note" style="display:none"></div>
   <div id="units"><div class="empty">Loading…</div></div>
 
@@ -154,7 +151,6 @@
     </div>
   </div>
 
-  <input type="file" id="scanFile" accept="image/*" capture="environment" style="display:none" />
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
@@ -416,20 +412,6 @@
     }); });
   }
 
-  /* ---- Scan a QR code ---- */
-  document.getElementById("scanBtn").addEventListener("click", function(){
-    var code = prompt("Scan or type the asset's QR code or link:");
-    if(!code) return;
-    resolveAndJump(code.trim());
-  });
-  function resolveAndJump(code){
-    fetch("/api/asset/resolve?code="+encodeURIComponent(code)).then(function(r){return r.json();}).then(function(d){
-      if(!d||!d.ok){ alert((d&&d.error)||"No asset matches that code."); return; }
-      var inp=document.querySelector(".tinput[data-aid='"+d.id+"']");
-      if(inp){ var row=document.getElementById("row_"+d.id); if(row) row.classList.add("flash"); inp.scrollIntoView({behavior:"smooth",block:"center"}); inp.focus(); return; }
-      alert("\""+(d.name||"That asset")+"\" isn't marked as a cold unit. Add it under Manage units first.");
-    }).catch(function(){ alert("Couldn't reach the server."); });
-  }
 </script>
 <script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
