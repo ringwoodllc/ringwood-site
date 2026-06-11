@@ -95,6 +95,7 @@
   .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
   .sechead:hover{background:rgba(33,68,58,.04)}
   .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .admincrown{display:inline-flex;align-items:center;gap:4px;background:rgba(33,68,58,.1);color:var(--green-deep);border-radius:999px;padding:1px 8px 1px 7px;font-family:"Hanken Grotesk",sans-serif;font-size:.64rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle;margin-left:7px}
   .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
   .hint{color:var(--muted);font-size:.82rem;margin:4px 0 8px}
   .rtag{flex:0 0 auto;font-size:.6rem;font-weight:700;letter-spacing:.04em;background:rgba(169,99,58,.16);color:#7a4a26;border-radius:4px;padding:1px 5px}
@@ -128,7 +129,7 @@
 
   <div class="manage" id="manageWrap" style="display:none">
     <div class="secwrap">
-      <div class="sechead" id="mgToggle"><span class="sectitle">Manage units</span><span class="back">Set up ▾</span></div>
+      <div class="sechead" id="mgToggle"><span class="sectitle">Manage units <span class="admincrown" title="Admin only. Clients do not see this."><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span></span><span class="back">Set up ▾</span></div>
       <div class="secbody" id="mgBody" style="display:none">
         <div class="hint">Mark which assets are coolers or freezers and set the safe range (°F). Only cold units show up in the daily log above.</div>
         <div id="mgList"><div class="empty">Loading…</div></div>
@@ -176,7 +177,7 @@
     document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
     document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
     document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
-    if(CAN_EDIT) document.getElementById("manageWrap").style.display="block";
+    if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
     document.getElementById("histWrap").style.display="block";
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";

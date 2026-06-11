@@ -48,6 +48,19 @@
   table.cl tr:last-child td{border-bottom:none}
   .sname{font-weight:600;color:var(--green-deep);font-size:.98rem;padding-left:15px}
   .smode{display:block;color:var(--muted);font-size:.72rem;font-weight:400}
+  .exptog{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:5px;width:24px;height:24px;font-size:1rem;line-height:1;color:var(--green-deep);cursor:pointer;margin-right:9px;vertical-align:middle}
+  .exptog:hover{border-color:var(--green)}
+  .snametext{vertical-align:middle}
+  .itcount{display:inline-block;margin-left:7px;background:var(--line);color:var(--muted);border-radius:999px;padding:0 7px;font-size:.7rem;font-weight:700;vertical-align:middle}
+  .detailcell{background:rgba(33,68,58,.04);padding:12px 15px 14px}
+  .itlist{margin:0;padding-left:20px;color:var(--ink)}
+  .itlist li{padding:2px 0;font-size:.92rem}
+  .itwrap .itrow{display:flex;gap:7px;align-items:center;margin-bottom:6px}
+  .ititem{flex:1;font:inherit;font-size:.92rem;padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .itdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .itadd{width:100%;font:inherit;font-size:.9rem;padding:8px 9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);margin-top:6px;resize:vertical}
+  .itaddbtn{margin-top:7px;background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:6px;padding:7px 13px;font:inherit;font-weight:600;font-size:.84rem;cursor:pointer}
+  .itmsg{margin-left:10px;font-size:.8rem;font-weight:600}
   .c-box{text-align:center;width:62px}
   .cbx{width:26px;height:26px;cursor:pointer;accent-color:var(--green)}
   .single-td{text-align:center}
@@ -124,7 +137,7 @@
 </main>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", SECTIONS=[], MARKS={}, ASSIGN={open:"",mid:"",close:""}, MISSING=false, saveT=null;
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", SECTIONS=[], MARKS={}, ASSIGN={open:"",mid:"",close:""}, MISSING=false, saveT=null, ITEMS_ON=true, EXP={};
 
   function pad(n){ return String(n).padStart(2,"0"); }
   function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
@@ -164,6 +177,7 @@
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The checklist tables aren't set up yet. Add them in Supabase (one-time), then checks save."; } else note.style.display="none";
+      ITEMS_ON = d.itemsOn !== false;
       SECTIONS=d.sections||[]; MARKS=d.marks||{}; ASSIGN=Object.assign({open:"",mid:"",close:""}, d.assign||{});
       document.getElementById("aOpen").value=ASSIGN.open||""; document.getElementById("aMid").value=ASSIGN.mid||""; document.getElementById("aClose").value=ASSIGN.close||"";
       render(); renderManage();
@@ -179,20 +193,60 @@
       return;
     }
     var anyShift=SECTIONS.some(function(s){ return s.mode==="shift"; });
+    var colCount=1+(anyShift?3:1);
     var head="<tr><th>Area</th>"+(anyShift?"<th>Open</th><th>Mid</th><th>Close</th>":"<th>Done</th>")+"</tr>";
     var rows=SECTIONS.map(function(s){
       var cells;
       if(s.mode==="shift"){
         cells=["open","mid","close"].map(function(sl){ return "<td class='c-box'>"+box(s.id,sl)+"</td>"; }).join("");
       } else {
-        var one="<td class='single-td'"+(anyShift?" colspan='3'":"")+">"+box(s.id,"all")+"</td>";
-        cells=one;
+        cells="<td class='single-td'"+(anyShift?" colspan='3'":"")+">"+box(s.id,"all")+"</td>";
       }
-      return "<tr><td class='sname'>"+esc(s.name)+(s.mode==="single"?"<span class='smode'>whole area</span>":"")+"</td>"+cells+"</tr>";
+      var n=(s.items||[]).length;
+      var plus = ITEMS_ON ? "<button type='button' class='exptog' data-id='"+esc(s.id)+"'>"+(EXP[s.id]?"−":"+")+"</button>" : "";
+      var nameCell="<td class='sname'>"+plus+"<span class='snametext'>"+esc(s.name)+"</span>"+(s.mode==="single"?"<span class='smode'>whole area</span>":"")+(ITEMS_ON&&n?"<span class='itcount'>"+n+"</span>":"")+"</td>";
+      var detail = ITEMS_ON ? "<tr class='detailrow' id='det_"+esc(s.id)+"' style='display:"+(EXP[s.id]?"table-row":"none")+"'><td colspan='"+colCount+"' class='detailcell'>"+buildDetail(s)+"</td></tr>" : "";
+      return "<tr>"+nameCell+cells+"</tr>"+detail;
     }).join("");
     el.innerHTML="<div class='card'><div class='cardhd'>Areas</div><table class='cl'><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div>";
     Array.prototype.slice.call(el.querySelectorAll(".cbx")).forEach(function(c){ c.addEventListener("change", function(){ queueSave(); }); });
+    Array.prototype.slice.call(el.querySelectorAll(".exptog")).forEach(function(b){ b.addEventListener("click", function(){ var id=b.getAttribute("data-id"); EXP[id]=!EXP[id]; var det=document.getElementById("det_"+id); if(det) det.style.display=EXP[id]?"table-row":"none"; b.textContent=EXP[id]?"−":"+"; }); });
+    SECTIONS.forEach(function(s){ if(ITEMS_ON) wireDetail(s); });
     document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
+  }
+
+  // The expandable "what to check" panel under a section.
+  function buildDetail(s){
+    var items=s.items||[];
+    if(CAN_EDIT){
+      var rows=items.map(function(it,i){ return "<div class='itrow'><input class='ititem' data-i='"+i+"' value='"+esc(it)+"' /><button type='button' class='itdel' data-i='"+i+"' title='Delete'>×</button></div>"; }).join("");
+      return "<div class='itwrap' data-id='"+esc(s.id)+"'>"+
+        (rows||"<div class='hint'>No items yet. Add them below.</div>")+
+        "<textarea class='itadd' rows='2' placeholder='Add items, one per line'></textarea>"+
+        "<button type='button' class='itaddbtn'>Add items</button>"+
+        "<span class='itmsg'></span></div>";
+    }
+    if(!items.length) return "<div class='hint'>No items.</div>";
+    return "<ul class='itlist'>"+items.map(function(it){ return "<li>"+esc(it)+"</li>"; }).join("")+"</ul>";
+  }
+
+  function wireDetail(s){
+    if(!CAN_EDIT) return;
+    var wrap=document.querySelector(".itwrap[data-id='"+s.id+"']"); if(!wrap) return;
+    function currentItems(){ return Array.prototype.slice.call(wrap.querySelectorAll(".ititem")).map(function(i){ return i.value.trim(); }).filter(Boolean); }
+    Array.prototype.slice.call(wrap.querySelectorAll(".ititem")).forEach(function(inp){ inp.addEventListener("change", function(){ saveItems(s, currentItems()); }); });
+    Array.prototype.slice.call(wrap.querySelectorAll(".itdel")).forEach(function(b){ b.addEventListener("click", function(){ var i=+b.getAttribute("data-i"); var arr=(s.items||[]).slice(); arr.splice(i,1); saveItems(s, arr); }); });
+    var addBtn=wrap.querySelector(".itaddbtn"), ta=wrap.querySelector(".itadd");
+    addBtn.addEventListener("click", function(){ var lines=(ta.value||"").split("\n").map(function(x){return x.trim();}).filter(Boolean); if(!lines.length) return; saveItems(s, currentItems().concat(lines)); });
+  }
+
+  // Save a section's items (rename/delete/add all go through here), then refresh.
+  function saveItems(s, items){
+    EXP[s.id]=true;
+    var wrap=document.querySelector(".itwrap[data-id='"+s.id+"'] .itmsg"); if(wrap){ wrap.textContent="Saving…"; wrap.style.color="var(--muted)"; }
+    fetch("/api/checklist/section",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:s.id,name:s.name,mode:s.mode,items:items})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ s.items=items; render(); } else { if(wrap){ wrap.textContent=(d&&d.error)||"Couldn't save"; wrap.style.color="var(--red)"; } } })
+      .catch(function(){ if(wrap){ wrap.textContent="No connection"; wrap.style.color="var(--red)"; } });
   }
 
   function box(secId, slot){

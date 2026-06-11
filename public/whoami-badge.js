@@ -128,7 +128,7 @@
       idHtml = "Signed in as <a href='/account'>" + esc(w.client || w.name || "your account") + "</a>";
     }
 
-    strip.innerHTML = idHtml + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
+    strip.innerHTML = idHtml + (isMaster && !w.impersonating ? " &middot; <a href='/admin'>Admin Panel</a>" : "") + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
 
     var so = document.getElementById("rwSignout");
@@ -159,7 +159,7 @@
           if (!d || !d.ok) { menu.innerHTML = "<div style='padding:10px'>Couldn't load users.</div>"; return; }
           var html = "";
           if (w.impersonating) html += "<button data-clear='1'>↩ Back to " + esc(w.realName || "master") + " (you)</button><div class='h'>View as</div>";
-          else html += "<div class='h'>View as</div>";
+          else html += "<button data-href='/admin'>&#9881; Admin Panel</button><div class='h'>View as</div>";
           d.users.forEach(function (u) {
             var cur = (u.label && u.label === w.name) ? " cur" : "";
             var crown = u.role === "master" ? CROWN + " " : "";
@@ -184,6 +184,7 @@
         e.stopPropagation();
         var b = e.target.closest ? e.target.closest("button") : null;
         if (!b) return;
+        if (b.getAttribute("data-href")) { location.href = b.getAttribute("data-href"); return; }
         if (b.getAttribute("data-clear")) switchTo({ clear: true });
         else if (b.getAttribute("data-id")) switchTo({ userId: b.getAttribute("data-id") });
         else if (b.getAttribute("data-client")) switchTo({ client: b.getAttribute("data-client") });

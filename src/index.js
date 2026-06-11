@@ -3435,38 +3435,48 @@ async function deleteTempLog(request, env, session) {
 // Mid/Close assignments are stored as one JSON blob per date in checklist_days.
 // Degrades gracefully until those tables exist.
 const CHECKLIST_DEFAULTS = [
-  ["Exterior & Entrance", "shift"],
-  ["Dining Room", "single"],
-  ["Restrooms", "shift"],
-  ["Front Counter / POS", "single"],
-  ["Beverage Station", "single"],
-  ["Food Prep / Line", "shift"],
-  ["Kitchen / Cook Line", "shift"],
-  ["Coolers & Freezers", "single"],
-  ["Dry & Chemical Storage", "single"],
-  ["Handwashing & Sanitation", "shift"],
-  ["Trash & Dumpster Area", "shift"],
-  ["Equipment Check", "single"],
-  ["Staff Readiness", "single"],
+  ["Exterior & Entrance", "shift", ["Parking lot and walkway clear of trash", "Exterior lights working", "Signage on and clean", "Entrance door and glass clean", "Mats down and clean"]],
+  ["Dining Room", "single", ["Tables and chairs clean and set", "Floors swept and mopped", "Condiments stocked and clean", "Trash bins emptied and lined", "Windows and sills clean"]],
+  ["Restrooms", "shift", ["Stocked: soap, towels, tissue", "Toilets and sinks clean", "Floors clean and dry", "Trash emptied", "Mirrors clean"]],
+  ["Front Counter / POS", "single", ["Counter clean and sanitized", "POS and card reader working", "Receipt paper stocked", "Menus clean", "Bags and napkins stocked"]],
+  ["Beverage Station", "single", ["Machines cleaned and stocked", "Ice bin clean, scoop stored properly", "Cups and lids stocked", "Spills wiped", "Syrup dates checked"]],
+  ["Food Prep / Line", "shift", ["Surfaces cleaned and sanitized", "Sanitizer buckets made and labeled", "Cutting boards clean, no damage", "Date labels current", "Gloves and utensils stocked"]],
+  ["Kitchen / Cook Line", "shift", ["Equipment clean and working", "Hood and filters clean", "Floors and drains clean", "Hot holding at temperature", "Thermometers calibrated"]],
+  ["Coolers & Freezers", "single", ["Temps in range (see Temp Log)", "Doors seal, no frost build-up", "Food covered, dated, FIFO", "No raw over ready-to-eat", "Floors clean"]],
+  ["Dry & Chemical Storage", "single", ["Stored off the floor, organized", "Chemicals separate from food", "Containers labeled", "No pests or droppings", "FIFO rotation"]],
+  ["Handwashing & Sanitation", "shift", ["Sinks stocked: soap, towels", "Hot water working", "Sanitizer at correct strength", "Test strips available", "Wiping cloths in sanitizer"]],
+  ["Trash & Dumpster Area", "shift", ["Trash emptied", "Dumpster lids closed", "Area clean, no spills", "No pest activity", "Cardboard broken down"]],
+  ["Equipment Check", "single", ["Refrigeration running", "Cook equipment working", "No leaks or hazards", "Lights working", "Report issues to manager"]],
+  ["Staff Readiness", "single", ["Uniforms clean, hair restrained", "Health check: no one sick", "Hands washed", "Name tags on", "Pre-shift notes reviewed"]],
 ];
+// Tidy an items array from a request: trim, drop blanks, cap counts/length.
+function cleanChecklistItems(arr) {
+  if (!Array.isArray(arr)) return null;
+  return arr.map((s) => (s == null ? "" : s.toString().trim()).slice(0, 200)).filter(Boolean).slice(0, 60);
+}
 
 async function listChecklist(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
   const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
-  if (!who.id) return noStore({ ok: true, client: who.name, date, sections: [], marks: {}, assign: { open: "", mid: "", close: "" } });
-  let secs = await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id,name,mode,sort&order=sort.asc,created_at.asc`);
-  if (secs === null) return noStore({ ok: true, client: who.name, date, sections: [], marks: {}, assign: { open: "", mid: "", close: "" }, missing: true });
+  if (!who.id) return noStore({ ok: true, client: who.name, date, sections: [], marks: {}, assign: { open: "", mid: "", close: "" }, itemsOn: true });
+  // Try selecting the optional items column; fall back if it doesn't exist yet.
+  let itemsOn = true;
+  const selWith = `checklist_sections?client_id=eq.${who.id}&select=id,name,mode,sort,items&order=sort.asc,created_at.asc`;
+  const selBase = `checklist_sections?client_id=eq.${who.id}&select=id,name,mode,sort&order=sort.asc,created_at.asc`;
+  let secs = await sbSelect(env, selWith);
+  if (secs === null) { itemsOn = false; secs = await sbSelect(env, selBase); }
+  if (secs === null) return noStore({ ok: true, client: who.name, date, sections: [], marks: {}, assign: { open: "", mid: "", close: "" }, missing: true, itemsOn: false });
   // First time for this client: seed the default sections so there's something to edit.
   if (secs.length === 0 && can(session, "foodSafety", "edit")) {
-    const rows = CHECKLIST_DEFAULTS.map((d, i) => ({ client_id: who.id, name: d[0], mode: d[1], sort: i * 10 }));
+    const rows = CHECKLIST_DEFAULTS.map((d, i) => { const row = { client_id: who.id, name: d[0], mode: d[1], sort: i * 10 }; if (itemsOn) row.items = d[2] || []; return row; });
     await sbInsert(env, "checklist_sections", rows);
-    secs = await sbSelect(env, `checklist_sections?client_id=eq.${who.id}&select=id,name,mode,sort&order=sort.asc,created_at.asc`) || [];
+    secs = await sbSelect(env, itemsOn ? selWith : selBase) || [];
   }
   const days = await sbSelect(env, `checklist_days?client_id=eq.${who.id}&log_date=eq.${date}&select=data&limit=1`);
   const data = (days && days[0] && days[0].data) || {};
   const assign = Object.assign({ open: "", mid: "", close: "" }, data.assign || {});
-  return noStore({ ok: true, client: who.name, date, sections: (secs || []).map((s) => ({ id: s.id, name: s.name || "", mode: s.mode === "shift" ? "shift" : "single", sort: s.sort || 0 })), marks: data.marks || {}, assign });
+  return noStore({ ok: true, client: who.name, date, itemsOn, sections: (secs || []).map((s) => ({ id: s.id, name: s.name || "", mode: s.mode === "shift" ? "shift" : "single", sort: s.sort || 0, items: Array.isArray(s.items) ? s.items : [] })), marks: data.marks || {}, assign });
 }
 
 async function saveChecklistSection(request, env, session) {
@@ -3485,16 +3495,20 @@ async function saveChecklistSection(request, env, session) {
   const name = (body.name || "").toString().trim().slice(0, 120);
   const mode = body.mode === "shift" ? "shift" : "single";
   if (!name) return json({ ok: false, error: "Enter a name." }, 400);
+  const items = "items" in body ? cleanChecklistItems(body.items) : null;
   if (id) {
     const patch = { name, mode };
     if (body.sort != null && !isNaN(parseInt(body.sort, 10))) patch.sort = parseInt(body.sort, 10);
+    if (items != null) patch.items = items;
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/checklist_sections?id=eq.${id}&client_id=eq.${who.id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=representation" }), body: JSON.stringify(patch) });
     if (!r.ok) return json({ ok: false, error: "Could not save." }, 502);
     const d = await r.json();
     return json({ ok: true, section: Array.isArray(d) ? d[0] : d });
   }
   const sort = body.sort != null && !isNaN(parseInt(body.sort, 10)) ? parseInt(body.sort, 10) : 9990;
-  const res = await sbInsert(env, "checklist_sections", { client_id: who.id, name, mode, sort });
+  const insert = { client_id: who.id, name, mode, sort };
+  if (items != null) insert.items = items;
+  const res = await sbInsert(env, "checklist_sections", insert);
   if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
   return json({ ok: true, section: res.data || null });
 }
