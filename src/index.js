@@ -105,6 +105,8 @@ export default {
     if (url.pathname === "/api/receiving" && request.method === "GET") return listReceiving(url, env, session);
     if (url.pathname === "/api/receiving/add" && request.method === "POST") return addReceiving(request, env, session);
     if (url.pathname === "/api/receiving/delete" && request.method === "POST") return deleteReceiving(request, env, session);
+    if (url.pathname === "/api/receiving/update" && request.method === "POST") return updateReceiving(request, env, session);
+    if (url.pathname === "/api/receiving/vendor" && request.method === "POST") return saveReceivingVendor(request, env, session);
     if (url.pathname === "/api/hotholding" && request.method === "GET") return listHotHolding(url, env, session);
     if (url.pathname === "/api/hotholding/add" && request.method === "POST") return addHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/delete" && request.method === "POST") return deleteHotHolding(request, env, session);
@@ -3799,11 +3801,42 @@ function weekRange(url) {
   return { from, to };
 }
 
+// Staff stay on the week they're working: the pages hide week navigation for
+// non-admins, and this is the server-side backstop. Client-scoped sessions get
+// the range clamped to roughly the current week (±8 days of slack so timezone
+// drift never clips the active week). Masters pass through untouched.
+function clampWeekForClient(session, range) {
+  if (scopeName(session) == null) return range;
+  const ms = 86400000, now = Date.now();
+  const lo = new Date(now - 8 * ms).toISOString().slice(0, 10);
+  const hi = new Date(now + 8 * ms).toISOString().slice(0, 10);
+  let { from, to } = range;
+  if (from < lo) from = lo;
+  if (to > hi) to = hi;
+  return { from, to };
+}
+
+// The fixed vendor rows of the weekly sheet (the same lines week over week).
+const RECEIVING_DEFAULTS = [
+  ["DCP (Refrigerated) - Dairy", "refrigerated"],
+  ["DCP (Frozen) - Bagels", "frozen"],
+  ["Dean (Frozen) - Ice Cream", "frozen"],
+];
+
 async function listReceiving(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
-  const { from, to } = weekRange(url);
-  if (!who.id) return noStore({ ok: true, client: who.name, from, to, entries: [], storageOn: true });
+  const { from, to } = clampWeekForClient(session, weekRange(url));
+  if (!who.id) return noStore({ ok: true, client: who.name, from, to, entries: [], vendors: [], storageOn: true, vendorsOn: true });
+  // Vendor columns: a per-client template (seeded with the standard lines).
+  const vSel = `receiving_vendors?client_id=eq.${who.id}&select=id,name,storage,sort&order=sort.asc,created_at.asc`;
+  let vendorsOn = true;
+  let vendors = await sbSelect(env, vSel);
+  if (vendors === null) { vendorsOn = false; vendors = []; }
+  if (vendorsOn && vendors.length === 0 && can(session, "foodSafety", "edit")) {
+    await sbInsert(env, "receiving_vendors", RECEIVING_DEFAULTS.map((d, i) => ({ client_id: who.id, name: d[0], storage: d[1], sort: i * 10 })));
+    vendors = await sbSelect(env, vSel) || [];
+  }
   const base = `receiving_logs?client_id=eq.${who.id}&log_date=gte.${from}&log_date=lte.${to}`;
   // Try with the storage column; fall back without it so the page still works
   // before the one-time migration.
@@ -3812,9 +3845,61 @@ async function listReceiving(url, env, session) {
   if (rows === null) {
     storageOn = false;
     rows = await sbSelect(env, `${base}&select=id,log_date,vendor,item,temp,status,notes,logged_by,created_at&order=log_date.asc,created_at.asc`);
-    if (rows === null) return noStore({ ok: true, client: who.name, from, to, entries: [], missing: true, storageOn: false });
+    if (rows === null) return noStore({ ok: true, client: who.name, from, to, entries: [], vendors: [], missing: true, storageOn: false, vendorsOn });
   }
-  return noStore({ ok: true, client: who.name, from, to, storageOn, entries: (rows || []).map((r) => ({ id: r.id, date: r.log_date || "", vendor: r.vendor || "", item: r.item || "", temp: r.temp, status: r.status || "Accepted", storage: r.storage === "frozen" ? "frozen" : "refrigerated", notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+  return noStore({ ok: true, client: who.name, from, to, storageOn, vendorsOn,
+    vendors: (vendors || []).map((v) => ({ id: v.id, name: v.name || "", storage: v.storage === "frozen" ? "frozen" : "refrigerated", sort: v.sort || 0 })),
+    entries: (rows || []).map((r) => ({ id: r.id, date: r.log_date || "", vendor: r.vendor || "", item: r.item || "", temp: r.temp, status: r.status || "Accepted", storage: r.storage === "frozen" ? "frozen" : "refrigerated", notes: r.notes || "", by: r.logged_by || "", at: r.created_at || "" })) });
+}
+
+// Admin editor for the vendor rows.
+async function saveReceivingVendor(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const id = (body.id || "").toString().trim();
+  if (body.delete && id) {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/receiving_vendors?id=eq.${id}&client_id=eq.${who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+    return json({ ok: true });
+  }
+  const name = (body.name || "").toString().trim().slice(0, 120);
+  const storage = body.storage === "frozen" ? "frozen" : "refrigerated";
+  if (!name) return json({ ok: false, error: "Enter a name." }, 400);
+  if (id) {
+    const patch = { name, storage };
+    if (body.sort != null && !isNaN(parseInt(body.sort, 10))) patch.sort = parseInt(body.sort, 10);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/receiving_vendors?id=eq.${id}&client_id=eq.${who.id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=representation" }), body: JSON.stringify(patch) });
+    if (!r.ok) return json({ ok: false, error: "Could not save." }, 502);
+    return json({ ok: true });
+  }
+  const sort = body.sort != null && !isNaN(parseInt(body.sort, 10)) ? parseInt(body.sort, 10) : 9990;
+  const res = await sbInsert(env, "receiving_vendors", { client_id: who.id, name, storage, sort });
+  if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
+  return json({ ok: true });
+}
+
+// Admin override of a logged temp (entered in error). Mirrors the temp log.
+async function updateReceiving(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  const temp = parseFloat(body.temp);
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  if (isNaN(temp)) return json({ ok: false, error: "Enter a temperature." }, 400);
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `receiving_logs?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const res = await sbUpdate(env, "receiving_logs", id, { temp });
+  if (!res.ok) return json({ ok: false, error: "Could not update." }, 502);
+  return json({ ok: true });
 }
 
 async function addReceiving(request, env, session) {
@@ -3860,7 +3945,7 @@ const HOTHOLDING_DEFAULTS = [
 async function listHotHolding(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
-  const { from, to } = weekRange(url);
+  const { from, to } = clampWeekForClient(session, weekRange(url));
   if (!who.id) return noStore({ ok: true, client: who.name, from, to, items: [], entries: [], itemsOn: true });
   const itemSel = `hotholding_items?client_id=eq.${who.id}&select=id,name,kind,min_temp,sort&order=sort.asc,created_at.asc`;
   let itemsOn = true;

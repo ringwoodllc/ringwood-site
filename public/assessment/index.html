@@ -56,11 +56,14 @@
   .qfind{margin-top:8px}
   .qfind input{font-size:.9rem;padding:8px 10px}
   .qfind.hide{display:none}
-  .qpics{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+  .qfoot{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:7px}
+  .qfoot .findtog{margin-top:0}
+  .qpics{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .qpics:empty{display:none}
   .thumb{position:relative;display:inline-block}
-  .thumb img{height:54px;width:54px;object-fit:cover;border:1px solid var(--line);border-radius:5px;display:block}
+  .thumb img{height:38px;width:38px;object-fit:cover;border:1px solid var(--line);border-radius:5px;display:block}
   .thumbdel{position:absolute;top:-7px;right:-7px;background:var(--bg);border:1px solid rgba(138,61,28,.5);color:var(--red);border-radius:999px;width:20px;height:20px;font:inherit;font-size:.78rem;line-height:1;cursor:pointer}
-  .addpic{display:inline-flex;align-items:center;height:54px;padding:0 12px;border:1.5px dashed rgba(47,93,80,.45);border-radius:5px;color:var(--green-deep);font-weight:600;font-size:.82rem;cursor:pointer}
+  .addpic{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 9px;border:1.5px dashed rgba(47,93,80,.45);border-radius:5px;color:var(--green-deep);font-weight:600;font-size:.82rem;cursor:pointer;line-height:1}
   .addpic:hover{border-color:var(--green)}
   .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
   .findtog{margin-top:6px;background:transparent;border:none;color:var(--clay);font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;padding:0}
@@ -201,11 +204,11 @@
     var findBox = "<div class='qfind"+(f?"":" hide")+"' id='f_"+esc(q.id)+"'><input type='text' data-q='"+esc(q.id)+"' value='"+esc(f)+"' placeholder='Findings (optional)'"+(CAN_EDIT?"":" disabled")+" /></div>";
     var findTog = (CAN_EDIT && !f) ? "<button type='button' class='findtog' data-q='"+esc(q.id)+"'>＋ Add finding</button>" : "";
     var pics=FINDPICS[q.id]||[];
-    var picStrip = (pics.length || CAN_EDIT) ? ("<div class='qpics'>"+
-      pics.map(function(u){ return "<span class='thumb'><a href='"+esc(u)+"' target='_blank' rel='noopener'><img src='"+esc(u)+"' alt='finding photo' /></a>"+(CAN_EDIT?"<button type='button' class='thumbdel' data-q='"+esc(q.id)+"' data-url='"+esc(u)+"'>×</button>":"")+"</span>"; }).join("")+
-      (CAN_EDIT?"<label class='addpic'>＋ Photo<input type='file' accept='image/*' capture='environment' data-q='"+esc(q.id)+"' style='display:none' /></label>":"")+
-      "</div>") : "";
-    return "<div class='q'><div class='qtop'>"+(q.code?"<span class='qcode'>"+esc(q.code)+"</span>":"")+"<span class='qtext'>"+esc(q.question)+"</span>"+yn+"</div>"+findBox+findTog+picStrip+"</div>";
+    // Compact footer: the finding toggle, thumbnails, and a small 📷＋ all share one line.
+    var thumbs = pics.map(function(u){ return "<span class='thumb'><a href='"+esc(u)+"' target='_blank' rel='noopener'><img src='"+esc(u)+"' alt='finding photo' /></a>"+(CAN_EDIT?"<button type='button' class='thumbdel' data-q='"+esc(q.id)+"' data-url='"+esc(u)+"'>×</button>":"")+"</span>"; }).join("");
+    var addBtn = CAN_EDIT ? "<label class='addpic' title='Add a photo' aria-label='Add a photo'>📷＋<input type='file' accept='image/*' capture='environment' data-q='"+esc(q.id)+"' style='display:none' /></label>" : "";
+    var foot = (findTog || thumbs || addBtn) ? "<div class='qfoot'><span class='qpics'>"+thumbs+addBtn+"</span>"+findTog+"</div>" : "";
+    return "<div class='q'><div class='qtop'>"+(q.code?"<span class='qcode'>"+esc(q.code)+"</span>":"")+"<span class='qtext'>"+esc(q.question)+"</span>"+yn+"</div>"+findBox+foot+"</div>";
   }
 
   function updateSummary(){
