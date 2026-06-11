@@ -3004,10 +3004,18 @@ async function redbookClientId(env, session, nameParam) {
 async function listRedbook(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
-  if (!who.id) return noStore({ ok: true, client: who.name, docs: [] });
-  const rows = await sbSelect(env, `redbook_docs?client_id=eq.${who.id}&select=id,section,title,file_url,file_type,uploaded_by,created_at&order=created_at.desc`);
-  if (rows === null) return noStore({ ok: true, client: who.name, docs: [], missing: true });
-  return noStore({ ok: true, client: who.name, docs: (rows || []).map((d) => ({ id: d.id, section: d.section || "Other", title: d.title || "", url: d.file_url || "", type: d.file_type || "", uploadedBy: d.uploaded_by || "", created: d.created_at || "" })) });
+  if (!who.id) return noStore({ ok: true, client: who.name, docs: [], expiry: true });
+  const base = `redbook_docs?client_id=eq.${who.id}`;
+  // Try with the optional expires_at column; if that column doesn't exist yet,
+  // fall back to the base columns so the binder keeps working before the migration.
+  let expiry = true;
+  let rows = await sbSelect(env, `${base}&select=id,section,title,file_url,file_type,uploaded_by,created_at,expires_at&order=created_at.desc`);
+  if (rows === null) {
+    rows = await sbSelect(env, `${base}&select=id,section,title,file_url,file_type,uploaded_by,created_at&order=created_at.desc`);
+    expiry = false;
+    if (rows === null) return noStore({ ok: true, client: who.name, docs: [], missing: true, expiry: false });
+  }
+  return noStore({ ok: true, client: who.name, expiry, docs: (rows || []).map((d) => ({ id: d.id, section: d.section || "Other", title: d.title || "", url: d.file_url || "", type: d.file_type || "", uploadedBy: d.uploaded_by || "", created: d.created_at || "", expires: d.expires_at || "" })) });
 }
 
 async function uploadRedbookDoc(request, env, session) {
@@ -3067,8 +3075,15 @@ async function renameRedbookDoc(request, env, session) {
     const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
     if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
   }
-  const res = await sbUpdate(env, "redbook_docs", id, { title });
-  if (!res.ok) return json({ ok: false, error: "Could not rename." }, 502);
+  const patch = { title };
+  // Optional expiry date (YYYY-MM-DD). Only set it when the caller sends the key,
+  // and only when the column exists (the page passes it only if supported).
+  if ("expires" in body) {
+    const e = (body.expires || "").toString().trim();
+    patch.expires_at = /^\d{4}-\d{2}-\d{2}$/.test(e) ? e : null;
+  }
+  const res = await sbUpdate(env, "redbook_docs", id, patch);
+  if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
   return json({ ok: true });
 }
 

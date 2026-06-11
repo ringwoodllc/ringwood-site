@@ -53,6 +53,15 @@
   .deditrow{display:flex;gap:7px;margin-top:6px}
   .dsave{background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:6px 13px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
   .dcancel{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
+  .dexp{font-weight:600}
+  .dexp.exp-ok{color:var(--muted)}
+  .dexp.exp-soon{color:#7a5a12}
+  .dexp.exp-bad{color:var(--red)}
+  .dexplbl{display:block;font-weight:600;font-size:.8rem;color:var(--green-deep);margin:8px 0 4px}
+  .dexp-edit{font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:7px 9px}
+  .expbanner{border-radius:8px;padding:11px 14px;font-size:.9rem;font-weight:600;margin-bottom:14px}
+  .expbanner.warn{background:rgba(169,99,58,.12);border:1px solid rgba(169,99,58,.4);color:#7a4a26}
+  .expbanner.bad{background:rgba(138,61,28,.12);border:1px solid rgba(138,61,28,.4);color:var(--red)}
   .up{display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:10px;background:var(--bg);border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;padding:9px 14px;color:var(--green-deep);font-weight:600;font-size:.88rem}
   .up:hover{border-color:var(--green)}
   .umsg{font-size:.82rem;color:var(--muted);margin-top:6px}
@@ -85,6 +94,7 @@
   </div>
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
   <div id="note" class="note" style="display:none"></div>
+  <div id="expSummary" class="expbanner" style="display:none"></div>
   <div id="sections"><div class="empty">Loading…</div></div>
 
   <div class="coming">
@@ -102,7 +112,7 @@
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   var SECTIONS = ["Permits & Inspections","Food Safety Certifications","Employee Health","Pest Management","Chemical Safety (SDS / HazCom)","Monthly Self-Assessments","Cleaning & Sanitation","Temperature & Calibration","Receiving","Crisis / Recovery","Other / Supporting Documents"];
-  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[];
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[], EXPIRY_ON=true;
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/redbook"); return; }
@@ -137,21 +147,42 @@
       var note=document.getElementById("note");
       if(!d||!d.ok){ document.getElementById("sections").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       if(d.missing){ note.style.display="block"; note.textContent="The Red Book table isn't set up yet. Add it in Supabase (one-time), then uploads save."; } else note.style.display="none";
+      EXPIRY_ON = d.expiry !== false;
       DOCS=d.docs||[]; render();
     }).catch(function(){ document.getElementById("sections").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function expInfo(s){
+    if(!s) return null;
+    var d=new Date(s+"T00:00:00"); if(isNaN(d.getTime())) return null;
+    var today=new Date(); today.setHours(0,0,0,0);
+    var days=Math.round((d-today)/86400000);
+    var cls=days<0?"exp-bad":(days<=30?"exp-soon":"exp-ok");
+    var label=days<0?("Expired "+d.toLocaleDateString()):(days===0?"Expires today":(days<=30?("Expires in "+days+" day"+(days===1?"":"s")):("Expires "+d.toLocaleDateString())));
+    return {days:days, cls:cls, label:label};
   }
 
   function render(){
     // Remember which sections are open so a re-render (rename/delete) doesn't collapse them.
     var openSet={}; Array.prototype.slice.call(document.querySelectorAll(".secbody")).forEach(function(b){ if(b.style.display==="block") openSet[b.id]=1; });
+    // Expiry summary across the whole binder.
+    var nBad=0, nSoon=0;
+    if(EXPIRY_ON) DOCS.forEach(function(x){ var i=expInfo(x.expires); if(i){ if(i.days<0) nBad++; else if(i.days<=30) nSoon++; } });
+    var sb=document.getElementById("expSummary");
+    if(nBad||nSoon){
+      var parts=[]; if(nBad) parts.push(nBad+" expired"); if(nSoon) parts.push(nSoon+" expiring soon");
+      sb.className="expbanner "+(nBad?"bad":"warn"); sb.textContent="⚠ "+parts.join(" · ")+". Open the section to renew."; sb.style.display="block";
+    } else sb.style.display="none";
     var bySec={}; DOCS.forEach(function(x){ (bySec[x.section]=bySec[x.section]||[]).push(x); });
     var html = SECTIONS.map(function(sec, i){
       var ds=(bySec[sec]||[]).slice().sort(function(a,b){ return (a.title||"").toLowerCase().localeCompare((b.title||"").toLowerCase()); });
       var docHtml = ds.length ? ds.map(function(x){
         var isImg=(x.type||"").indexOf("image")===0;
+        var ei = EXPIRY_ON ? expInfo(x.expires) : null;
+        var expChip = ei ? " · <span class='dexp "+ei.cls+"'>"+esc(ei.label)+"</span>" : "";
         return "<div class='doc'><span class='dtype "+(isImg?"img":"pdf")+"'>"+(isImg?"IMG":"PDF")+"</span>"+
           "<div class='dmain'><a class='dlink' href='"+esc(x.url)+"' target='_blank' rel='noopener'>"+esc(x.title)+"</a>"+
-          "<div class='dmeta'>"+(x.uploadedBy?esc(x.uploadedBy)+" · ":"")+esc(x.created?new Date(x.created).toLocaleDateString():"")+"</div></div>"+
+          "<div class='dmeta'>"+(x.uploadedBy?esc(x.uploadedBy)+" · ":"")+esc(x.created?new Date(x.created).toLocaleDateString():"")+expChip+"</div></div>"+
           (CAN_EDIT?"<button type='button' class='dedit' data-id='"+esc(x.id)+"' data-title='"+esc(x.title)+"' title='Rename'>✎</button>":"")+
           (CAN_EDIT?"<button type='button' class='ddel' data-id='"+esc(x.id)+"' title='Remove'>×</button>":"")+
         "</div>";
@@ -175,15 +206,22 @@
 
   function startRename(btn){
     var row=btn.closest(".doc"), main=row.querySelector(".dmain");
-    var id=btn.getAttribute("data-id"), cur=btn.getAttribute("data-title")||"";
-    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' /><div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dcancel'>Cancel</button></div>";
+    var id=btn.getAttribute("data-id");
+    var doc=DOCS.filter(function(z){return z.id===id;})[0]||{};
+    var cur=doc.title||btn.getAttribute("data-title")||"";
+    var curExp=(doc.expires||"").slice(0,10);
+    var expHtml = EXPIRY_ON ? "<label class='dexplbl' for='dexp_"+esc(id)+"'>Expires (optional)</label><input id='dexp_"+esc(id)+"' class='dexp-edit' type='date' value='"+esc(curExp)+"' />" : "";
+    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' />"+expHtml+"<div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dcancel'>Cancel</button></div>";
     var inp=main.querySelector(".dtitle-edit"); inp.focus(); inp.select();
+    var expInp=main.querySelector(".dexp-edit");
     function commit(){
       var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
-      if(t===cur){ render(); return; }
+      var e=expInp?(expInp.value||""):null;
+      if(t===cur && (!EXPIRY_ON || e===curExp)){ render(); return; }
       inp.disabled=true;
-      fetch("/api/redbook/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,title:t})})
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ var doc=DOCS.filter(function(z){return z.id===id;})[0]; if(doc) doc.title=t; render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't rename."); } })
+      var body={id:id,title:t}; if(EXPIRY_ON) body.expires=e;
+      fetch("/api/redbook/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(doc){ doc.title=t; if(EXPIRY_ON) doc.expires=e; } render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't save."); } })
         .catch(function(){ inp.disabled=false; alert("Couldn't reach the server."); });
     }
     inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); commit(); } else if(e.key==="Escape"){ render(); } });
