@@ -145,6 +145,21 @@
   .qrcard .qrbtns button{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:7px 14px;font:inherit;font-size:.84rem;font-weight:600;cursor:pointer}
   .qrcard .qrbtns .qrscan{display:inline-block;background:var(--green);color:#f6f2e8;border:1px solid var(--green);border-radius:999px;padding:7px 14px;font:inherit;font-size:.84rem;font-weight:600}
   .qrcard .qrbtns button:hover{border-color:var(--green)}
+  /* Prev/Next within the filtered list (same pattern as the ticket editor). */
+  .navbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .navrt{display:flex;align-items:center;gap:8px}
+  .navb{background:var(--bg-2);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:6px 13px;font:inherit;font-size:.85rem;font-weight:600;cursor:pointer}
+  .navb:hover{border-color:var(--green)}
+  .navb:disabled{opacity:.4;cursor:default}
+  .navpos{color:var(--muted);font-size:.82rem;min-width:54px;text-align:center}
+  .navside{display:none}
+  @media(min-width:900px){
+    .navside{display:flex;align-items:center;justify-content:center;position:fixed;top:50%;transform:translateY(-50%);width:46px;height:80px;border:1px solid var(--line);background:var(--bg-2);color:var(--green-deep);font-size:2rem;line-height:1;cursor:pointer;z-index:50;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+    .navside:hover{border-color:var(--green);background:var(--bg)}
+    .navside:disabled{opacity:.3;cursor:default}
+    .navside.left{left:max(12px, calc(50% - 440px))}
+    .navside.right{right:max(12px, calc(50% - 440px))}
+  }
   @media print{ body * {visibility:hidden} #printArea, #printArea * {visibility:visible} #printArea{position:absolute;left:0;top:0;width:100%;text-align:center} }
 </style>
 </head>
@@ -260,8 +275,9 @@
     return id;
   }
 
-  function renderList(){
-    renderClientFilter();
+  // The filter + sort pipeline, shared by the list and Prev/Next navigation so
+  // stepping through assets follows exactly what the list shows.
+  function filteredAssets(){
     var client=clientFilter.value, q=(searchInput.value||"").trim().toLowerCase(), sort=curSort;
     var arr=allAssets.filter(function(a){
       if(client==="__unassigned"){ if(a.client) return false; }
@@ -293,6 +309,11 @@
       if(q){ var d=score(b)-score(a); if(d) return d; }
       return baseCmp(a,b);
     });
+    return arr;
+  }
+  function renderList(){
+    renderClientFilter();
+    var arr=filteredAssets();
     assetCount.textContent = allAssets.length ? (arr.length+" of "+allAssets.length+" asset"+(allAssets.length===1?"":"s")) : "";
     if(!arr.length){ assetList.innerHTML="<div class='empty'>"+(allAssets.length?"No assets match.":"No assets yet.")+"</div>"; return; }
     assetList.innerHTML = arr.map(function(a){
@@ -309,6 +330,7 @@
   // Sort toggles: Name (A→Z / Z→A) and Date (Newest / Oldest). Tapping the active
   // one flips its direction; tapping the other switches to it.
   var curSort = "az";
+  var lastNavIndex = 0;  // for Next/Prev within the filtered view
   function syncSort(){
     var nb=document.getElementById("sortName"), db=document.getElementById("sortDate");
     var nameActive = (curSort==="az"||curSort==="za"), dateActive=(curSort==="new"||curSort==="old");
@@ -436,7 +458,16 @@
       hist = "<table><thead><tr><th>Date</th><th>Type</th><th>Tech</th><th>Notes</th><th>Cost</th></tr></thead><tbody>"+rows+"</tbody></table><div class='hint'>Tap a row to edit it.</div>";
     } else { hist="<div class='empty'>No service history yet.</div>"; }
     view.innerHTML =
-      "<a href='#' class='back' style='display:inline-block;margin:18px 0 12px' onclick=\"backToList();return false;\">&larr; Back to list</a>"+
+      "<div class='navbar' style='margin:18px 0 12px'>"+
+        "<a href='#' class='back' onclick=\"backToList();return false;\">&larr; Back to list</a>"+
+        "<div class='navrt'>"+
+          "<button type='button' class='navb' id='a_prev'>&larr; Prev</button>"+
+          "<span class='navpos' id='a_navpos'></span>"+
+          "<button type='button' class='navb' id='a_next'>Next &rarr;</button>"+
+        "</div>"+
+      "</div>"+
+      "<button type='button' class='navside left' id='a_prevSide' aria-label='Previous asset'>&lsaquo;</button>"+
+      "<button type='button' class='navside right' id='a_nextSide' aria-label='Next asset'>&rsaquo;</button>"+
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
       stats+photos+identity+ai+
@@ -452,6 +483,26 @@
     loadAssetEvents(curId);
     document.getElementById("editBtn").addEventListener("click", function(){ showEdit(curAsset,""); });
     var vb=document.getElementById("verifyBtn"); if(vb) vb.addEventListener("click", verifyNow);
+
+    // ---- Next / Prev within the current filtered view (mirrors the ticket editor) ----
+    function navTo(dir){
+      var list = filteredAssets();
+      var idx = -1; for(var i=0;i<list.length;i++){ if(list[i].id===curId){ idx=i; break; } }
+      var target;
+      if(idx<0){ var anchor=Math.min(Math.max(lastNavIndex,0), list.length-1); target = dir>0 ? anchor : anchor-1; }
+      else { target = idx+dir; }
+      if(target<0 || target>=list.length) return;
+      lastNavIndex=target; load(list[target].id, true);
+    }
+    (function(){
+      var list=filteredAssets(), idx=-1; for(var i=0;i<list.length;i++){ if(list[i].id===curId){ idx=i; break; } }
+      if(idx>=0) lastNavIndex=idx;
+      var pos=document.getElementById("a_navpos");
+      if(pos) pos.textContent = idx>=0 ? ((idx+1)+" of "+list.length) : "";
+      var atStart = idx>=0 && idx<=0, atEnd = idx>=0 && idx>=list.length-1;
+      ["a_prev","a_prevSide"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atStart; b.addEventListener("click",function(){ navTo(-1); }); } });
+      ["a_next","a_nextSide"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atEnd; b.addEventListener("click",function(){ navTo(1); }); } });
+    })();
     var agTog=document.getElementById("agentTog"); if(agTog) agTog.addEventListener("click", function(){ var b=document.getElementById("agentBody"), ico=document.getElementById("agentIco"); var open=b.style.display!=="none"; b.style.display=open?"none":"block"; if(ico) ico.textContent=open?"＋":"−"; });
     var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
   }
