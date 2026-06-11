@@ -3261,16 +3261,25 @@ async function tempAssetInScope(env, assetId, clientId) {
   return rows && rows.length ? rows[0] : null;
 }
 
+// Cold units for a client, in walk order: the optional temp_sort column is the
+// number you pass each unit while walking the store (set in Manage units),
+// nulls last, name as the tiebreaker. Falls back pre-migration.
+async function coldUnits(env, cid) {
+  let rows = await sbSelect(env, `assets?client_id=eq.${cid}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max,temp_sort&order=temp_sort.asc.nullslast,name.asc`);
+  if (rows !== null) return rows;
+  return sbSelect(env, `assets?client_id=eq.${cid}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max&order=name.asc`);
+}
+
 async function listTemps(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
   const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
   if (!who.id) return noStore({ ok: true, client: who.name, date, units: [], readings: [] });
-  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max&order=name.asc`);
+  const units = await coldUnits(env, who.id);
   if (units === null) return noStore({ ok: true, client: who.name, date, units: [], readings: [], missing: true });
   const logs = await sbSelect(env, `temp_logs?client_id=eq.${who.id}&log_date=eq.${date}&select=id,asset_id,temp,logged_by,reading_at&order=reading_at.asc`);
   if (logs === null) return noStore({ ok: true, client: who.name, date, units: [], readings: [], missing: true });
-  const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max }));
+  const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max, sort: a.temp_sort != null ? a.temp_sort : null }));
   const r = (logs || []).map((l) => ({ id: l.id, assetId: l.asset_id, temp: l.temp, by: l.logged_by || "", at: l.reading_at || "", demo: (l.logged_by || "") === DEMO_TAG }));
   const anyDemo = r.some((x) => x.demo);
   return noStore({ ok: true, client: who.name, date, units: u, readings: r, demo: anyDemo });
@@ -3289,11 +3298,11 @@ async function listTempHistory(url, env, session) {
   const span = (Date.parse(to) - Date.parse(from)) / 86400000;
   if (span > 92) { const d = new Date(to + "T00:00:00"); d.setDate(d.getDate() - 92); from = d.toISOString().slice(0, 10); }
   if (!who.id) return noStore({ ok: true, client: who.name, units: [], readings: [], from, to });
-  const units = await sbSelect(env, `assets?client_id=eq.${who.id}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max&order=name.asc`);
+  const units = await coldUnits(env, who.id);
   if (units === null) return noStore({ ok: true, client: who.name, units: [], readings: [], from, to, missing: true });
   const logs = await sbSelect(env, `temp_logs?client_id=eq.${who.id}&log_date=gte.${from}&log_date=lte.${to}&select=asset_id,temp,reading_at,log_date,logged_by&order=reading_at.asc`);
   if (logs === null) return noStore({ ok: true, client: who.name, units: [], readings: [], from, to, missing: true });
-  const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max }));
+  const u = (units || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Unit", min: a.temp_min, max: a.temp_max, sort: a.temp_sort != null ? a.temp_sort : null }));
   const r = (logs || []).map((l) => ({ assetId: l.asset_id, temp: l.temp, at: l.reading_at || "", date: l.log_date || "", demo: (l.logged_by || "") === DEMO_TAG }));
   return noStore({ ok: true, client: who.name, units: u, readings: r, from, to });
 }
@@ -3302,9 +3311,10 @@ async function listTempUnits(url, env, session) {
   if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
   const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
   if (!who.id) return noStore({ ok: true, client: who.name, assets: [] });
-  const rows = await sbSelect(env, `assets?client_id=eq.${who.id}&select=id,name,nickname,temp_min,temp_max,cold_unit&order=name.asc`);
+  let rows = await sbSelect(env, `assets?client_id=eq.${who.id}&select=id,name,nickname,temp_min,temp_max,cold_unit,temp_sort&order=temp_sort.asc.nullslast,name.asc`);
+  if (rows === null) rows = await sbSelect(env, `assets?client_id=eq.${who.id}&select=id,name,nickname,temp_min,temp_max,cold_unit&order=name.asc`);
   if (rows === null) return noStore({ ok: true, client: who.name, assets: [], missing: true });
-  return noStore({ ok: true, client: who.name, assets: (rows || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Asset", coldUnit: !!a.cold_unit, min: a.temp_min, max: a.temp_max })) });
+  return noStore({ ok: true, client: who.name, assets: (rows || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Asset", coldUnit: !!a.cold_unit, min: a.temp_min, max: a.temp_max, sort: a.temp_sort != null ? a.temp_sort : null })) });
 }
 
 async function setTempUnit(request, env, session) {
@@ -3319,7 +3329,11 @@ async function setTempUnit(request, env, session) {
   if (!inScope) return json({ ok: false, error: "Asset not found." }, 404);
   const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
   const patch = { cold_unit: !!body.coldUnit, temp_min: num(body.tempMin), temp_max: num(body.tempMax) };
-  const res = await sbUpdate(env, "assets", assetId, patch);
+  // Walk order (optional column): include when sent, drop it if the column
+  // doesn't exist yet so saves keep working pre-migration.
+  if ("tempSort" in body) { const s = parseInt(body.tempSort, 10); patch.temp_sort = isNaN(s) ? null : s; }
+  let res = await sbUpdate(env, "assets", assetId, patch);
+  if (!res.ok && "temp_sort" in patch) { delete patch.temp_sort; res = await sbUpdate(env, "assets", assetId, patch); }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
   return json({ ok: true });
 }

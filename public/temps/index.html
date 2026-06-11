@@ -85,6 +85,8 @@
   .mgrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
   .mgrow:last-child{border-bottom:none}
   .mgname{flex:1;min-width:130px;font-weight:600;color:var(--green-deep)}
+  .mg_sort{width:52px;padding:7px 6px;font-size:.9rem;text-align:center}
+  .ordn{color:var(--clay);font-weight:700}
   .mgrange{display:flex;gap:6px;align-items:center}
   .mgrange input{width:74px;padding:7px 8px;font-size:.9rem}
   .mgrange span{color:var(--muted);font-size:.82rem}
@@ -131,7 +133,7 @@
     <div class="secwrap">
       <div class="sechead" id="mgToggle"><span class="sectitle">Manage units <span class="admincrown" title="Admin only. Clients do not see this."><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span></span><span class="back">Set up ▾</span></div>
       <div class="secbody" id="mgBody" style="display:none">
-        <div class="hint">Mark which assets are coolers or freezers and set the safe range (°F). Only cold units show up in the daily log above.</div>
+        <div class="hint">Mark which assets are coolers or freezers and set the safe range (°F). Only cold units show up in the daily log above. The # is the walk order: number the units the way you walk the store and the log follows that path.</div>
         <div id="mgList"><div class="empty">Loading…</div></div>
       </div>
     </div>
@@ -212,11 +214,14 @@
       if(!d||!d.ok){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The temperature log table isn't set up yet. Add it in Supabase (one-time), then readings save."; } else note.style.display="none";
-      UNITS=(d.units||[]).sort(byName); READS=d.readings||[]; render();
+      UNITS=(d.units||[]).sort(byOrder); READS=d.readings||[]; render();
     }).catch(function(){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
   function byName(a,b){ return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); }
+  // Walk order: the number set in Manage units (so the list follows your path
+  // around the store), un-numbered units last, name as tiebreaker.
+  function byOrder(a,b){ var sa=(a.sort==null?1e9:a.sort), sb=(b.sort==null?1e9:b.sort); if(sa!==sb) return sa-sb; return byName(a,b); }
   function outOf(temp,min,max){ if(temp==null||isNaN(temp)) return false; if(min!=null&&temp<min) return true; if(max!=null&&temp>max) return true; return false; }
   function rangeText(min,max){ if(min==null&&max==null) return "No range set"; if(min!=null&&max!=null) return min+"° to "+max+"°F"; if(max!=null) return "≤ "+max+"°F"; return "≥ "+min+"°F"; }
   // The range used for flagging: the unit's own if set, otherwise a generic by type.
@@ -268,7 +273,8 @@
         return "<td class='c-cell'>"+(CAN_EDIT?"<input type='number' inputmode='decimal' step='0.1' class='gcell tinput' data-aid='"+esc(u.id)+"' data-slot='"+esc(key)+"' placeholder='—' />":"<span class='cell-none'>—</span>")+"</td>";
       }).join("");
       var rangeDiv = IS_MASTER ? "<div class='u-range'>"+esc(rangeDisplay(u))+"</div>" : "";
-      return "<tr id='row_"+esc(u.id)+"'><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div>"+rangeDiv+"</td>"+cells+(addTh?"<td></td>":"")+"</tr>";
+      var ordn = u.sort!=null ? "<span class='ordn'>"+esc(u.sort)+".</span> " : "";
+      return "<tr id='row_"+esc(u.id)+"'><td class='c-unit'><div class='u-name'>"+ordn+esc(u.name)+"</div>"+rangeDiv+"</td>"+cells+(addTh?"<td></td>":"")+"</tr>";
     }).join("");
     var table="<div class='tlogwrap'><table class='tlog'><thead><tr><th>Unit</th>"+ths+addTh+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
     var saveBtn = CAN_EDIT ? "<div class='saverow'><button type='button' class='btn savebtn' id='saveRound'>✓ Save readings</button><span class='savemsg' id='saveMsg'></span></div>" : "";
@@ -339,18 +345,20 @@
     document.getElementById("mgList").innerHTML="<div class='empty'>Loading…</div>";
     fetch("/api/temps/units?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
-      var assets=(d.assets||[]).sort(byName);
+      var assets=(d.assets||[]).sort(byOrder);
       if(!assets.length){ document.getElementById("mgList").innerHTML="<div class='empty'>No assets for this client yet.</div>"; return; }
       document.getElementById("mgList").innerHTML = assets.map(function(a){
         return "<div class='mgrow' data-aid='"+esc(a.id)+"'>"+
+          "<input type='number' class='mg_sort' placeholder='#' title='Walk order' value='"+(a.sort==null?"":esc(a.sort))+"' />"+
           "<span class='mgname'>"+esc(a.name)+"</span>"+
           "<label class='chk'><input type='checkbox' class='mg_cold'"+(a.coldUnit?" checked":"")+" /> Cold unit</label>"+
           "<span class='mgrange'><input type='number' step='0.1' class='mg_min' placeholder='min' value='"+(a.min==null?"":esc(a.min))+"' /><span>to</span><input type='number' step='0.1' class='mg_max' placeholder='max' value='"+(a.max==null?"":esc(a.max))+"' /><span>°F</span></span>"+
           "<span class='mgstatus' aria-live='polite'></span>"+
         "</div>";
       }).join("");
-      // Auto-save the moment a row changes (checkbox toggle, or leaving a min/max field).
+      // Auto-save the moment a row changes (order, checkbox toggle, or leaving a min/max field).
       Array.prototype.slice.call(document.querySelectorAll("#mgList .mgrow")).forEach(function(row){
+        row.querySelector(".mg_sort").addEventListener("change", function(){ saveUnit(row); });
         row.querySelector(".mg_cold").addEventListener("change", function(){ saveUnit(row); });
         row.querySelector(".mg_min").addEventListener("change", function(){ saveUnit(row); });
         row.querySelector(".mg_max").addEventListener("change", function(){ saveUnit(row); });
@@ -363,9 +371,10 @@
     var cold=row.querySelector(".mg_cold").checked;
     var min=row.querySelector(".mg_min").value;
     var max=row.querySelector(".mg_max").value;
+    var ord=row.querySelector(".mg_sort").value;
     var st=row.querySelector(".mgstatus");
     if(st){ st.textContent="Saving…"; st.style.color="var(--muted)"; }
-    fetch("/api/temps/unit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:aid,coldUnit:cold,tempMin:min,tempMax:max})})
+    fetch("/api/temps/unit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:aid,coldUnit:cold,tempMin:min,tempMax:max,tempSort:ord})})
       .then(function(r){return r.json();}).then(function(d){
         if(d&&d.ok){ if(st){ st.textContent="Saved ✓"; st.style.color="var(--ok)"; setTimeout(function(){ if(st) st.textContent=""; }, 1600); } load(); }
         else { if(st){ st.textContent=(d&&d.error)||"Couldn't save"; st.style.color="var(--red)"; } }
@@ -420,7 +429,7 @@
 
   function renderHistory(units, reads, from, to){
     var out=document.getElementById("histOut");
-    units=(units||[]).slice().sort(byName);
+    units=(units||[]).slice().sort(byOrder);
     if(!units.length){ out.innerHTML="<div class='empty'>No cold units for this client.</div>"; return; }
     var days=daysBetween(from,to);
     if(!days.length){ out.innerHTML="<div class='empty'>Empty range.</div>"; return; }
