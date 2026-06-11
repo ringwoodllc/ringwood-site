@@ -88,6 +88,7 @@ export default {
     if (url.pathname === "/api/redbook" && request.method === "GET") return listRedbook(url, env, session);
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
     if (url.pathname === "/api/redbook/delete" && request.method === "POST") return deleteRedbookDoc(request, env, session);
+    if (url.pathname === "/api/redbook/rename" && request.method === "POST") return renameRedbookDoc(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/unit" && request.method === "POST") return setTempUnit(request, env, session);
@@ -3047,6 +3048,27 @@ async function deleteRedbookDoc(request, env, session) {
   }
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/redbook_docs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+async function renameRedbookDoc(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  const title = (body.title || "").toString().trim().slice(0, 200);
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  if (!title) return json({ ok: false, error: "Enter a name." }, 400);
+  // A client login may only rename its own client's docs.
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `redbook_docs?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const res = await sbUpdate(env, "redbook_docs", id, { title });
+  if (!res.ok) return json({ ok: false, error: "Could not rename." }, 502);
   return json({ ok: true });
 }
 

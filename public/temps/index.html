@@ -64,7 +64,7 @@
   .mgrange span{color:var(--muted);font-size:.82rem}
   .chk{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green-deep);font-size:.88rem;cursor:pointer}
   .chk input{width:auto}
-  .mgsave{background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:6px;padding:7px 12px;font:inherit;font-weight:600;font-size:.84rem;cursor:pointer}
+  .mgstatus{flex:0 0 auto;font-size:.8rem;font-weight:600;min-width:64px;text-align:right}
   .secwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
   .sechead:hover{background:rgba(33,68,58,.04)}
@@ -165,10 +165,11 @@
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The temperature log table isn't set up yet. Add it in Supabase (one-time), then readings save."; } else note.style.display="none";
       DEMO_ON=!!d.demo; updateDemoBtn();
-      UNITS=d.units||[]; READS=d.readings||[]; render();
+      UNITS=(d.units||[]).sort(byName); READS=d.readings||[]; render();
     }).catch(function(){ document.getElementById("units").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
+  function byName(a,b){ return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); }
   function outOf(temp,min,max){ if(temp==null||isNaN(temp)) return false; if(min!=null&&temp<min) return true; if(max!=null&&temp>max) return true; return false; }
   function rangeText(min,max){ if(min==null&&max==null) return "No range set"; if(min!=null&&max!=null) return min+"° to "+max+"°F"; if(max!=null) return "≤ "+max+"°F"; return "≥ "+min+"°F"; }
 
@@ -218,29 +219,38 @@
     document.getElementById("mgList").innerHTML="<div class='empty'>Loading…</div>";
     fetch("/api/temps/units?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
-      var assets=d.assets||[];
+      var assets=(d.assets||[]).sort(byName);
       if(!assets.length){ document.getElementById("mgList").innerHTML="<div class='empty'>No assets for this client yet.</div>"; return; }
       document.getElementById("mgList").innerHTML = assets.map(function(a){
         return "<div class='mgrow' data-aid='"+esc(a.id)+"'>"+
           "<span class='mgname'>"+esc(a.name)+"</span>"+
           "<label class='chk'><input type='checkbox' class='mg_cold'"+(a.coldUnit?" checked":"")+" /> Cold unit</label>"+
           "<span class='mgrange'><input type='number' step='0.1' class='mg_min' placeholder='min' value='"+(a.min==null?"":esc(a.min))+"' /><span>to</span><input type='number' step='0.1' class='mg_max' placeholder='max' value='"+(a.max==null?"":esc(a.max))+"' /><span>°F</span></span>"+
-          "<button type='button' class='mgsave'>Save</button>"+
+          "<span class='mgstatus' aria-live='polite'></span>"+
         "</div>";
       }).join("");
-      Array.prototype.slice.call(document.querySelectorAll("#mgList .mgsave")).forEach(function(b){ b.addEventListener("click", function(){ saveUnit(b.closest(".mgrow"), b); }); });
+      // Auto-save the moment a row changes (checkbox toggle, or leaving a min/max field).
+      Array.prototype.slice.call(document.querySelectorAll("#mgList .mgrow")).forEach(function(row){
+        row.querySelector(".mg_cold").addEventListener("change", function(){ saveUnit(row); });
+        row.querySelector(".mg_min").addEventListener("change", function(){ saveUnit(row); });
+        row.querySelector(".mg_max").addEventListener("change", function(){ saveUnit(row); });
+      });
     }).catch(function(){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
-  function saveUnit(row, btn){
+  function saveUnit(row){
     var aid=row.getAttribute("data-aid");
     var cold=row.querySelector(".mg_cold").checked;
     var min=row.querySelector(".mg_min").value;
     var max=row.querySelector(".mg_max").value;
-    btn.disabled=true; btn.textContent="Saving…";
+    var st=row.querySelector(".mgstatus");
+    if(st){ st.textContent="Saving…"; st.style.color="var(--muted)"; }
     fetch("/api/temps/unit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,assetId:aid,coldUnit:cold,tempMin:min,tempMax:max})})
-      .then(function(r){return r.json();}).then(function(d){ btn.disabled=false; btn.textContent="Save"; if(d&&d.ok){ load(); } else alert((d&&d.error)||"Couldn't save."); })
-      .catch(function(){ btn.disabled=false; btn.textContent="Save"; alert("Couldn't reach the server."); });
+      .then(function(r){return r.json();}).then(function(d){
+        if(d&&d.ok){ if(st){ st.textContent="Saved ✓"; st.style.color="var(--ok)"; setTimeout(function(){ if(st) st.textContent=""; }, 1600); } load(); }
+        else { if(st){ st.textContent=(d&&d.error)||"Couldn't save"; st.style.color="var(--red)"; } }
+      })
+      .catch(function(){ if(st){ st.textContent="No connection"; st.style.color="var(--red)"; } });
   }
 
   document.getElementById("mgToggle").addEventListener("click", function(){

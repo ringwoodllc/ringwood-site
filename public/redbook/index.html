@@ -47,6 +47,12 @@
   .dmain a:hover{border-bottom:1px solid var(--clay)}
   .dmeta{color:var(--muted);font-size:.78rem;margin-top:1px}
   .ddel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .dedit{flex:0 0 auto;background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:999px;width:26px;height:26px;font:inherit;cursor:pointer}
+  .dedit:hover{border-color:var(--green)}
+  .dtitle-edit{width:100%;font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--green);border-radius:5px;padding:7px 9px}
+  .deditrow{display:flex;gap:7px;margin-top:6px}
+  .dsave{background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:6px 13px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
+  .dcancel{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer}
   .up{display:inline-flex;align-items:center;gap:7px;cursor:pointer;margin-top:10px;background:var(--bg);border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;padding:9px 14px;color:var(--green-deep);font-weight:600;font-size:.88rem}
   .up:hover{border-color:var(--green)}
   .umsg{font-size:.82rem;color:var(--muted);margin-top:6px}
@@ -94,7 +100,7 @@
   </div>
 </main>
 <script>
-  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   var SECTIONS = ["Permits & Inspections","Food Safety Certifications","Employee Health","Pest Management","Chemical Safety (SDS / HazCom)","Monthly Self-Assessments","Cleaning & Sanitation","Temperature & Calibration","Receiving","Crisis / Recovery","Other / Supporting Documents"];
   var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DOCS=[];
 
@@ -136,14 +142,17 @@
   }
 
   function render(){
+    // Remember which sections are open so a re-render (rename/delete) doesn't collapse them.
+    var openSet={}; Array.prototype.slice.call(document.querySelectorAll(".secbody")).forEach(function(b){ if(b.style.display==="block") openSet[b.id]=1; });
     var bySec={}; DOCS.forEach(function(x){ (bySec[x.section]=bySec[x.section]||[]).push(x); });
     var html = SECTIONS.map(function(sec, i){
-      var ds=bySec[sec]||[];
+      var ds=(bySec[sec]||[]).slice().sort(function(a,b){ return (a.title||"").toLowerCase().localeCompare((b.title||"").toLowerCase()); });
       var docHtml = ds.length ? ds.map(function(x){
         var isImg=(x.type||"").indexOf("image")===0;
         return "<div class='doc'><span class='dtype "+(isImg?"img":"pdf")+"'>"+(isImg?"IMG":"PDF")+"</span>"+
-          "<div class='dmain'><a href='"+esc(x.url)+"' target='_blank' rel='noopener'>"+esc(x.title)+"</a>"+
+          "<div class='dmain'><a class='dlink' href='"+esc(x.url)+"' target='_blank' rel='noopener'>"+esc(x.title)+"</a>"+
           "<div class='dmeta'>"+(x.uploadedBy?esc(x.uploadedBy)+" · ":"")+esc(x.created?new Date(x.created).toLocaleDateString():"")+"</div></div>"+
+          (CAN_EDIT?"<button type='button' class='dedit' data-id='"+esc(x.id)+"' data-title='"+esc(x.title)+"' title='Rename'>✎</button>":"")+
           (CAN_EDIT?"<button type='button' class='ddel' data-id='"+esc(x.id)+"' title='Remove'>×</button>":"")+
         "</div>";
       }).join("") : "<div class='empty'>No documents yet.</div>";
@@ -152,12 +161,34 @@
         "<div class='secbody' id='sb_"+i+"' style='display:none'>"+docHtml+up+"</div></div>";
     }).join("");
     document.getElementById("sections").innerHTML=html;
+    // restore open sections
+    Object.keys(openSet).forEach(function(id){ var b=document.getElementById(id); if(b) b.style.display="block"; });
     // wire toggles
     Array.prototype.slice.call(document.querySelectorAll(".sechead")).forEach(function(h){ h.addEventListener("click", function(){ var b=document.getElementById("sb_"+h.getAttribute("data-i")); b.style.display = b.style.display==="block"?"none":"block"; }); });
     // wire deletes
     Array.prototype.slice.call(document.querySelectorAll(".ddel")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); if(!confirm("Remove this document?")) return; fetch("/api/redbook/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
+    // wire renames (inline)
+    Array.prototype.slice.call(document.querySelectorAll(".dedit")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); startRename(b); }); });
     // wire uploads
     Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) doUpload(f, inp.getAttribute("data-sec"), inp.id.replace("up_","umsg_")); }); });
+  }
+
+  function startRename(btn){
+    var row=btn.closest(".doc"), main=row.querySelector(".dmain");
+    var id=btn.getAttribute("data-id"), cur=btn.getAttribute("data-title")||"";
+    main.innerHTML="<input class='dtitle-edit' type='text' value='"+esc(cur)+"' /><div class='deditrow'><button type='button' class='dsave'>Save</button><button type='button' class='dcancel'>Cancel</button></div>";
+    var inp=main.querySelector(".dtitle-edit"); inp.focus(); inp.select();
+    function commit(){
+      var t=(inp.value||"").trim(); if(!t){ inp.focus(); return; }
+      if(t===cur){ render(); return; }
+      inp.disabled=true;
+      fetch("/api/redbook/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,title:t})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ var doc=DOCS.filter(function(z){return z.id===id;})[0]; if(doc) doc.title=t; render(); } else { inp.disabled=false; alert((d&&d.error)||"Couldn't rename."); } })
+        .catch(function(){ inp.disabled=false; alert("Couldn't reach the server."); });
+    }
+    inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); commit(); } else if(e.key==="Escape"){ render(); } });
+    main.querySelector(".dsave").addEventListener("click", commit);
+    main.querySelector(".dcancel").addEventListener("click", function(){ render(); });
   }
 
   function readFile(file, cb){
