@@ -317,7 +317,7 @@
           (CAN_EDIT?"<button type='button' class='ddel' data-id='"+esc(x.id)+"' title='Remove'>×</button>":"")+
         "</div>";
       }).join("") : "<div class='empty'>No documents yet.</div>";
-      var up = CAN_EDIT ? "<label class='up' for='up_"+i+"' data-sec='"+esc(sec)+"' data-msg='umsg_"+i+"'>＋ Upload, paste, or drop a PDF or photo</label><input type='file' id='up_"+i+"' accept='application/pdf,image/*' data-sec='"+esc(sec)+"' style='display:none'/><div class='umsg' id='umsg_"+i+"'></div>" : "";
+      var up = CAN_EDIT ? "<label class='up' data-for='up_"+i+"' data-sec='"+esc(sec)+"' data-msg='umsg_"+i+"' role='button' tabindex='0'>＋ Upload, paste, or drop a PDF or photo</label><input type='file' id='up_"+i+"' accept='application/pdf,image/*' data-sec='"+esc(sec)+"' style='display:none'/><div class='umsg' id='umsg_"+i+"'></div>" : "";
       return "<div class='sec'><div class='sechead' data-i='"+i+"'><span class='sectitle'>"+esc(sec)+"</span><span class='seccount"+(ds.length?" has":"")+"'>"+ds.length+"</span></div>"+
         "<div class='secbody' id='sb_"+i+"' style='display:none'>"+docHtml+up+"</div></div>";
     }).join("");
@@ -330,10 +330,17 @@
     Array.prototype.slice.call(document.querySelectorAll(".ddel")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); if(!confirm("Remove this document?")) return; fetch("/api/redbook/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't delete."); }); }); });
     // wire renames (inline)
     Array.prototype.slice.call(document.querySelectorAll(".dedit")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); startRename(b); }); });
-    // wire uploads (file picker)
-    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); var sec=inp.getAttribute("data-sec"), msg=inp.id.replace("up_","umsg_"); e.target.value=""; if(fs.length) uploadList(fs, sec, msg); }); });
-    // wire drag-and-drop onto each section's upload box
+    // wire uploads (file picker). Don't clear the input's value inside the
+    // change handler — some browsers (WebKit) invalidate the File objects the
+    // moment the value resets, which made picked files silently fail while
+    // drag-and-drop (whose Files come from the drop event) kept working.
+    // Instead the value is reset just BEFORE opening the picker, which also
+    // lets the same file be picked twice in a row.
+    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); var sec=inp.getAttribute("data-sec"), msg=inp.id.replace("up_","umsg_"); if(fs.length) uploadList(fs, sec, msg); }); });
+    // wire the upload box: click opens the picker; drag-and-drop lands here too
     Array.prototype.slice.call(document.querySelectorAll(".up[data-sec]")).forEach(function(lbl){
+      lbl.addEventListener("click", function(e){ e.preventDefault(); var inp=document.getElementById(lbl.getAttribute("data-for")); if(inp){ inp.value=""; inp.click(); } });
+      lbl.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); lbl.click(); } });
       lbl.addEventListener("dragover", function(e){ e.preventDefault(); lbl.classList.add("drag"); });
       lbl.addEventListener("dragleave", function(){ lbl.classList.remove("drag"); });
       lbl.addEventListener("drop", function(e){ e.preventDefault(); lbl.classList.remove("drag"); var fs=e.dataTransfer&&e.dataTransfer.files; if(fs&&fs.length) uploadList(fs, lbl.getAttribute("data-sec"), lbl.getAttribute("data-msg")); });

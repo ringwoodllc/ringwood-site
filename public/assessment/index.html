@@ -184,7 +184,12 @@
     Array.prototype.slice.call(el.querySelectorAll(".qfind input")).forEach(function(i){ i.addEventListener("input", function(){ var qid=i.getAttribute("data-q"); if(i.value.trim()) FIND[qid]=i.value; else delete FIND[qid]; queueSave(); }); });
     Array.prototype.slice.call(el.querySelectorAll(".findtog")).forEach(function(t){ t.addEventListener("click", function(){ var f=document.getElementById("f_"+t.getAttribute("data-q")); f.classList.remove("hide"); t.style.display="none"; f.querySelector("input").focus(); }); });
     // photos on a finding
-    Array.prototype.slice.call(el.querySelectorAll(".addpic input")).forEach(function(i){ i.addEventListener("change", function(e){ var fl=e.target.files&&e.target.files[0]; e.target.value=""; if(fl) addPhoto(i.getAttribute("data-q"), fl); }); });
+    // Reset the value on click (before the picker opens), not in the change
+    // handler — clearing it mid-read invalidates the File on some browsers.
+    Array.prototype.slice.call(el.querySelectorAll(".addpic input")).forEach(function(i){
+      i.addEventListener("click", function(){ i.value=""; });
+      i.addEventListener("change", function(e){ var fl=e.target.files&&e.target.files[0]; if(fl) addPhoto(i.getAttribute("data-q"), fl); });
+    });
     Array.prototype.slice.call(el.querySelectorAll(".thumbdel")).forEach(function(b){ b.addEventListener("click", function(){ var qid=b.getAttribute("data-q"), u=b.getAttribute("data-url"); FINDPICS[qid]=(FINDPICS[qid]||[]).filter(function(x){return x!==u;}); if(!FINDPICS[qid].length) delete FINDPICS[qid]; render(); saveDay(); }); });
     updateSummary();
   }
