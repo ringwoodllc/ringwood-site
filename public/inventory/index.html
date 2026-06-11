@@ -79,6 +79,17 @@
   table.trend tr:last-child td{border-bottom:none}
   table.trend .up{color:var(--green);font-weight:700}
   table.trend .down{color:var(--clay)}
+  table.plan{border-collapse:collapse;font-size:.86rem;min-width:100%}
+  table.plan th,table.plan td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:center}
+  table.plan th{background:rgba(33,68,58,.05);font-size:.7rem;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  table.plan th.prod,table.plan td.prod{text-align:left;position:sticky;left:0;background:var(--bg-2);z-index:1;min-width:150px}
+  table.plan th.prod{background:rgba(238,231,217,.98);z-index:2}
+  table.plan tr:last-child td{border-bottom:none}
+  table.plan .zero{color:var(--line)}
+  table.plan .pname{width:100%;min-width:130px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 8px}
+  table.plan .pneed{width:58px;text-align:center;font:inherit;font-size:.95rem;font-weight:700;color:var(--clay);background:var(--bg);border:1px solid var(--clay);border-radius:5px;padding:6px 4px}
+  table.plan .detail{font:inherit;font-size:.82rem;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);max-width:140px}
+  table.plan .idel{background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:24px;height:24px;font:inherit;cursor:pointer}
   .ordcol{cursor:pointer}
   .ordcol:hover{text-decoration:underline}
   .editor{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
@@ -159,7 +170,7 @@
 <script src="/client-pins.js"></script>
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-  var IS_MASTER=false, CAN_EDIT=true, CLIENT="", CUR=null, PHOTOS=[], ITEMS=[];
+  var IS_MASTER=false, CAN_EDIT=true, CLIENT="", CUR=null, PHOTOS=[], ITEMS=[], ORD3=[], BUY=[];
   var KINDS=[["tub","3-gal tub"],["pack","8-pack"],["cabinet","Dipping cabinet"],["other","Other"]];
   function kindLabel(k){ for(var i=0;i<KINDS.length;i++) if(KINDS[i][0]===k) return KINDS[i][1]; return k; }
   function fmtDate(s){ if(!s) return ""; var d=new Date(s); return isNaN(d)?"":d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
@@ -215,7 +226,9 @@
       CUR=d.count; PHOTOS=d.photos||[]; ITEMS=d.items||[];
       document.getElementById("detailWhen").textContent=fmtDate(CUR.created_at);
       document.getElementById("closeBtn").textContent=CUR.status==="done"?"Reopen":"Mark done";
-      renderPhotos(); renderItems(); renderBuy();
+      renderPhotos();
+      // Pull recent orders too, so the plan can show the last 3 against on-hand.
+      fetch("/api/inventory/orders?client="+encodeURIComponent(CLIENT),{cache:"no-store"}).then(function(r){return r.json();}).then(function(od){ ORD3=(od&&od.orders)||[]; renderPlan(); renderBuy(); }).catch(function(){ ORD3=[]; renderPlan(); renderBuy(); });
     }).catch(function(){ document.getElementById("items").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
   document.getElementById("backToList").addEventListener("click", function(){ showList(); loadCounts(); });
@@ -242,41 +255,71 @@
     }); });
   }
 
-  function renderItems(){
+  /* ---- The plan: order-form layout, grouped by category, with the last 3
+         orders, an on-hand estimate (photos combined) + a where dropdown, and a
+         column for what to order, which collects into the buy list. ---- */
+  function fullVal(f){ return f==="full"?1:(f==="half"?0.5:(f==="low"?0.25:0)); }
+  function fullLabel(f){ return f==="full"?"Full":(f==="half"?"~Half":(f==="low"?"Low":"—")); }
+  function kindShort(k){ return k==="pack"?"pack":(k==="tub"?"tub":(k==="other"?"":"")); }
+  function shortDate(s){ var p=(s||"").slice(0,10).split("-"); return p.length===3?(+p[1])+"/"+(+p[2]):s; }
+  function catOf(product, kind){
+    if(kind==="cabinet"||kind==="tub") return "3 Gallon";
+    if(kind==="pack") return "Quarts & Packs";
+    var n=(product||"").toLowerCase();
+    if(/\bqt\b|quart/.test(n)) return "Quarts & Packs";
+    if(/cake|sheet|6 ?pk|\bpk\b|bars|diced/.test(n)) return "Cakes & Novelty";
+    return "3 Gallon";
+  }
+  function baseKey(product){
+    var n=(product||"").toLowerCase();
+    n=n.replace(/\b(3g|3 ?gal|gallon|qt|quart|ic|shb|nsa|6 ?pk|pk|iw|14 ?pk|12|round|layer|sheet|bars|diced|new)\b/g," ");
+    return n.replace(/[^a-z0-9]+/g," ").trim();
+  }
+  function ordKey(product, kind){ return catOf(product,kind)+"|"+baseKey(product); }
+  function orderMaps(){
+    return (ORD3||[]).slice(-3).map(function(o){ var m={}; (o.items||[]).forEach(function(it){ var k=ordKey(it.product,""); m[k]=(m[k]||0)+(parseFloat(it.qty)||0); }); return {o:o,m:m}; });
+  }
+  function estimateOf(g){
+    var t=0, cab=false, sealed=false;
+    g.items.forEach(function(it){ if(it.kind==="cabinet"){ t+=fullVal(it.fullness); cab=true; } else { t+=(parseFloat(it.qty)||0); sealed=true; } });
+    return "≈ "+fmtQ(t)+(cab&&!sealed?(" tub"+(t===1?"":"s")):"");
+  }
+
+  function renderPlan(){
     var box=document.getElementById("items");
     if(!ITEMS.length){ box.innerHTML="<div class='empty'>No items yet. Add photos and the AI fills this in.</div>"; return; }
-    var rows=ITEMS.map(function(it){
-      var ph=PHOTOS.filter(function(p){return p.id===it.photo_id;})[0];
-      var thumb=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"";
-      var kindSel="<select class='pkind' data-f='kind'>"+KINDS.map(function(k){ return "<option value='"+k[0]+"'"+(k[0]===it.kind?" selected":"")+">"+k[1]+"</option>"; }).join("")+"</select>";
-      var onhand = it.kind==="cabinet"
-        ? "<select class='pkind' data-f='fullness'><option value='full'"+(it.fullness==="full"?" selected":"")+">Full</option><option value='half'"+(it.fullness==="half"||!it.fullness?" selected":"")+">~Half</option><option value='low'"+(it.fullness==="low"?" selected":"")+">Low</option></select>"
-        : "<input class='pqty' data-f='qty' type='number' step='1' min='0' value='"+esc(it.qty)+"' />";
-      return "<tr data-id='"+esc(it.id)+"'>"+
-        "<td>"+thumb+"</td>"+
-        "<td><input class='pname' data-f='product' value='"+esc(it.product)+"' placeholder='Flavor' />"+(it.label?"<div style='font-size:.7rem;color:var(--muted);margin-top:2px'>"+esc(it.label)+"</div>":"")+"</td>"+
-        "<td>"+kindSel+"</td>"+
-        "<td>"+onhand+"</td>"+
-        "<td><input class='pwhere' data-f='placement' value='"+esc(it.placement||"")+"' placeholder='where' /></td>"+
-        "<td><input class='pneed' data-f='need' type='number' step='1' min='0' value='"+(it.need==null?"":esc(it.need))+"' placeholder='0' /></td>"+
-        "<td><button type='button' class='idel'>×</button></td>"+
-      "</tr>";
-    }).join("");
-    box.innerHTML="<table class='inv'><thead><tr><th></th><th>Flavor</th><th>Type</th><th>On hand</th><th>Where</th><th>Need</th><th></th></tr></thead><tbody>"+rows+"</tbody></table>";
-    Array.prototype.slice.call(box.querySelectorAll("tr[data-id]")).forEach(function(tr){
-      var id=tr.getAttribute("data-id");
-      tr.querySelectorAll("[data-f]").forEach(function(inp){
-        inp.addEventListener("change", function(){
-          var f=inp.getAttribute("data-f"); var body={client:CLIENT,id:id}; body[f]=inp.value;
-          var it=ITEMS.filter(function(z){return z.id===id;})[0]; if(it){ it[f]=inp.value; }
-          fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
-            .then(function(r){return r.json();}).then(function(d){ if(f==="kind"){ renderItems(); } if(f==="need"||f==="product"){ renderBuy(); } });
-        });
+    var maps=orderMaps();
+    var groups={}, order=[];
+    ITEMS.forEach(function(it){ var k=ordKey(it.product,it.kind); if(!groups[k]){ groups[k]={key:k,cat:catOf(it.product,it.kind),name:it.product||"",items:[]}; order.push(k); } var g=groups[k]; g.items.push(it); if(!g.name&&it.product) g.name=it.product; });
+    var cats=["3 Gallon","Quarts & Packs","Cakes & Novelty","Other"];
+    var byCat={}; cats.forEach(function(c){byCat[c]=[];});
+    order.forEach(function(k){ var g=groups[k]; (byCat[g.cat]||byCat["Other"]).push(g); });
+    var ohdr = maps.length ? maps.map(function(x,i){ var lbl=maps.length===1?"Last":(i===0?"Oldest":(i===maps.length-1?"Last":"Prior")); return "<th title='"+esc(orderLabel(x.o))+"'>"+lbl+"<div style='font-weight:400;text-transform:none;font-size:.7rem'>"+esc(shortDate(x.o.order_date))+"</div></th>"; }).join("") : "<th>Order 1</th><th>Order 2</th><th>Last</th>";
+    var ncols = maps.length || 3;
+    var html="";
+    cats.forEach(function(c){
+      var gs=byCat[c]; if(!gs.length) return;
+      gs.sort(function(a,b){ return (a.name||"~").toLowerCase().localeCompare((b.name||"~").toLowerCase()); });
+      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th><th></th></tr></thead><tbody>";
+      gs.forEach(function(g){
+        var ocells = maps.length ? maps.map(function(x){ var q=x.m[g.key]; return "<td>"+(q?fmtQ(q):"<span class='zero'>·</span>")+"</td>"; }).join("") : "<td class='zero'>·</td><td class='zero'>·</td><td class='zero'>·</td>";
+        var opts=g.items.map(function(it){ var loc=(it.placement||"somewhere"); var detail=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+kindShort(it.kind)); return "<option>"+esc(loc+" · "+detail)+"</option>"; }).join("");
+        var dd="<select class='detail' title='Where it is'><option>"+esc(estimateOf(g))+"</option>"+opts+"</select>";
+        var need=g.items[0].need;
+        html+="<tr data-key='"+esc(g.key)+"'><td class='prod'><input class='pname' value='"+esc(g.name)+"' placeholder='Flavor' /></td>"+ocells+"<td>"+dd+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td><td><button type='button' class='idel' title='Remove'>×</button></td></tr>";
       });
+      html+="</tbody></table></div>";
+    });
+    box.innerHTML=html;
+    Array.prototype.slice.call(box.querySelectorAll("tr[data-key]")).forEach(function(tr){
+      var g=groups[tr.getAttribute("data-key")];
+      var nameInp=tr.querySelector(".pname"), needInp=tr.querySelector(".pneed");
+      nameInp.addEventListener("change", function(){ var v=nameInp.value; g.items.forEach(function(it){ it.product=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,product:v})}); }); renderBuy(); });
+      needInp.addEventListener("change", function(){ var v=needInp.value; var it=g.items[0]; it.need=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,need:v})}); renderBuy(); });
       tr.querySelector(".idel").addEventListener("click", function(){
-        if(!confirm("Remove this item?")) return;
-        fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})})
-          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ITEMS=ITEMS.filter(function(z){return z.id!==id;}); renderItems(); renderBuy(); } });
+        if(!confirm("Remove "+(g.name||"this flavor")+" from this count?")) return;
+        var ids=g.items.map(function(it){return it.id;});
+        Promise.all(ids.map(function(id){ return fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}); })).then(function(){ ITEMS=ITEMS.filter(function(z){ return ids.indexOf(z.id)<0; }); renderPlan(); renderBuy(); });
       });
     });
   }
@@ -286,14 +329,22 @@
     var by={};
     ITEMS.forEach(function(it){ var n=parseFloat(it.need); if(!isNaN(n)&&n>0){ var k=(it.product||"?").trim().toLowerCase()||"?"; if(!by[k]) by[k]={name:it.product||"?",n:0}; by[k].n+=n; } });
     var keys=Object.keys(by).sort(function(a,b){ return by[b].n-by[a].n; });
-    if(!keys.length){ box.innerHTML="<div class='empty'>Set \"Need\" on items above and they collect here.</div>"; return; }
-    box.innerHTML=keys.map(function(k){ return "<div class='buyrow'><span>"+esc(by[k].name)+"</span><span class='q'>"+by[k].n+"</span></div>"; }).join("");
+    if(!keys.length){ BUY=[]; box.innerHTML="<div class='empty'>Set \"Order\" on flavors above and they collect here as your buy list.</div>"; return; }
+    BUY=keys.map(function(k){ return {name:by[k].name, n:by[k].n}; });
+    box.innerHTML=keys.map(function(k){ return "<div class='buyrow'><span>"+esc(by[k].name)+"</span><span class='q'>"+by[k].n+"</span></div>"; }).join("")+
+      "<div class='toolbar' style='margin-top:8px'><button type='button' class='btn' id='makeOrderBtn'>Save as order</button><span class='msg' id='buyMsg'></span></div>";
+    document.getElementById("makeOrderBtn").addEventListener("click", function(){
+      var b=this; b.disabled=true; b.textContent="Saving…";
+      fetch("/api/inventory/order",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:todayStr(),label:"Buy list",items:BUY.map(function(x){return {product:x.name,qty:x.n};})})})
+        .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save as order"; var m=document.getElementById("buyMsg"); if(d&&d.ok){ m.style.color="var(--ok)"; m.textContent="Saved to Orders ✓"; } else { m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't save."; } })
+        .catch(function(){ b.disabled=false; b.textContent="Save as order"; });
+    });
   }
 
   document.getElementById("addItemBtn").addEventListener("click", function(){
     if(!CUR) return;
     fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,product:"",kind:"tub",qty:1})})
-      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.item){ ITEMS.push(d.item); renderItems(); } else alert((d&&d.error)||"Couldn't add."); });
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.item){ ITEMS.push(d.item); renderPlan(); } else alert((d&&d.error)||"Couldn't add."); });
   });
 
   /* ---- Add photos (AI reads each into items) ---- */
