@@ -302,6 +302,8 @@
   function printReport(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
     if(!QS.length){ alert("Nothing to save yet."); return; }
+    // Flush any pending answer edits so the PDF and the saved record match.
+    if(CAN_EDIT) saveDay();
     var btn=document.getElementById("pdfBtn"); btn.disabled=true; var old=btn.textContent; btn.textContent="Building PDF…";
     var urls=[]; QS.forEach(function(q){ (FINDPICS[q.id]||[]).forEach(function(u){ urls.push(u); }); });
     Promise.all(urls.map(fetchPhotoJpeg)).then(function(arr){
