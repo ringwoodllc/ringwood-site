@@ -100,6 +100,8 @@
   .pcard .nopic{width:104px;height:104px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:.74rem;background:var(--bg-2);border:1px dashed var(--line);border-radius:8px}
   .pcard .pcap{font-size:.74rem;color:var(--muted);text-align:center;line-height:1.25}
   .pcard .pcap b{color:var(--green-deep)}
+  .chk{display:inline-flex;align-items:center;gap:7px;font-weight:600;color:var(--green-deep);font-size:.86rem;cursor:pointer}
+  .chk input{width:auto}
   .ordcol{cursor:pointer}
   .ordcol:hover{text-decoration:underline}
   .editor{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
@@ -162,6 +164,7 @@
       <span class="msg" id="photoMsg"></span>
     </div>
     <div id="photos" class="photos"></div>
+    <div class="toolbar"><label class="chk"><input type="checkbox" id="hideEmpty" /> Hide flavors with nothing on hand and never ordered</label></div>
     <div id="items"></div>
     <div class="grp">Buy list</div>
     <div id="buy" class="buy"><div class="empty">Set "Need" on items above and they collect here.</div></div>
@@ -251,6 +254,7 @@
     }).catch(function(){ document.getElementById("items").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
   document.getElementById("backToList").addEventListener("click", function(){ showList(); loadCounts(); });
+  document.getElementById("hideEmpty").addEventListener("change", function(){ if(CUR) renderPlan(); });
   document.getElementById("deleteCountBtn").addEventListener("click", function(){
     if(!CUR) return;
     if(!confirm("Delete this whole count, including its photos and items?")) return;
@@ -304,54 +308,77 @@
     return "≈ "+fmtQ(t)+(cab&&!sealed?(" tub"+(t===1?"":"s")):"");
   }
 
+  function catKind(cat){ return cat==="Quarts & Packs"?"pack":(cat==="Cakes & Novelty"?"other":"tub"); }
+  function estVal(items){ var t=0; items.forEach(function(it){ t+= it.kind==="cabinet"?fullVal(it.fullness):(parseFloat(it.qty)||0); }); return t; }
+
   function renderPlan(){
     var box=document.getElementById("items");
-    if(!ITEMS.length){ box.innerHTML="<div class='empty'>No items yet. Add photos and the AI fills this in.</div>"; return; }
+    var he=document.getElementById("hideEmpty"); var hideEmpty=he&&he.checked;
     var maps=orderMaps();
-    var groups={}, order=[];
-    ITEMS.forEach(function(it){ var k=ordKey(it.product,it.kind); if(!groups[k]){ groups[k]={key:k,cat:catOf(it.product,it.kind),name:it.product||"",items:[]}; order.push(k); } var g=groups[k]; g.items.push(it); if(!g.name&&it.product) g.name=it.product; });
+    // On-hand from the photos, grouped by flavor.
+    var groups={}; ITEMS.forEach(function(it){ var k=ordKey(it.product,it.kind); (groups[k]=groups[k]||[]).push(it); });
+    // The full order form: the standard catalog, plus anything seen in the last
+    // orders or the photos, so every line is present even at 0 on hand.
+    var seen={}, list=[];
+    function add(name, kindHint){ var k=ordKey(name, kindHint||""); if(seen[k]) return; seen[k]={key:k, cat:catOf(name, kindHint||""), name:name}; list.push(seen[k]); }
+    BR_PRODUCTS.forEach(function(n){ add(n,""); });
+    (ORD3||[]).forEach(function(o){ (o.items||[]).forEach(function(it){ if(it.product) add(it.product,""); }); });
+    ITEMS.forEach(function(it){ if(it.product){ var k=ordKey(it.product,it.kind); if(!seen[k]) add(it.product, it.kind); } });
     var cats=["3 Gallon","Quarts & Packs","Cakes & Novelty","Other"];
     var byCat={}; cats.forEach(function(c){byCat[c]=[];});
-    order.forEach(function(k){ var g=groups[k]; (byCat[g.cat]||byCat["Other"]).push(g); });
+    list.forEach(function(p){ (byCat[p.cat]||byCat["Other"]).push(p); });
     var ohdr = maps.length ? maps.map(function(x,i){ var lbl=maps.length===1?"Last":(i===0?"Oldest":(i===maps.length-1?"Last":"Prior")); return "<th title='"+esc(orderLabel(x.o))+"'>"+lbl+"<div style='font-weight:400;text-transform:none;font-size:.7rem'>"+esc(shortDate(x.o.order_date))+"</div></th>"; }).join("") : "<th>Order 1</th><th>Order 2</th><th>Last</th>";
     var ncols = maps.length || 3;
-    var html="";
+    var shown=0, html="";
     cats.forEach(function(c){
-      var gs=byCat[c]; if(!gs.length) return;
-      gs.sort(function(a,b){ return (a.name||"~").toLowerCase().localeCompare((b.name||"~").toLowerCase()); });
-      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th><th></th></tr></thead><tbody>";
-      gs.forEach(function(g){
-        var ocells = maps.length ? maps.map(function(x){ var q=x.m[g.key]; return "<td>"+(q?fmtQ(q):"<span class='zero'>·</span>")+"</td>"; }).join("") : "<td class='zero'>·</td><td class='zero'>·</td><td class='zero'>·</td>";
-        var onhand="<span class='estv'>"+esc(estimateOf(g))+"</span> <button type='button' class='expand' title='Show the photos behind this'>+</button>";
-        var need=g.items[0].need;
-        html+="<tr data-key='"+esc(g.key)+"'><td class='prod'><input class='pname' value='"+esc(g.name)+"' placeholder='Flavor' /></td>"+ocells+"<td>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td><td><button type='button' class='idel' title='Remove'>×</button></td></tr>";
-        // Hidden detail row: the photo(s) and reading that make up this estimate.
-        var cards=g.items.map(function(it){
-          var ph=PHOTOS.filter(function(p){return p.id===it.photo_id;})[0];
-          var img=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"<div class='nopic'>added by hand</div>";
-          var d=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+(kindShort(it.kind)||"unit"+(parseFloat(it.qty)===1?"":"s")));
-          return "<div class='pcard'>"+img+"<div class='pcap'><b>"+esc(d)+"</b><br>"+esc(it.placement||"somewhere")+"</div></div>";
-        }).join("");
-        html+="<tr class='detailrow hide' data-for='"+esc(g.key)+"'><td colspan='"+(ncols+4)+"'><div class='pcards'>"+cards+"</div></td></tr>";
+      var ps=byCat[c]; if(!ps.length) return;
+      ps.sort(function(a,b){ return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+      var rows="";
+      ps.forEach(function(p){
+        var items=groups[p.key]||[];
+        var onhandVal=estVal(items);
+        var orderedAny=maps.some(function(x){ return (x.m[p.key]||0)>0; });
+        var needVal=items.length?(parseFloat(items[0].need)||0):0;
+        if(hideEmpty && onhandVal===0 && !orderedAny && needVal===0) return;
+        shown++;
+        var ocells = maps.length ? maps.map(function(x){ var q=x.m[p.key]; return "<td>"+(q?fmtQ(q):"<span class='zero'>·</span>")+"</td>"; }).join("") : "<td class='zero'>·</td><td class='zero'>·</td><td class='zero'>·</td>";
+        var onhand = items.length ? ("<span class='estv'>"+esc(estimateOf({items:items}))+"</span> <button type='button' class='expand' title='Show the photos behind this'>+</button>") : "<span class='zero'>0</span>";
+        var need=items.length?items[0].need:null;
+        var del=items.length?"<button type='button' class='idel' title='Clear on-hand'>×</button>":"";
+        rows+="<tr data-key='"+esc(p.key)+"'><td class='prod'>"+esc(p.name)+"</td>"+ocells+"<td>"+onhand+"</td><td><input class='pneed' type='number' min='0' step='1' value='"+(need==null?"":esc(need))+"' placeholder='0' /></td><td>"+del+"</td></tr>";
+        if(items.length){
+          var cards=items.map(function(it){ var ph=PHOTOS.filter(function(z){return z.id===it.photo_id;})[0]; var img=ph?"<img class='thumb' src='"+esc(ph.url)+"' data-lb='"+esc(ph.url)+"' alt='' />":"<div class='nopic'>added by hand</div>"; var dd=it.kind==="cabinet"?fullLabel(it.fullness):(fmtQ(it.qty)+" "+(kindShort(it.kind)||"unit")); return "<div class='pcard'>"+img+"<div class='pcap'><b>"+esc(dd)+"</b><br>"+esc(it.placement||"somewhere")+"</div></div>"; }).join("");
+          rows+="<tr class='detailrow hide'><td colspan='"+(ncols+4)+"'><div class='pcards'>"+cards+"</div></td></tr>";
+        }
       });
-      html+="</tbody></table></div>";
+      if(!rows) return;
+      html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th><th></th></tr></thead><tbody>"+rows+"</tbody></table></div>";
     });
+    if(!shown){ box.innerHTML="<div class='empty'>"+(hideEmpty?"Nothing on hand or on order yet. Untick the hide box to see the full order form.":"Loading the order form…")+"</div>"; return; }
     box.innerHTML=html;
     Array.prototype.slice.call(box.querySelectorAll("tr[data-key]")).forEach(function(tr){
-      var g=groups[tr.getAttribute("data-key")];
-      var nameInp=tr.querySelector(".pname"), needInp=tr.querySelector(".pneed");
-      var exp=tr.querySelector(".expand");
-      if(exp) exp.addEventListener("click", function(){
-        var dr=tr.nextElementSibling;
-        if(!dr||dr.className.indexOf("detailrow")<0) return;
-        var open=dr.classList.toggle("hide")===false; exp.textContent=open?"−":"+";
+      var key=tr.getAttribute("data-key"), p=seen[key], g={items:groups[key]||[]};
+      var needInp=tr.querySelector(".pneed"), exp=tr.querySelector(".expand"), del=tr.querySelector(".idel");
+      if(exp) exp.addEventListener("click", function(){ var dr=tr.nextElementSibling; if(!dr||dr.className.indexOf("detailrow")<0) return; var open=dr.classList.toggle("hide")===false; exp.textContent=open?"−":"+"; });
+      needInp.addEventListener("change", function(){
+        var v=needInp.value;
+        if(g.items.length){
+          var it=g.items[0];
+          if((v===""||parseFloat(v)===0) && (parseFloat(it.qty)||0)===0 && !it.photo_id && g.items.length===1){
+            var id=it.id; ITEMS=ITEMS.filter(function(z){return z.id!==id;}); g.items=[]; groups[key]=[];
+            fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}); renderBuy(); return;
+          }
+          it.need=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,need:v})}); renderBuy();
+        } else {
+          if(v===""||isNaN(parseFloat(v))){ renderBuy(); return; }
+          fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,product:p.name,kind:catKind(p.cat),qty:0,need:v})})
+            .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok&&d.item){ ITEMS.push(d.item); g.items.push(d.item); groups[key]=g.items; renderBuy(); } });
+        }
       });
-      nameInp.addEventListener("change", function(){ var v=nameInp.value; g.items.forEach(function(it){ it.product=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,product:v})}); }); renderBuy(); });
-      needInp.addEventListener("change", function(){ var v=needInp.value; var it=g.items[0]; it.need=v; fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:it.id,need:v})}); renderBuy(); });
-      tr.querySelector(".idel").addEventListener("click", function(){
-        if(!confirm("Remove "+(g.name||"this flavor")+" from this count?")) return;
+      if(del) del.addEventListener("click", function(){
+        if(!confirm("Clear on-hand for "+p.name+"?")) return;
         var ids=g.items.map(function(it){return it.id;});
-        Promise.all(ids.map(function(id){ return fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}); })).then(function(){ ITEMS=ITEMS.filter(function(z){ return ids.indexOf(z.id)<0; }); renderPlan(); renderBuy(); });
+        Promise.all(ids.map(function(id){ return fetch("/api/inventory/item",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}); })).then(function(){ ITEMS=ITEMS.filter(function(z){return ids.indexOf(z.id)<0;}); renderPlan(); renderBuy(); });
       });
     });
   }
