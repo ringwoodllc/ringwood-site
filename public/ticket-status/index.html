@@ -597,7 +597,19 @@
     }
 
     var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
-    if (assetSelEl) assetSelEl.addEventListener("change", function(){ newAssetEl.style.display = assetSelEl.value === "__new" ? "block" : "none"; if(assetSelEl.value==="__new") newAssetEl.focus(); });
+    if (assetSelEl) assetSelEl.addEventListener("change", function(){ var isNew=assetSelEl.value==="__new"; newAssetEl.style.display = isNew ? "block" : "none"; if(isNew) newAssetEl.focus(); else autoSaveTicket({ assetId: assetSelEl.value }); });
+
+    // Hybrid auto-save: picking a dropdown saves it instantly (the Save button
+    // stays for the title, description, notes and photos you compose and review).
+    function flashSaved(){ var m=document.getElementById("e_msg"); if(!m) return; m.style.color="var(--green-deep)"; m.textContent="Saved ✓"; clearTimeout(window.__tkSaveT); window.__tkSaveT=setTimeout(function(){ if(m.textContent==="Saved ✓") m.textContent=""; },1600); }
+    function autoSaveTicket(payload){
+      fetch("/api/tickets/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(Object.assign({id:t.id},payload))})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ flashSaved(); loadLog(); } else { var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save."; } } })
+        .catch(function(){ var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
+    }
+    [["e_status","status"],["e_cat","category"],["e_client","client"],["e_loc","location"]].forEach(function(p){
+      var el=document.getElementById(p[0]); if(el) el.addEventListener("change", function(){ var v={}; v[p[1]]=el.value; autoSaveTicket(v); });
+    });
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
@@ -676,6 +688,7 @@
       var nw = document.getElementById("e_assignedNew");
       if(nw) nw.style.display = isNew ? "block" : "none";
       if(isNew){ var nm = document.getElementById("e_assignedName"); if(nm) nm.focus(); }
+      else autoSaveTicket({ assignedTo: asgSel.value });
     });
     var asgAdd = document.getElementById("e_assignedAdd");
     if (asgAdd) asgAdd.addEventListener("click", function(){
@@ -692,6 +705,7 @@
             asgSel.insertBefore(o, asgSel.querySelector("option[value='__new']"));
             asgSel.value=nm;
             document.getElementById("e_assignedNew").style.display="none"; nmEl.value="";
+            autoSaveTicket({ assignedTo: nm });
           } else { var em=document.getElementById("e_msg"); if(em){ em.style.color="#8a3d1c"; em.textContent=(d&&d.error)||"Couldn't add the vendor."; } }
         }).catch(function(){ asgAdd.disabled=false; asgAdd.textContent="Add"; });
     });

@@ -453,6 +453,15 @@
         "<button class='btn' id='svcBack' type='button' style='width:auto;padding:13px 22px;background:transparent;color:var(--green-deep);border:1px solid var(--line)'>Back</button></div>";
       document.getElementById("svcBack").addEventListener("click", loadHistory);
       document.getElementById("svcSave").addEventListener("click", function(){ saveService(sid); });
+      // Hybrid auto-save: Type and Technician save instantly; Save stays for the rest.
+      function svcAuto(field, value){
+        var m=document.getElementById("svcmsg");
+        fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify((function(){var o={id:sid};o[field]=value;return o;})())})
+          .then(function(r){return r.json();}).then(function(d){ if(m){ if(d&&d.ok){ m.style.color="var(--green-deep)"; m.textContent="Saved ✓"; } else { m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save."; } } })
+          .catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
+      }
+      document.getElementById("s_type").addEventListener("change", function(){ svcAuto("type", this.value); });
+      document.getElementById("s_tech").addEventListener("change", function(){ svcAuto("technician", this.value); });
     }).catch(function(){ loadHistory(); });
   };
   function saveService(sid){

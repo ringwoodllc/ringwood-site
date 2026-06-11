@@ -275,6 +275,17 @@
       })();
       window.__svcBack=function(){ if(history.state&&history.state.svc) history.back(); else { history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); refreshRecords(); window.scrollTo(0,0); } };
       document.getElementById("s_back").addEventListener("click", window.__svcBack);
+      // Hybrid auto-save: Type and Technician save instantly; Save stays for the rest.
+      (function(){
+        function svcAuto(field, value){
+          var m=document.getElementById("s_msg");
+          fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify((function(){var o={id:id};o[field]=value;return o;})())})
+            .then(function(r){return r.json();}).then(function(d){ if(m){ if(d&&d.ok){ m.style.color="var(--green-deep)"; m.textContent="Saved ✓"; } else { m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save."; } } })
+            .catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
+        }
+        document.getElementById("s_type").addEventListener("change", function(){ svcAuto("type", this.value); });
+        document.getElementById("s_tech").addEventListener("change", function(){ svcAuto("technician", this.value); });
+      })();
       document.getElementById("s_save").addEventListener("click",function(){
         var b=this; b.disabled=true; b.textContent="Saving…";
         var payload={ id:id, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value, keepPhotos:keep, addPhotos:add.map(function(p){return {base64:p.base64,contentType:p.contentType};}) };
