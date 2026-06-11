@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Self-Assessment" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Food Safety Self-Assessment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14);--red:#8a3d1c;--ok:#2f5d50}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:760px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:16px 0 14px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 14px}
+  label{display:block;font-weight:600;font-size:.88rem;color:var(--green-deep);margin-bottom:6px}
+  select,input[type=date],input[type=text]{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  .row2{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .row2>div{flex:1;min-width:160px}
+  .daterow{display:flex;gap:8px;align-items:center}
+  .daterow input{flex:1;min-width:0}
+  .dstep{flex:0 0 auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;width:44px;height:44px;font-size:1rem;color:var(--green-deep);cursor:pointer}
+  .dstep:hover{border-color:var(--green)}
+  .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:10px 15px;font:inherit;font-weight:600;font-size:.9rem}
+  .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
+  .savemsg{font-size:.84rem;font-weight:600;color:var(--muted)}
+  .summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.82rem;font-weight:600;color:var(--green-deep)}
+  .chip.no{color:var(--red);border-color:rgba(138,61,28,.4)}
+  .sec{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .sechd{font-family:"Spectral",serif;font-weight:500;font-size:1.1rem;color:#f6f2e8;background:var(--green-deep);padding:11px 15px}
+  .q{padding:12px 15px;border-bottom:1px solid var(--line)}
+  .q:last-child{border-bottom:none}
+  .qtop{display:flex;gap:10px;align-items:flex-start}
+  .qcode{flex:0 0 auto;font-size:.74rem;font-weight:700;color:var(--muted);min-width:58px;padding-top:3px}
+  .qtext{flex:1;font-size:.96rem;color:var(--ink);line-height:1.35}
+  .yn{flex:0 0 auto;display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .yn button{background:var(--bg);border:none;font:inherit;font-weight:700;font-size:.82rem;color:var(--muted);padding:7px 13px;cursor:pointer}
+  .yn button.yes.on{background:var(--green);color:#f6f2e8}
+  .yn button.no.on{background:var(--red);color:#f6f2e8}
+  .qfind{margin-top:8px}
+  .qfind input{font-size:.9rem;padding:8px 10px}
+  .qfind.hide{display:none}
+  .findtog{margin-top:6px;background:transparent;border:none;color:var(--clay);font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;padding:0}
+  .empty{color:var(--muted);padding:10px 0;font-size:.9rem}
+  .manage{margin-top:8px}
+  .secwrap{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:8px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer}
+  .sechead:hover{background:rgba(33,68,58,.04)}
+  .sectitle{font-family:"Spectral",serif;font-weight:500;font-size:1.08rem;color:var(--green-deep)}
+  .admincrown{display:inline-flex;align-items:center;gap:4px;background:rgba(33,68,58,.1);color:var(--green-deep);border-radius:999px;padding:1px 8px 1px 7px;font-size:.62rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle;margin-left:7px}
+  .secbody{padding:0 15px 14px;border-top:1px solid var(--line)}
+  .hint{color:var(--muted);font-size:.82rem;margin:8px 0}
+  .mgrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--line)}
+  .mgrow:last-child{border-bottom:none}
+  .mgsec{flex:1 1 130px;font:inherit;font-size:.86rem;padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .mgcode{flex:0 0 80px;font:inherit;font-size:.86rem;padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .mgq{flex:2 1 100%;font:inherit;font-size:.9rem;padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+  .mgdel{flex:0 0 auto;background:transparent;border:1px solid rgba(138,61,28,.4);color:var(--red);border-radius:999px;width:28px;height:28px;font:inherit;cursor:pointer}
+  .addrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+  .resetbtn{background:transparent;border:1px solid rgba(138,61,28,.5);color:var(--red);border-radius:6px;padding:8px 13px;font:inherit;font-weight:600;font-size:.84rem;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/redbook">Red Book</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Food safety · Logs</div>
+    <h1>Self-Assessment</h1>
+    <p class="lead">Walk the restaurant and answer each item Yes or No. Add a finding where something needs attention.</p>
+  </div>
+
+  <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
+  <div class="row2">
+    <div><label for="dateSel">Date</label>
+      <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
+    </div>
+  </div>
+  <div id="note" class="note" style="display:none"></div>
+  <div id="clTools" style="display:none;margin-bottom:12px">
+    <button type="button" class="btn" id="resetBtn">↺ Load the standard questions</button>
+    <span class="savemsg" id="resetMsg" style="margin-left:10px"></span>
+  </div>
+  <div id="summary" class="summary" style="display:none"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+  <div class="savemsg" id="saveMsg" style="margin:4px 0 18px"></div>
+
+  <div class="manage" id="manageWrap" style="display:none">
+    <div class="secwrap">
+      <div class="sechead" id="mgToggle"><span class="sectitle">Edit questions <span class="admincrown"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span></span><span class="back">Edit ▾</span></div>
+      <div class="secbody" id="mgBody" style="display:none">
+        <div class="hint">Edit the section, code, or wording of any question, remove ones you don't use, or add new ones. Changes apply to this client's assessment.</div>
+        <div id="mgList"><div class="empty">Loading…</div></div>
+        <div class="addrow"><input type="text" id="nSec" class="mgsec" placeholder="Section" /><input type="text" id="nCode" class="mgcode" placeholder="Code" /><input type="text" id="nQ" class="mgq" placeholder="New question" /><button type="button" class="btn ghost" id="addQ">＋ Add</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  var CAN_EDIT=false, IS_MASTER=false, CLIENT="", DATE="", QS=[], ANS={}, FIND={}, MISSING=false, saveT=null;
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/assessment"); return; }
+    IS_MASTER = d.role==="master";
+    var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
+    if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
+    CAN_EDIT = IS_MASTER || lvl==="edit";
+    DATE = today(); document.getElementById("dateSel").value = DATE;
+    document.getElementById("dateSel").addEventListener("change", function(e){ DATE=e.target.value||today(); load(); });
+    document.getElementById("dPrev").addEventListener("click", function(){ shiftDate(-1); });
+    document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
+    if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
+    if(IS_MASTER){
+      document.getElementById("clientPick").style.display="block";
+      fetch("/api/options").then(function(r){return r.json();}).then(function(o){
+        RWClientPins.mount({ selectEl: document.getElementById("clientSel"), clients:(o&&o.clients)||[], placeholder:"Select a client…",
+          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to start.</div>"; document.getElementById("summary").style.display="none"; document.getElementById("clTools").style.display="none"; } else load(); } });
+      }).catch(function(){});
+    } else { CLIENT=d.client||""; load(); }
+  }).catch(function(){});
+
+  function shiftDate(n){ var p=DATE.split("-"); var d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n); DATE=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); document.getElementById("dateSel").value=DATE; load(); }
+
+  function load(){
+    if(IS_MASTER && !CLIENT){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to start.</div>"; return; }
+    document.getElementById("list").innerHTML="<div class='empty'>Loading…</div>";
+    fetch("/api/assessment?client="+encodeURIComponent(CLIENT)+"&date="+encodeURIComponent(DATE),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      var note=document.getElementById("note");
+      if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      MISSING=!!d.missing;
+      if(MISSING){ note.style.display="block"; note.textContent="The assessment tables aren't set up yet. Add them in Supabase (one-time), then answers save."; } else note.style.display="none";
+      QS=d.questions||[]; ANS=d.ans||{}; FIND=d.find||{};
+      document.getElementById("clTools").style.display = IS_MASTER ? "block" : "none";
+      render(); renderManage();
+    }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function render(){
+    var el=document.getElementById("list");
+    if(!QS.length){ el.innerHTML="<div class='empty'>No questions yet."+(IS_MASTER?" Use Load the standard questions above, or add your own in Edit questions.":"")+"</div>"; document.getElementById("summary").style.display="none"; return; }
+    var bySec=[], idx={};
+    QS.forEach(function(q){ if(idx[q.section]==null){ idx[q.section]=bySec.length; bySec.push({name:q.section, qs:[]}); } bySec[idx[q.section]].qs.push(q); });
+    el.innerHTML = bySec.map(function(s){
+      return "<div class='sec'><div class='sechd'>"+esc(s.name)+"</div>"+s.qs.map(function(q){ return qHtml(q); }).join("")+"</div>";
+    }).join("");
+    // wire Yes/No
+    Array.prototype.slice.call(el.querySelectorAll(".yn button")).forEach(function(b){ b.addEventListener("click", function(){
+      if(!CAN_EDIT) return;
+      var qid=b.getAttribute("data-q"), v=b.getAttribute("data-v");
+      if(ANS[qid]===v) delete ANS[qid]; else ANS[qid]=v;
+      var wrap=b.closest(".yn"); wrap.querySelector(".yes").classList.toggle("on", ANS[qid]==="yes"); wrap.querySelector(".no").classList.toggle("on", ANS[qid]==="no");
+      updateSummary(); queueSave();
+    }); });
+    // wire findings
+    Array.prototype.slice.call(el.querySelectorAll(".qfind input")).forEach(function(i){ i.addEventListener("input", function(){ var qid=i.getAttribute("data-q"); if(i.value.trim()) FIND[qid]=i.value; else delete FIND[qid]; queueSave(); }); });
+    Array.prototype.slice.call(el.querySelectorAll(".findtog")).forEach(function(t){ t.addEventListener("click", function(){ var f=document.getElementById("f_"+t.getAttribute("data-q")); f.classList.remove("hide"); t.style.display="none"; f.querySelector("input").focus(); }); });
+    updateSummary();
+  }
+
+  function qHtml(q){
+    var a=ANS[q.id]||"", f=FIND[q.id]||"";
+    var yn = "<span class='yn'><button type='button' class='yes"+(a==="yes"?" on":"")+"' data-q='"+esc(q.id)+"' data-v='yes'"+(CAN_EDIT?"":" disabled")+">Yes</button>"+
+      "<button type='button' class='no"+(a==="no"?" on":"")+"' data-q='"+esc(q.id)+"' data-v='no'"+(CAN_EDIT?"":" disabled")+">No</button></span>";
+    var findBox = "<div class='qfind"+(f?"":" hide")+"' id='f_"+esc(q.id)+"'><input type='text' data-q='"+esc(q.id)+"' value='"+esc(f)+"' placeholder='Findings (optional)'"+(CAN_EDIT?"":" disabled")+" /></div>";
+    var findTog = (CAN_EDIT && !f) ? "<button type='button' class='findtog' data-q='"+esc(q.id)+"'>＋ Add finding</button>" : "";
+    return "<div class='q'><div class='qtop'>"+(q.code?"<span class='qcode'>"+esc(q.code)+"</span>":"")+"<span class='qtext'>"+esc(q.question)+"</span>"+yn+"</div>"+findBox+findTog+"</div>";
+  }
+
+  function updateSummary(){
+    var n=QS.length, yes=0, no=0, ans=0;
+    QS.forEach(function(q){ var a=ANS[q.id]; if(a){ ans++; if(a==="yes") yes++; else no++; } });
+    var s=document.getElementById("summary");
+    s.style.display="flex";
+    s.innerHTML = "<span class='chip'>"+ans+" of "+n+" answered</span><span class='chip'>"+yes+" Yes</span>"+(no?"<span class='chip no'>"+no+" No</span>":"");
+  }
+
+  function queueSave(){ if(!CAN_EDIT) return; if(saveT) clearTimeout(saveT); setMsg("Saving…","var(--muted)"); saveT=setTimeout(saveDay, 700); }
+  function setMsg(t,c){ var m=document.getElementById("saveMsg"); if(m){ m.textContent=t; m.style.color=c||"var(--muted)"; } }
+  function saveDay(){
+    if(!CAN_EDIT || (IS_MASTER && !CLIENT)) return;
+    if(saveT){ clearTimeout(saveT); saveT=null; }
+    setMsg("Saving…","var(--muted)");
+    fetch("/api/assessment/day",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,ans:ANS,find:FIND})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Saved ✓","var(--ok)"); setTimeout(function(){ setMsg("",""); },1500); } else setMsg((d&&d.error)||"Couldn't save","var(--red)"); })
+      .catch(function(){ setMsg("No connection","var(--red)"); });
+  }
+
+  /* ---- Edit questions (admin) ---- */
+  document.getElementById("mgToggle").addEventListener("click", function(){
+    var b=document.getElementById("mgBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none";
+    this.querySelector(".back").textContent=open?"Hide ▴":"Edit ▾";
+  });
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    if(!confirm("Replace all questions with the standard set? This deletes the current questions.")) return;
+    var b=this, m=document.getElementById("resetMsg"); b.disabled=true; var old=b.textContent; b.textContent="Loading…"; m.textContent="";
+    fetch("/api/assessment/reset",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent=old; if(d&&d.ok){ m.style.color="var(--ok)"; m.textContent="Loaded "+d.count+" questions ✓"; load(); } else { m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't load."; } })
+      .catch(function(){ b.disabled=false; b.textContent=old; m.style.color="var(--red)"; m.textContent="No connection"; });
+  });
+  document.getElementById("addQ").addEventListener("click", function(){
+    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
+    var sec=document.getElementById("nSec").value.trim(), code=document.getElementById("nCode").value.trim(), q=document.getElementById("nQ").value.trim();
+    if(!sec||!q){ alert("Section and question are required."); return; }
+    var sort=(QS.length?QS[QS.length-1].sort:0)+10;
+    fetch("/api/assessment/question",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,section:sec,code:code,question:q,sort:sort})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ document.getElementById("nCode").value=""; document.getElementById("nQ").value=""; load(); } else alert((d&&d.error)||"Couldn't add."); });
+  });
+  function renderManage(){
+    if(!IS_MASTER) return;
+    var box=document.getElementById("mgList");
+    if(!CLIENT){ box.innerHTML="<div class='empty'>Pick a client first.</div>"; return; }
+    if(!QS.length){ box.innerHTML="<div class='empty'>No questions. Add one below or load the standard set.</div>"; return; }
+    box.innerHTML=QS.map(function(q){
+      return "<div class='mgrow' data-id='"+esc(q.id)+"'>"+
+        "<input class='mgsec' value='"+esc(q.section)+"' />"+
+        "<input class='mgcode' value='"+esc(q.code)+"' placeholder='Code' />"+
+        "<button type='button' class='mgdel' title='Remove'>×</button>"+
+        "<input class='mgq' value='"+esc(q.question)+"' />"+
+      "</div>";
+    }).join("");
+    Array.prototype.slice.call(box.querySelectorAll(".mgrow")).forEach(function(row){
+      var id=row.getAttribute("data-id");
+      function save(){ var sec=row.querySelector(".mgsec").value, code=row.querySelector(".mgcode").value, q=row.querySelector(".mgq").value;
+        fetch("/api/assessment/question",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,section:sec,code:code,question:q})})
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ var x=QS.filter(function(z){return z.id===id;})[0]; if(x){ x.section=sec.trim(); x.code=code.trim(); x.question=q.trim(); } render(); } else alert((d&&d.error)||"Couldn't save."); }); }
+      row.querySelector(".mgsec").addEventListener("change", save);
+      row.querySelector(".mgcode").addEventListener("change", save);
+      row.querySelector(".mgq").addEventListener("change", save);
+      row.querySelector(".mgdel").addEventListener("click", function(){ if(!confirm("Remove this question?")) return; fetch("/api/assessment/question",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:id,delete:true})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) load(); else alert((d&&d.error)||"Couldn't remove."); }); });
+    });
+  }
+</script>
+<script src="/client-pins.js"></script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>

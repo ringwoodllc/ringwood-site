@@ -96,6 +96,10 @@ export default {
     if (url.pathname === "/api/checklist/day" && request.method === "POST") return saveChecklistDay(request, env, session);
     if (url.pathname === "/api/checklist/populate" && request.method === "POST") return populateChecklist(request, env, session);
     if (url.pathname === "/api/checklist/reset" && request.method === "POST") return resetChecklist(request, env, session);
+    if (url.pathname === "/api/assessment" && request.method === "GET") return listAssessment(url, env, session);
+    if (url.pathname === "/api/assessment/day" && request.method === "POST") return saveAssessmentDay(request, env, session);
+    if (url.pathname === "/api/assessment/question" && request.method === "POST") return saveAssessmentQuestion(request, env, session);
+    if (url.pathname === "/api/assessment/reset" && request.method === "POST") return resetAssessment(request, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
     if (url.pathname === "/api/temps/units" && request.method === "GET") return listTempUnits(url, env, session);
     if (url.pathname === "/api/temps/history" && request.method === "GET") return listTempHistory(url, env, session);
@@ -155,6 +159,7 @@ export default {
       "/redbook": "/redbook/",
       "/temps": "/temps/",
       "/checklist": "/checklist/",
+      "/assessment": "/assessment/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -3615,6 +3620,164 @@ async function saveChecklistDay(request, env, session) {
     if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
   }
   return json({ ok: true });
+}
+
+/* ===================== Food Safety Self-Assessment ===================== */
+// A Yes/No questionnaire (EcoSure-style), grouped into sections, with an optional
+// finding per question. The question template lives in `assessment_questions`
+// (editable, admin-only) and the day's answers live as one JSON blob per date in
+// `assessment_days`. Degrades gracefully until those tables exist.
+// [section, [[code, question], ...]]
+const ASSESSMENT_DEFAULTS = [
+  ["Imminent Health Risk", [
+    ["D-IHR.1", "Running hot and cold water is available"],
+    ["D-IHR.2", "Manager and team members are free of illnesses and symptoms"],
+    ["D-IHR.3", "Free of adulterated/contaminated products"],
+    ["D-IHR.4", "Free of Flood/Sewer Backup"],
+    ["D-IHR.5", "Free of pest infestation leading to food/contact surface contamination"],
+    ["D-IHR.6", "Restaurant has sanitizer"],
+    ["D-IHR.7", "Hand washing sinks are provided"],
+  ]],
+  ["Cleaning and Sanitation", [
+    ["D-CS.1", "Hot water reaches a minimum of 85°F at all hand sinks, 110°F at Ware washing sink, and 160°F surface temperature in all high temp dish washing machines"],
+    ["D-CS.2", "Sanitizer is at proper concentration at all sinks, buckets, cups and low temp ware washing machines"],
+    ["D-CS.3", "Chemicals are all approved, properly labeled, and stored correctly"],
+    ["D-CS.4", "Premises of exterior & interior (back of house) Non-food contact surfaces are clean and maintained"],
+    ["D-CS.5", "All sinks and dish washing machines are set up correctly and used properly"],
+    ["D-CS.6", "In-use equipment and prep tables are clean and sanitized at proper frequency and maintained"],
+    ["D-CS.7", "In-use utensils and smallwares are clean and sanitized at proper frequency and maintained"],
+  ]],
+  ["Employee Health and Hygiene", [
+    ["D-EH.1", "Person in charge understands Brand Standards for reportable illnesses & symptoms and team members know what to report"],
+    ["D-EH.2", "Hand washing sinks are fully stocked and team members are washing hands properly"],
+    ["D-EH.4", "Team members are using gloves properly and avoiding bare hand contact"],
+  ]],
+  ["Time and Temperature", [
+    ["D-TT.1", "Refrigerated food held at 41°F or below"],
+    ["D-TT.2", "Time/Temperature Control for Safety (TCS) food is handled properly"],
+    ["D-TT.3", "Food is cooked to the correct temperature"],
+    ["D-TT.4", "Time/Temperature Control for Safety (TCS) food in hot holding is maintained ≥ 135°F"],
+    ["D-TT.5", "Thermometers are properly calibrated and in-use"],
+  ]],
+  ["Good Retail Practices", [
+    ["D-GRP.1", "Food is stored off the floor and properly organized"],
+    ["D-GRP.2", "Food is properly labeled and date-coded"],
+    ["D-GRP.3", "FIFO rotation is followed"],
+    ["D-GRP.4", "Food is thawed using an approved method"],
+    ["D-GRP.5", "Single-use items are stored and dispensed properly"],
+  ]],
+  ["Pest Management", [
+    ["D-PM.1", "No signs of live pests or pest activity"],
+    ["D-PM.2", "Pest control service is current and documented"],
+    ["D-PM.3", "Entry points, doors, and screens are sealed and in good repair"],
+    ["D-PM.4", "No harborage or food/water sources for pests"],
+  ]],
+  ["Documentation", [
+    ["D-DOC.1", "Required food safety certificates are current and posted"],
+    ["D-DOC.2", "Temperature logs are complete and up to date"],
+    ["D-DOC.3", "Cleaning and sanitation schedules are maintained"],
+    ["D-DOC.4", "Pest control and service records are on file"],
+  ]],
+];
+
+function seedAssessmentRows(cid) {
+  const rows = []; let sort = 0;
+  for (const [sec, qs] of ASSESSMENT_DEFAULTS) {
+    for (const [code, q] of qs) { rows.push({ client_id: cid, section: sec, code, question: q, sort }); sort += 10; }
+  }
+  return rows;
+}
+
+async function listAssessment(url, env, session) {
+  if (!can(session, "foodSafety", "view")) return json({ ok: false, error: "Not allowed." }, 403);
+  const who = await redbookClientId(env, session, url.searchParams.get("client") || "");
+  const date = (url.searchParams.get("date") || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  if (!who.id) return noStore({ ok: true, client: who.name, date, questions: [], ans: {}, find: {} });
+  const sel = `assessment_questions?client_id=eq.${who.id}&select=id,section,code,question,sort&order=sort.asc,created_at.asc`;
+  let qs = await sbSelect(env, sel);
+  if (qs === null) return noStore({ ok: true, client: who.name, date, questions: [], ans: {}, find: {}, missing: true });
+  if (qs.length === 0 && can(session, "foodSafety", "edit")) {
+    await sbInsert(env, "assessment_questions", seedAssessmentRows(who.id));
+    qs = await sbSelect(env, sel) || [];
+  }
+  const days = await sbSelect(env, `assessment_days?client_id=eq.${who.id}&log_date=eq.${date}&select=data&limit=1`);
+  const data = (days && days[0] && days[0].data) || {};
+  return noStore({ ok: true, client: who.name, date, questions: (qs || []).map((q) => ({ id: q.id, section: q.section || "Other", code: q.code || "", question: q.question || "", sort: q.sort || 0 })), ans: data.ans || {}, find: data.find || {} });
+}
+
+async function saveAssessmentDay(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const date = (body.date || "").toString().slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const ansIn = (body.ans && typeof body.ans === "object") ? body.ans : {};
+  const findIn = (body.find && typeof body.find === "object") ? body.find : {};
+  const ans = {}, find = {};
+  for (const k of Object.keys(ansIn)) { const v = (ansIn[k] || "").toString(); if (v === "yes" || v === "no") ans[k] = v; }
+  for (const k of Object.keys(findIn)) { const v = (findIn[k] || "").toString().slice(0, 1000); if (v.trim()) find[k] = v; }
+  const data = { ans, find };
+  const a = authorOf(session);
+  const existing = await sbSelect(env, `assessment_days?client_id=eq.${who.id}&log_date=eq.${date}&select=id&limit=1`);
+  if (existing === null) return json({ ok: false, error: "The assessment table isn't set up yet." }, 400);
+  if (existing[0]) {
+    const res = await sbUpdate(env, "assessment_days", existing[0].id, { data, updated_by: a.author });
+    if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
+  } else {
+    const res = await sbInsert(env, "assessment_days", { client_id: who.id, log_date: date, data, updated_by: a.author });
+    if (!res.ok) return json({ ok: false, error: "Could not save." }, 502);
+  }
+  return json({ ok: true });
+}
+
+async function saveAssessmentQuestion(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const id = (body.id || "").toString().trim();
+  if (body.delete && id) {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/assessment_questions?id=eq.${id}&client_id=eq.${who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+    if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+    return json({ ok: true });
+  }
+  const section = (body.section || "").toString().trim().slice(0, 120);
+  const code = (body.code || "").toString().trim().slice(0, 40);
+  const question = (body.question || "").toString().trim().slice(0, 600);
+  if (!section || !question) return json({ ok: false, error: "Section and question are required." }, 400);
+  if (id) {
+    const patch = { section, code, question };
+    if (body.sort != null && !isNaN(parseInt(body.sort, 10))) patch.sort = parseInt(body.sort, 10);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/assessment_questions?id=eq.${id}&client_id=eq.${who.id}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=representation" }), body: JSON.stringify(patch) });
+    if (!r.ok) return json({ ok: false, error: "Could not save." }, 502);
+    const d = await r.json();
+    return json({ ok: true, question: Array.isArray(d) ? d[0] : d });
+  }
+  const sort = body.sort != null && !isNaN(parseInt(body.sort, 10)) ? parseInt(body.sort, 10) : 9990;
+  const res = await sbInsert(env, "assessment_questions", { client_id: who.id, section, code, question, sort });
+  if (!res.ok) return json({ ok: false, error: "Could not add." }, 502);
+  return json({ ok: true, question: res.data || null });
+}
+
+async function resetAssessment(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  if ((await sbSelect(env, `assessment_questions?client_id=eq.${who.id}&select=id&limit=1`)) === null) {
+    return json({ ok: false, error: "The assessment tables aren't set up yet." }, 400);
+  }
+  const del = await fetch(`${env.SUPABASE_URL}/rest/v1/assessment_questions?client_id=eq.${who.id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!del.ok) return json({ ok: false, error: "Could not clear the old questions." }, 502);
+  const res = await sbInsert(env, "assessment_questions", seedAssessmentRows(who.id));
+  if (!res.ok) return json({ ok: false, error: "Could not load the questions." }, 502);
+  return json({ ok: true, count: seedAssessmentRows(who.id).length });
 }
 
 /* ===================== Ticket parts / materials ===================== */
