@@ -163,6 +163,9 @@
   function pad(n){ return String(n).padStart(2,"0"); }
   function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
   function slotKey(s){ var t=String(s).split(":"); return pad(+t[0])+":"+pad(+t[1]); }
+  // reading_at is an absolute instant. Build it from the browser's LOCAL clock so
+  // it round-trips back to the same slot column on display. (Bulk SQL imports must
+  // likewise tag the store's timezone, e.g. '... America/New_York', not naive UTC.)
   function isoAt(slot){ var p=DATE.split("-"), t=slot.split(":"); return new Date(+p[0], +p[1]-1, +p[2], +t[0], +t[1]).toISOString(); }
   function nextSlot(){ if(!SLOTS.length) return "06:00"; var last=SLOTS[SLOTS.length-1].split(":"); return pad((+last[0]+4)%24)+":"+pad(+last[1]); }
 

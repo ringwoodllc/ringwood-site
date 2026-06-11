@@ -3204,6 +3204,17 @@ async function renameRedbookDoc(request, env, session) {
 // `temp_logs` table; the cold-unit flag and range live on the asset itself
 // (temp_min, temp_max, cold_unit). Degrades gracefully until those exist.
 // Default safe ranges (Fahrenheit): cooler 32-41, freezer -10-0.
+//
+// TIMEZONE (important): `temp_logs.reading_at` is a timestamptz, i.e. an absolute
+// instant in time, NOT a wall-clock time. The grid lays each reading out under a
+// time-slot column by the reading's LOCAL time in the viewer's browser. Normal
+// entry is always correct because the page builds reading_at from the browser's
+// own clock (new Date(y,m,d,hh,mm).toISOString()), so it round-trips back to the
+// same slot. The trap is BULK IMPORTS done in SQL: a naive literal like
+// '2026-05-24 06:00:00' is read as UTC and then shifts by the store's offset on
+// display (e.g. 6am Eastern lands in the 2am... so it falls a slot early and the
+// last slot looks empty). Always attach the store's timezone when importing, e.g.
+// '2026-05-24 06:00:00 America/New_York'::timestamptz, which is also DST-aware.
 
 function tempUnitOut(temp, min, max) {
   if (temp == null || isNaN(temp)) return false;
