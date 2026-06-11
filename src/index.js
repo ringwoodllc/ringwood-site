@@ -3776,10 +3776,14 @@ async function fileAssessmentToBinder(request, env, session) {
   if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
   const date = (body.date || "").toString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ ok: false, error: "Bad date." }, 400);
-  const htmlBase64 = body.htmlBase64 || "";
-  if (!htmlBase64) return json({ ok: false, error: "Nothing to file." }, 400);
-  const path = `assessment/${who.id}/report-${date}-${Date.now()}.html`;
-  const fileUrl = await uploadToStorage(env, path, htmlBase64, "text/html");
+  // The page builds a real PDF client-side and sends it; htmlBase64 is the
+  // legacy shape (kept so an un-refreshed page doesn't break mid-rollout).
+  const pdfBase64 = body.pdfBase64 || "", htmlBase64 = body.htmlBase64 || "";
+  if (!pdfBase64 && !htmlBase64) return json({ ok: false, error: "Nothing to file." }, 400);
+  const ext = pdfBase64 ? "pdf" : "html";
+  const ct = pdfBase64 ? "application/pdf" : "text/html";
+  const path = `assessment/${who.id}/report-${date}-${Date.now()}.${ext}`;
+  const fileUrl = await uploadToStorage(env, path, pdfBase64 || htmlBase64, ct);
   if (!fileUrl) return json({ ok: false, error: "Upload failed." }, 502);
   const section = "Monthly Self-Assessments";
   const title = `Self-Assessment — ${date}`;
@@ -3788,12 +3792,12 @@ async function fileAssessmentToBinder(request, env, session) {
   const existing = await sbSelect(env, `redbook_docs?client_id=eq.${who.id}&title=eq.${encodeURIComponent(title)}&select=id&limit=1`);
   if (existing === null) return json({ ok: false, error: "The Red Book table isn't set up yet." }, 400);
   if (existing[0]) {
-    let res = await sbUpdate(env, "redbook_docs", existing[0].id, { file_url: fileUrl, file_type: "text/html", section, doc_date: date });
-    if (!res.ok) res = await sbUpdate(env, "redbook_docs", existing[0].id, { file_url: fileUrl, file_type: "text/html", section }); // pre-migration fallback
+    let res = await sbUpdate(env, "redbook_docs", existing[0].id, { file_url: fileUrl, file_type: ct, section, doc_date: date });
+    if (!res.ok) res = await sbUpdate(env, "redbook_docs", existing[0].id, { file_url: fileUrl, file_type: ct, section }); // pre-migration fallback
     if (!res.ok) return json({ ok: false, error: "Couldn't update the binder copy." }, 502);
     return json({ ok: true, updated: true });
   }
-  const row = { client_id: who.id, section, title, file_url: fileUrl, file_type: "text/html", uploaded_by: a.author, doc_date: date };
+  const row = { client_id: who.id, section, title, file_url: fileUrl, file_type: ct, uploaded_by: a.author, doc_date: date };
   let res = await sbInsert(env, "redbook_docs", row);
   if (!res.ok) { delete row.doc_date; res = await sbInsert(env, "redbook_docs", row); } // pre-migration fallback
   if (!res.ok) return json({ ok: false, error: "Couldn't file it." }, 502);

@@ -247,58 +247,84 @@
     });
   }
 
-  /* ---- Save as PDF (browser print) ---- */
-  function buildReport(){
+  /* ---- Save as PDF (real PDF, built client-side via RWPDF) ---- */
+  // Fetch a finding photo and re-encode it as a JPEG with known dimensions
+  // (going through a same-origin blob avoids canvas tainting).
+  function fetchPhotoJpeg(url){
+    return fetch(url,{mode:"cors"}).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
+      return new Promise(function(res){
+        var u=URL.createObjectURL(blob), im=new Image();
+        im.onload=function(){
+          var max=900,w=im.naturalWidth,h=im.naturalHeight,s=Math.min(1,max/Math.max(w,h));
+          w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+          var c=document.createElement("canvas"); c.width=w; c.height=h;
+          c.getContext("2d").drawImage(im,0,0,w,h);
+          URL.revokeObjectURL(u);
+          try{ res({b64:c.toDataURL("image/jpeg",0.8).split(",")[1],w:w,h:h}); }catch(e){ res(null); }
+        };
+        im.onerror=function(){ URL.revokeObjectURL(u); res(null); };
+        im.src=u;
+      });
+    }).catch(function(){ return null; });
+  }
+
+  function buildPdf(photoMap){
+    var pdf=RWPDF();
+    var green=[0.13,0.27,0.23], red=[0.54,0.24,0.11], gray=[0.42,0.42,0.38];
     var bySec=[], idx={};
     QS.forEach(function(q){ if(idx[q.section]==null){ idx[q.section]=bySec.length; bySec.push({name:q.section,qs:[]}); } bySec[idx[q.section]].qs.push(q); });
     var n=QS.length, yes=0,no=0,ans=0;
     QS.forEach(function(q){ var a=ANS[q.id]; if(a){ans++; if(a==="yes")yes++; else no++;} });
     var dd=new Date(DATE+"T00:00:00");
-    var rows=bySec.map(function(s){
-      return "<h2>"+esc(s.name)+"</h2>"+s.qs.map(function(q){
+    pdf.text("Food Safety Self-Assessment",{size:18,bold:true,color:green,lh:24});
+    pdf.text((CLIENT||"")+"  ·  "+dd.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}),{size:10,color:gray,lh:15});
+    pdf.text(ans+" of "+n+" answered   ·   "+yes+" Yes"+(no?("   ·   "+no+" No"):""),{size:10,color:gray,lh:16});
+    pdf.move(6);
+    bySec.forEach(function(s){
+      pdf.bar(s.name);
+      s.qs.forEach(function(q){
         var a=ANS[q.id]||"", f=FIND[q.id]||"", pics=FINDPICS[q.id]||[];
-        var badge=a==="yes"?"<span class='b yes'>Yes</span>":(a==="no"?"<span class='b no'>No</span>":"<span class='b na'>—</span>");
-        return "<div class='r'><div class='rt'><span class='c'>"+esc(q.code)+"</span><span class='qt'>"+esc(q.question)+"</span>"+badge+"</div>"+
-          (f?"<div class='f'><b>Findings:</b> "+esc(f)+"</div>":"")+
-          (pics.length?"<div class='ph'>"+pics.map(function(u){return "<img src='"+esc(u)+"'/>";}).join("")+"</div>":"")+
-        "</div>";
-      }).join("");
-    }).join("");
-    return "<!doctype html><html><head><meta charset='utf-8'><title>Self-Assessment "+esc(CLIENT)+" "+esc(DATE)+"</title><style>"+
-      "body{font-family:Arial,Helvetica,sans-serif;color:#23282a;margin:28px;font-size:12px}"+
-      "h1{font-size:20px;margin:0 0 2px;color:#21443a}h2{font-size:14px;background:#21443a;color:#fff;padding:6px 10px;margin:18px 0 8px}"+
-      ".meta{color:#555;margin-bottom:6px}.sum span{display:inline-block;border:1px solid #ccc;border-radius:12px;padding:2px 9px;margin-right:6px}"+
-      ".r{padding:7px 0;border-bottom:1px solid #eee}.rt{display:flex;gap:8px;align-items:flex-start}.c{color:#777;min-width:60px;font-weight:bold}.qt{flex:1}"+
-      ".b{font-weight:bold;padding:1px 8px;border-radius:4px}.b.yes{background:#e3efe9;color:#2f5d50}.b.no{background:#f5e2da;color:#8a3d1c}.b.na{color:#999}"+
-      ".f{margin:4px 0 0 68px;color:#333}.ph{margin:6px 0 0 68px}.ph img{height:120px;margin:0 8px 8px 0;border:1px solid #ccc;border-radius:4px;vertical-align:top}"+
-      ".pbtn{margin-bottom:10px;padding:8px 14px;font-size:13px;cursor:pointer}"+
-      "@media print{.pbtn{display:none}h2,.b{-webkit-print-color-adjust:exact;print-color-adjust:exact}}"+
-      "</style></head><body>"+
-      "<button class='pbtn' onclick='window.print()'>Print / Save as PDF</button>"+
-      "<h1>Food Safety Self-Assessment</h1>"+
-      "<div class='meta'><b>"+esc(CLIENT||"")+"</b> &middot; "+esc(dd.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}))+"</div>"+
-      "<div class='sum'><span>"+ans+" of "+n+" answered</span><span>"+yes+" Yes</span>"+(no?"<span>"+no+" No</span>":"")+"</div>"+
-      rows+
-      "<div style='margin-top:18px;color:#888;font-size:10px'>Generated "+esc(new Date().toLocaleString())+" &middot; Ringwood</div>"+
-      "</body></html>";
+        pdf.need(16);
+        if(q.code) pdf.lineAt(pdf.margin,q.code,{size:8.5,bold:true,color:gray});
+        pdf.lineAt(508,a==="yes"?"Yes":(a==="no"?"No":"-"),{size:10,bold:true,color:a==="no"?red:(a==="yes"?green:gray)});
+        pdf.text(q.question,{x:96,maxW:400,size:10,lh:14});
+        if(f) pdf.text("Findings: "+f,{x:96,maxW:400,size:9.5,lh:13,color:[0.25,0.25,0.22]});
+        pics.forEach(function(u){ var p=photoMap[u]; if(p) pdf.image(p.b64,p.w,p.h,100,{x:96}); });
+        pdf.move(3); pdf.rule();
+      });
+      pdf.move(6);
+    });
+    pdf.move(4);
+    pdf.text("Generated "+new Date().toLocaleString()+"  ·  Ringwood",{size:8,color:gray});
+    return pdf.output();
   }
+
   function printReport(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
-    if(!QS.length){ alert("Nothing to print yet."); return; }
-    var html=buildReport();
-    var w=window.open("","_blank"); if(!w){ alert("Allow pop-ups to print, then try again."); return; }
-    w.document.write(html); w.document.close();
-    setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
-    fileToBinder(html);
+    if(!QS.length){ alert("Nothing to save yet."); return; }
+    var btn=document.getElementById("pdfBtn"); btn.disabled=true; var old=btn.textContent; btn.textContent="Building PDF…";
+    var urls=[]; QS.forEach(function(q){ (FINDPICS[q.id]||[]).forEach(function(u){ urls.push(u); }); });
+    Promise.all(urls.map(fetchPhotoJpeg)).then(function(arr){
+      var map={}; urls.forEach(function(u,i){ if(arr[i]) map[u]=arr[i]; });
+      var bytes=buildPdf(map);
+      var blob=new Blob([bytes],{type:"application/pdf"});
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download="Self-Assessment "+(CLIENT||"")+" "+DATE+".pdf";
+      document.body.appendChild(a); a.click(); a.remove();
+      btn.disabled=false; btn.textContent=old;
+      // File the frozen copy into the Red Book (one per assessment date).
+      var rd=new FileReader();
+      rd.onload=function(){ var b64=(rd.result||"").toString().split(",")[1]; if(b64) fileToBinder(b64); };
+      rd.readAsDataURL(blob);
+    }).catch(function(){ btn.disabled=false; btn.textContent=old; alert("Couldn't build the PDF."); });
   }
-  // A frozen copy goes into the Red Book (Monthly Self-Assessments) automatically,
-  // one per assessment date — re-printing the same date replaces it.
-  function fileToBinder(html){
+  // A frozen PDF goes into the Red Book (Monthly Self-Assessments) automatically,
+  // one per assessment date — re-saving the same date replaces it.
+  function fileToBinder(pdf64){
     if(!CAN_EDIT) return;
-    var b64;
-    try { b64=btoa(unescape(encodeURIComponent(html))); } catch(e){ return; }
     setMsg("Filing a copy to the Red Book…","var(--muted)");
-    fetch("/api/assessment/file",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,htmlBase64:b64})})
+    fetch("/api/assessment/file",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,pdfBase64:pdf64})})
       .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Filed to Red Book ✓","var(--ok)"); setTimeout(function(){ setMsg(""," "); },2200); } else setMsg((d&&d.error)||"Couldn't file to the Red Book","var(--red)"); })
       .catch(function(){ setMsg("Couldn't file to the Red Book","var(--red)"); });
   }
@@ -350,6 +376,7 @@
     });
   }
 </script>
+<script src="/rw-pdf.js"></script>
 <script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
