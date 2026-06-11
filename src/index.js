@@ -3363,25 +3363,27 @@ const INVENTORY_SCHEMA = {
   additionalProperties: false,
 };
 
-const INVENTORY_PROMPT =
-  "You are taking inventory at a Baskin Robbins ice cream shop from a photo. The photo shows one of:\n" +
+function inventoryPrompt(catalog) {
+  return "You are taking inventory at a Baskin Robbins ice cream shop from a photo. The photo shows one of:\n" +
   "- 3-gallon tubs of ice cream (round cardboard tubs; the flavor is printed or written on the side, often abbreviated, " +
   "like 'B-R STRBY CHS' or 'B-R PRLN B CRML' or 'B-R CKY MONSTER'),\n" +
   "- a case, shelf, or 8-pack box of pre-packed pints/quarts,\n" +
   "- the dipping cabinet (open round tubs you scoop from, each with a small name tag; you can see how full each tub is).\n\n" +
   "For every distinct product you can clearly see, return one item:\n" +
-  "- product: the readable flavor name, expanded from the abbreviation when you can (examples: 'STRBY CHS' -> 'Strawberry " +
-  "Cheesecake', 'PRLN B CRML' -> 'Pralines n Cream', 'CKY DOUGH'/'CKYDOH' -> 'Cookie Dough', 'MNT CHOC CHP' -> 'Mint " +
-  "Chocolate Chip', 'ORE'/'ORED' -> 'Oreo Cookies n Cream', 'CKY MONSTER' -> 'Cookie Monster', 'VAN' -> 'Vanilla', " +
-  "'CHOC' -> 'Chocolate'). If you are not sure, keep the text you can read.\n" +
   "- label: the exact text on the tub or tag, as written.\n" +
   "- kind: 'tub' for a 3-gallon tub, 'pack' for a pre-pack or 8-pack box, 'cabinet' for an open dipping-cabinet tub, else 'other'.\n" +
+  "- product: MATCH the flavor to the closest name in the known product list below and return that name EXACTLY as listed. " +
+  "Match the size from the kind: a dipping-cabinet or 3-gallon tub is a '3 Gallon' product (its name ends in 3G); a pre-pack is " +
+  "a Quart (ends in QT). Expand abbreviations to find the match (STRBY CHS = Strawberry Cheesecake, PRLN = Pralines, CKY/CKIE = " +
+  "Cookie, MNT = Mint, CHOC = Chocolate, VAN = Vanilla, ORE = Oreo). If it does not clearly match any known product, return your " +
+  "best readable flavor name instead.\n" +
   "- count: how many of that item are visible (count the tubs or packs of that flavor). For a single dipping-cabinet tub use 1.\n" +
   "- fullness: ONLY for a dipping-cabinet tub, estimate how full it is: 'full' (more than half), 'half' (about half), or " +
   "'low' (less than half). Leave it an empty string for sealed tubs and packs.\n" +
   "- placement: a short note on where it is in the photo (e.g. 'top shelf left', 'cabinet front row', 'freezer door').\n\n" +
-  "Read carefully and do not invent flavors you cannot see. If a label is unreadable, use 'Unknown' for product and put what " +
-  "you can make out in label.";
+  "Read carefully and do not invent flavors you cannot see. If a label is unreadable, use 'Unknown' for product.\n\n" +
+  "Known products:\n" + (catalog && catalog.length ? catalog.map((n) => "- " + n).join("\n") : "(none yet)");
+}
 
 const INV_KINDS = { tub: 1, pack: 1, cabinet: 1, other: 1 };
 
@@ -3475,10 +3477,11 @@ async function addInventoryPhoto(request, env, session) {
   const pRes = await sbInsert(env, "inventory_photos", { count_id: s.count.id, client_id: s.who.id, url: fileUrl, kind: (body.kind || "").toString().slice(0, 20) || null });
   if (!pRes.ok) return json({ ok: false, error: "Saved the photo, but couldn't record it." }, 502);
   const photo = pRes.data || {};
-  // Read the photo with Claude into line items.
+  // Read the photo with Claude into line items, matched to the client's catalog.
   let items = [];
   if (env.ANTHROPIC_API_KEY) {
-    const read = await claudeReadSheet(base64, ct, INVENTORY_PROMPT, INVENTORY_SCHEMA, env);
+    const catalog = Array.isArray(body.catalog) ? body.catalog.slice(0, 500) : [];
+    const read = await claudeReadSheet(base64, ct, inventoryPrompt(catalog), INVENTORY_SCHEMA, env);
     if (read && Array.isArray(read.items)) {
       const rows = [];
       for (const it of read.items) {

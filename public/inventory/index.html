@@ -484,7 +484,7 @@
       var f=files[i++]; msg.style.color="var(--muted)"; msg.textContent="Reading photo "+i+" of "+files.length+"…";
       downscale(f, function(b64, ct){
         if(!b64){ next(); return; }
-        fetch("/api/inventory/photo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,imageBase64:b64,contentType:ct})})
+        fetch("/api/inventory/photo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,count:CUR.id,imageBase64:b64,contentType:ct,catalog:ALL_PRODUCTS})})
           .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ added+=(d.read||0); } else if(d&&d.error){ msg.style.color="var(--red)"; msg.textContent=d.error; } next(); })
           .catch(function(){ next(); });
       });
