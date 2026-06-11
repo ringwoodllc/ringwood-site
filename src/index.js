@@ -110,6 +110,7 @@ export default {
     if (url.pathname === "/api/hotholding" && request.method === "GET") return listHotHolding(url, env, session);
     if (url.pathname === "/api/hotholding/add" && request.method === "POST") return addHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/delete" && request.method === "POST") return deleteHotHolding(request, env, session);
+    if (url.pathname === "/api/hotholding/update" && request.method === "POST") return updateHotHolding(request, env, session);
     if (url.pathname === "/api/hotholding/item" && request.method === "POST") return saveHotHoldingItem(request, env, session);
     if (url.pathname === "/api/foodsafety/summary" && request.method === "GET") return foodSafetySummary(url, env, session);
     if (url.pathname === "/api/temps" && request.method === "GET") return listTemps(url, env, session);
@@ -3898,6 +3899,27 @@ async function updateReceiving(request, env, session) {
     if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
   }
   const res = await sbUpdate(env, "receiving_logs", id, { temp });
+  if (!res.ok) return json({ ok: false, error: "Could not update." }, 502);
+  return json({ ok: true });
+}
+
+// Correct a logged hot-holding/cooking temp. Staff are locked to the current
+// week, so they fix mistakes in place rather than re-navigating.
+async function updateHotHolding(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  const temp = parseFloat(body.temp);
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  if (isNaN(temp)) return json({ ok: false, error: "Enter a temperature." }, 400);
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `hotholding_logs?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const res = await sbUpdate(env, "hotholding_logs", id, { temp });
   if (!res.ok) return json({ ok: false, error: "Could not update." }, 502);
   return json({ ok: true });
 }

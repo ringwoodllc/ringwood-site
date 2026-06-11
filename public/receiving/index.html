@@ -47,6 +47,15 @@
   .gcell:focus{border-color:var(--green);outline:none}
   .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep)}
   .gcell.logged.rej{color:var(--red);background:rgba(138,61,28,.1)}
+  /* Fit the week on a phone: wrapped vendor headers, tighter cells. */
+  @media(max-width:600px){
+    .wrap{padding-left:10px;padding-right:10px}
+    table.rv th{padding:4px 2px;font-size:.55rem;white-space:normal;line-height:1.15}
+    table.rv th .stag{font-size:.52rem}
+    table.rv td{padding:3px 2px}
+    .gcell{width:50px;padding:7px 1px;font-size:.84rem;border-radius:5px}
+    .d-cell{font-size:.7rem;padding:3px 4px !important}
+  }
   .saverow{display:flex;align-items:center;gap:12px;margin-bottom:18px}
   .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:12px 20px;font:inherit;font-weight:600;font-size:.95rem}
   .btn.ghost{background:var(--bg);color:var(--green-deep);border:1px solid var(--line)}
@@ -184,7 +193,9 @@
         if(e){
           used[e.id]=true;
           var rej=e.status==="Rejected";
-          if(IS_MASTER) return "<td><input type='number' inputmode='decimal' step='0.1' class='gcell logged loggededit"+(rej?" rej":"")+"' data-id='"+esc(e.id)+"' value='"+(e.temp==null?"":esc(e.temp))+"' title='Edit to override, clear to remove."+(rej?" Rejected.":"")+"' /></td>";
+          // Editable in place for anyone with Edit: staff are locked to this
+          // week, so corrections happen here (change updates, clear removes).
+          if(CAN_EDIT) return "<td><input type='number' inputmode='decimal' step='0.1' class='gcell logged loggededit"+(rej?" rej":"")+"' data-id='"+esc(e.id)+"' value='"+(e.temp==null?"":esc(e.temp))+"' title='Edit to correct, clear to remove."+(rej?" Rejected.":"")+"' /></td>";
           return "<td><input type='number' class='gcell logged"+(rej?" rej":"")+"' value='"+(e.temp==null?"":esc(e.temp))+"' disabled"+(rej?" title='Rejected'":"")+" /></td>";
         }
         return "<td>"+(CAN_EDIT?"<input type='number' inputmode='decimal' step='0.1' class='gcell tinput' data-vendor='"+esc(v.name)+"' data-storage='"+esc(v.storage)+"' data-date='"+ds+"' placeholder='—' />":"<span style='color:var(--muted)'>—</span>")+"</td>";

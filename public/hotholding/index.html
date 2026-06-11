@@ -48,6 +48,16 @@
   .gcell:focus{border-color:var(--green);outline:none}
   .gcell.logged{background:rgba(47,93,80,.08);border-color:transparent;color:var(--green-deep)}
   .gcell.logged.out{color:var(--red);background:rgba(138,61,28,.1)}
+  /* Fit the whole week on a phone: tighter cells, wrapped headers, slim date column. */
+  @media(max-width:600px){
+    .wrap{padding-left:10px;padding-right:10px}
+    table.hh th{padding:4px 2px;font-size:.55rem;white-space:normal;line-height:1.15}
+    table.hh th .imin{font-size:.52rem}
+    table.hh th.grp{font-size:.74rem;padding:4px 2px}
+    table.hh td{padding:3px 2px}
+    .gcell{width:42px;padding:7px 1px;font-size:.84rem;border-radius:5px}
+    .d-cell{font-size:.7rem;padding:3px 4px !important}
+  }
   .saverow{display:flex;align-items:center;gap:12px;margin-bottom:18px}
   .btn{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:12px 20px;font:inherit;font-weight:600;font-size:.95rem}
   .savemsg{font-size:.86rem;font-weight:600;color:var(--muted)}
@@ -184,7 +194,13 @@
       var d=new Date(WSTART); d.setDate(d.getDate()+di); var ds=iso(d);
       var cells=ordered.map(function(it){
         var e=latest[it.name+"|"+ds];
-        if(e){ var out=e.temp!=null && e.temp<minOf(it); return "<td><input type='number' class='gcell logged"+(out?" out":"")+"' value='"+esc(e.temp)+"' disabled /></td>"; }
+        if(e){
+          var out=e.temp!=null && e.temp<minOf(it);
+          // Editable in place for anyone with Edit: staff are locked to this
+          // week, so corrections happen here (change updates, clear removes).
+          if(CAN_EDIT) return "<td><input type='number' inputmode='decimal' step='0.1' class='gcell logged loggededit"+(out?" out":"")+"' data-id='"+esc(e.id)+"' value='"+esc(e.temp)+"' title='Edit to correct, clear to remove.' /></td>";
+          return "<td><input type='number' class='gcell logged"+(out?" out":"")+"' value='"+esc(e.temp)+"' disabled /></td>";
+        }
         return "<td>"+(CAN_EDIT?"<input type='number' inputmode='decimal' step='0.1' class='gcell tinput' data-item='"+esc(it.name)+"' data-kind='"+esc(it.kind)+"' data-date='"+ds+"' placeholder='—' />":"<span style='color:var(--muted)'>—</span>")+"</td>";
       }).join("");
       body+="<tr><td class='d-cell'>"+fmt(d)+" - "+DAYS[d.getDay()]+"</td>"+cells+"</tr>";
@@ -192,6 +208,14 @@
     el.innerHTML="<div class='tlogwrap'><table class='hh'><thead>"+grpRow+headRow+"</thead><tbody>"+body+"</tbody></table></div>";
     document.getElementById("saveBar").style.display = CAN_EDIT?"flex":"none";
     Array.prototype.slice.call(el.querySelectorAll(".gcell.tinput")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveGrid(); } }); });
+    // Correct a logged reading in place: change updates it, clearing removes it.
+    Array.prototype.slice.call(el.querySelectorAll(".gcell.loggededit")).forEach(function(i){ i.addEventListener("change", function(){
+      var id=i.getAttribute("data-id"), v=(i.value||"").trim();
+      if(v===""){ if(!confirm("Remove this reading?")){ load(); return; } fetch("/api/hotholding/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(d){ if(!(d&&d.ok)) alert((d&&d.error)||"Couldn't remove."); load(); }); return; }
+      var n=parseFloat(v); if(isNaN(n)){ load(); return; }
+      i.disabled=true;
+      fetch("/api/hotholding/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,temp:n})}).then(function(r){return r.json();}).then(function(d){ if(!(d&&d.ok)) alert((d&&d.error)||"Couldn't update."); load(); }).catch(function(){ i.disabled=false; alert("Couldn't reach the server."); });
+    }); });
   }
 
   function saveGrid(){
