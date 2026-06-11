@@ -123,6 +123,8 @@ export default {
       "/services": "/services/",
       "/clients": "/clients/",
       "/vendors": "/vendors/",
+      "/admin": "/admin/",
+      "/architecture": "/architecture/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));

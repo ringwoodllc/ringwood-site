@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · System architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh;line-height:1.6}
+  .wrap{max-width:880px;margin:0 auto;padding:0 22px 64px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin:14px 0 10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep);line-height:1.1}
+  h2{font-family:"Spectral",serif;font-weight:500;font-size:1.5rem;color:var(--green-deep);margin:38px 0 6px}
+  h3{font-family:"Spectral",serif;font-weight:600;font-size:1.08rem;color:var(--green-deep);margin:20px 0 8px}
+  p{color:var(--ink);margin:8px 0}
+  .lead{color:var(--muted);font-size:1.05rem;margin:10px 0 8px}
+  .muted{color:var(--muted)}
+  .card{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:18px 18px;margin:14px 0}
+  .diagram{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:14px;margin:16px 0;overflow-x:auto}
+  .diagram svg{display:block;width:100%;height:auto;min-width:560px}
+  table{width:100%;border-collapse:collapse;font-size:.92rem;margin:8px 0 4px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#e7decd;font-weight:600;color:var(--green-deep);font-size:.74rem;letter-spacing:.04em;text-transform:uppercase}
+  tr:last-child td{border-bottom:none}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;background:rgba(33,68,58,.08);padding:1px 5px;border-radius:4px;color:var(--green-deep)}
+  .pk{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:#e3efe7;color:var(--green-deep);padding:1px 6px;border-radius:999px;margin-left:5px}
+  .fk{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:#dfe9f4;color:#274a73;padding:1px 6px;border-radius:999px;margin-left:5px}
+  .tabletitle{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:26px 0 2px}
+  .tabletitle h3{margin:0;font-family:ui-monospace,monospace;font-weight:700}
+  .tabletitle .tt{color:var(--muted);font-size:.92rem}
+  ul{margin:8px 0 8px 20px}
+  li{margin:4px 0}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.84rem;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/admin">Admin</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="eyebrow">Admin · Reference</div>
+  <h1>System architecture</h1>
+  <p class="lead">How the Ringwood field platform is built, where the data lives, what it is written in, and how everything connects. Written so it can be shared with a partner, not kept in code or in someone's head.</p>
+
+  <h2>The big picture</h2>
+  <p>Everything runs through one program on Cloudflare. The same program serves the website and the field apps, checks who is signed in, and talks to the database, the file storage, and the AI on the server side so secrets never reach the phone. The data lives in a Postgres database (Supabase). Photos live in Supabase file storage. The AI is Anthropic's Claude.</p>
+
+  <div class="diagram" role="img" aria-label="Architecture diagram: devices connect over HTTPS to the Cloudflare Worker, which talks to Supabase Postgres, Supabase Storage, and the Anthropic Claude API. Build and delivery flows from GitHub and Codemagic.">
+    <svg viewBox="0 0 900 980" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk, sans-serif">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5f5d52"/></marker>
+      </defs>
+
+      <!-- Devices -->
+      <rect x="190" y="20" width="520" height="92" rx="12" fill="#efe8d8" stroke="#21443a" stroke-width="1.4"/>
+      <text x="450" y="46" text-anchor="middle" font-size="16" font-weight="700" fill="#21443a">People and devices</text>
+      <!-- phone icon -->
+      <rect x="236" y="58" width="26" height="40" rx="4" fill="none" stroke="#2f5d50" stroke-width="1.6"/><line x1="244" y1="92" x2="254" y2="92" stroke="#2f5d50" stroke-width="1.6"/>
+      <text x="450" y="74" text-anchor="middle" font-size="13" fill="#23282a">Field crew and clients</text>
+      <text x="450" y="93" text-anchor="middle" font-size="12.5" fill="#5f5d52">iPhone (TestFlight) · Android · web browser → app.ringwood.ai</text>
+
+      <line x1="450" y1="112" x2="450" y2="150" stroke="#5f5d52" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <text x="462" y="136" font-size="11.5" fill="#5f5d52">HTTPS</text>
+
+      <!-- Cloudflare -->
+      <rect x="120" y="152" width="660" height="210" rx="14" fill="#e7decd" stroke="#a9633a" stroke-width="1.5"/>
+      <text x="150" y="180" font-size="15" font-weight="700" fill="#a9633a">Cloudflare</text>
+      <text x="150" y="199" font-size="12" fill="#5f5d52">Edge network: DNS, TLS (https), CDN, runs the code worldwide</text>
+
+      <!-- Worker box -->
+      <rect x="150" y="212" width="600" height="80" rx="10" fill="#f4efe4" stroke="#21443a" stroke-width="1.4"/>
+      <text x="170" y="236" font-size="14" font-weight="700" fill="#21443a">Worker &#8220;ringwood-site&#8221; — JavaScript</text>
+      <text x="170" y="256" font-size="12.5" fill="#23282a">Routing by host/path · sign-in &amp; sessions (signed cookies) · the API</text>
+      <text x="170" y="274" font-size="12.5" fill="#23282a">Holds the secrets · calls the database, storage and AI server-side</text>
+
+      <!-- Static assets box -->
+      <rect x="150" y="300" width="600" height="48" rx="10" fill="#f4efe4" stroke="#21443a" stroke-width="1.2"/>
+      <text x="170" y="320" font-size="13.5" font-weight="700" fill="#21443a">Static app pages (PWA)</text>
+      <text x="170" y="338" font-size="12.5" fill="#23282a">HTML + CSS + JavaScript · installable on the phone · offline shell</text>
+
+      <!-- arrows down to data layer -->
+      <line x1="280" y1="362" x2="220" y2="430" stroke="#5f5d52" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="450" y1="362" x2="450" y2="430" stroke="#5f5d52" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="620" y1="362" x2="690" y2="430" stroke="#5f5d52" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <text x="120" y="404" font-size="11" fill="#5f5d52">REST / JSON</text>
+      <text x="700" y="404" font-size="11" fill="#5f5d52">HTTPS</text>
+
+      <!-- Data layer -->
+      <!-- Postgres -->
+      <rect x="70" y="432" width="250" height="120" rx="12" fill="#efe8d8" stroke="#21443a" stroke-width="1.4"/>
+      <ellipse cx="120" cy="470" rx="22" ry="8" fill="none" stroke="#2f5d50" stroke-width="1.5"/><path d="M98,470 v22 a22,8 0 0 0 44,0 v-22" fill="none" stroke="#2f5d50" stroke-width="1.5"/><path d="M98,481 a22,8 0 0 0 44,0" fill="none" stroke="#2f5d50" stroke-width="1.2"/>
+      <text x="195" y="462" text-anchor="middle" font-size="14" font-weight="700" fill="#21443a">Supabase</text>
+      <text x="195" y="480" text-anchor="middle" font-size="13" font-weight="700" fill="#21443a">Postgres database</text>
+      <text x="195" y="503" text-anchor="middle" font-size="12" fill="#5f5d52">15 SQL tables</text>
+      <text x="195" y="520" text-anchor="middle" font-size="12" fill="#5f5d52">clients, assets, tickets,</text>
+      <text x="195" y="536" text-anchor="middle" font-size="12" fill="#5f5d52">service, vendors, logins…</text>
+
+      <!-- Storage -->
+      <rect x="338" y="432" width="224" height="120" rx="12" fill="#efe8d8" stroke="#21443a" stroke-width="1.4"/>
+      <rect x="360" y="456" width="40" height="26" rx="3" fill="none" stroke="#2f5d50" stroke-width="1.5"/><circle cx="368" cy="469" r="2.2" fill="#2f5d50"/>
+      <text x="450" y="462" text-anchor="middle" font-size="14" font-weight="700" fill="#21443a">Supabase Storage</text>
+      <text x="450" y="486" text-anchor="middle" font-size="12.5" fill="#5f5d52">&#8220;photos&#8221; bucket</text>
+      <text x="450" y="506" text-anchor="middle" font-size="12" fill="#5f5d52">asset, ticket and</text>
+      <text x="450" y="522" text-anchor="middle" font-size="12" fill="#5f5d52">service photos</text>
+
+      <!-- AI -->
+      <rect x="580" y="432" width="250" height="120" rx="12" fill="#efe8d8" stroke="#21443a" stroke-width="1.4"/>
+      <rect x="606" y="456" width="30" height="30" rx="5" fill="none" stroke="#2f5d50" stroke-width="1.5"/><line x1="612" y1="450" x2="612" y2="456" stroke="#2f5d50" stroke-width="1.5"/><line x1="621" y1="450" x2="621" y2="456" stroke="#2f5d50" stroke-width="1.5"/><line x1="630" y1="450" x2="630" y2="456" stroke="#2f5d50" stroke-width="1.5"/>
+      <text x="705" y="462" text-anchor="middle" font-size="14" font-weight="700" fill="#21443a">Anthropic Claude</text>
+      <text x="705" y="486" text-anchor="middle" font-size="12.5" fill="#5f5d52">AI: reads nameplates,</text>
+      <text x="705" y="503" text-anchor="middle" font-size="12.5" fill="#5f5d52">drafts tickets, cleans</text>
+      <text x="705" y="520" text-anchor="middle" font-size="12.5" fill="#5f5d52">up notes</text>
+
+      <!-- Build and delivery -->
+      <rect x="70" y="600" width="760" height="150" rx="14" fill="#f4efe4" stroke="#a9633a" stroke-width="1.3" stroke-dasharray="5 4"/>
+      <text x="92" y="628" font-size="14" font-weight="700" fill="#a9633a">Build and delivery (how new versions ship)</text>
+
+      <rect x="92" y="644" width="345" height="44" rx="9" fill="#efe8d8" stroke="#21443a" stroke-width="1.1"/>
+      <text x="104" y="662" font-size="12.5" font-weight="700" fill="#21443a">GitHub (source code)</text>
+      <text x="104" y="680" font-size="12" fill="#5f5d52">push to main → Cloudflare Workers Builds → live</text>
+
+      <rect x="463" y="644" width="345" height="44" rx="9" fill="#efe8d8" stroke="#21443a" stroke-width="1.1"/>
+      <text x="475" y="662" font-size="12.5" font-weight="700" fill="#21443a">Capacitor → Codemagic</text>
+      <text x="475" y="680" font-size="12" fill="#5f5d52">builds the iOS app → Apple TestFlight</text>
+
+      <rect x="92" y="696" width="345" height="44" rx="9" fill="#efe8d8" stroke="#21443a" stroke-width="1.1"/>
+      <text x="104" y="714" font-size="12.5" font-weight="700" fill="#21443a">NameSilo (domain registrar)</text>
+      <text x="104" y="732" font-size="12" fill="#5f5d52">ringwood.ai name → Cloudflare DNS</text>
+
+      <rect x="463" y="696" width="345" height="44" rx="9" fill="#efe8d8" stroke="#21443a" stroke-width="1.1"/>
+      <text x="475" y="714" font-size="12.5" font-weight="700" fill="#21443a">Google / Gmail</text>
+      <text x="475" y="732" font-size="12" fill="#5f5d52">company email and sign-in identity</text>
+
+      <!-- Data flow caption -->
+      <text x="450" y="800" text-anchor="middle" font-size="12.5" fill="#5f5d52">The phone only ever talks to the Worker. The Worker talks to the database, storage and AI. Secrets stay on the Worker.</text>
+
+      <!-- legend boxes -->
+      <rect x="250" y="836" width="14" height="14" rx="3" fill="#e7decd" stroke="#a9633a"/><text x="272" y="848" font-size="12" fill="#5f5d52">Cloudflare (where the code runs)</text>
+      <rect x="250" y="860" width="14" height="14" rx="3" fill="#efe8d8" stroke="#21443a"/><text x="272" y="872" font-size="12" fill="#5f5d52">Services the Worker calls (data, storage, AI, build)</text>
+    </svg>
+  </div>
+
+  <h2>What it is written in</h2>
+  <p>Three things, each suited to its job. There is no heavy framework and no build step for the app pages, which keeps it fast and easy to change.</p>
+  <table>
+    <thead><tr><th>Part</th><th>Language</th><th>Where it runs</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>The engine (back end)</td><td><code>JavaScript</code></td><td>Cloudflare Worker</td><td>One file, <code>src/index.js</code>. Routing, sign-in, the API, and all the server-side calls to the database, storage, and AI.</td></tr>
+      <tr><td>The app screens (front end)</td><td><code>HTML</code> + <code>CSS</code> + <code>JavaScript</code></td><td>The phone / browser</td><td>The pages you tap through. A progressive web app (installable, works offline at the shell level). No framework, no build step.</td></tr>
+      <tr><td>The data</td><td><code>SQL</code> (PostgreSQL)</td><td>Supabase</td><td>The information itself, kept in tables (see the schema below). The Worker reads and writes it over an automatic REST API, so it sends JSON rather than raw SQL.</td></tr>
+      <tr><td>The iOS wrapper</td><td>Capacitor</td><td>iPhone</td><td>Wraps the same web app so it can ship through the App Store / TestFlight and reach the camera.</td></tr>
+    </tbody>
+  </table>
+  <p class="muted">In short: the database is <strong>SQL tables</strong>. A table is like a spreadsheet with named columns and one row per record. The Worker (JavaScript) is the only thing that touches the tables, and it does so with its secret key, so the browser never holds a password to the data.</p>
+
+  <h2>Services we depend on</h2>
+  <table>
+    <thead><tr><th>Service</th><th>Role</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Cloudflare</td><td>Hosting + edge</td><td>Runs the Worker and serves the app pages worldwide. Handles DNS, TLS, and CDN. Auto-deploys on a push to <code>main</code>.</td></tr>
+      <tr><td>Supabase (Postgres)</td><td>Database</td><td>The system of record. 15 tables. Reached over its REST API with a service key held only by the Worker.</td></tr>
+      <tr><td>Supabase Storage</td><td>File storage</td><td>The <code>photos</code> bucket holds asset, ticket, and service photos. Public-read by unguessable URL today (see note in Security review).</td></tr>
+      <tr><td>Anthropic (Claude)</td><td>AI</td><td>Reads equipment nameplates from photos, drafts tickets, and cleans up notes. Called only from the Worker.</td></tr>
+      <tr><td>GitHub</td><td>Source control</td><td><code>ringwoodllc/ringwood-site</code>. The single source of truth for the code.</td></tr>
+      <tr><td>Codemagic</td><td>iOS build pipeline</td><td>Builds and signs the iPhone app and pushes it to TestFlight.</td></tr>
+      <tr><td>NameSilo</td><td>Domain registrar</td><td>Owns the <code>ringwood.ai</code> name. DNS is pointed at Cloudflare.</td></tr>
+      <tr><td>Google / Gmail</td><td>Email + identity</td><td>Company email, and the master account identity.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>The database at a glance (table matrix)</h2>
+  <p>Every table, what it holds, and how it connects. A → arrow means "points at" (a foreign key).</p>
+  <table>
+    <thead><tr><th>Table</th><th>Holds</th><th>Key links</th></tr></thead>
+    <tbody>
+      <tr><td><code>clients</code></td><td>The companies you serve (Dunkin, etc.): name, contact, address, color.</td><td>—</td></tr>
+      <tr><td><code>app_users</code></td><td>Logins: email/username, hashed password, role, per-area permissions.</td><td>→ clients</td></tr>
+      <tr><td><code>login_tokens</code></td><td>One-time / magic-link sign-in tokens.</td><td>→ app_users (email)</td></tr>
+      <tr><td><code>assets</code></td><td>Equipment records: name, make, model, serial, QR, photos, AI reading.</td><td>→ clients, equipment_types, locations</td></tr>
+      <tr><td><code>asset_events</code></td><td>Revision history for an asset (edits, AI reads).</td><td>→ assets</td></tr>
+      <tr><td><code>tickets</code></td><td>Work requests: ref, title, description, status, photos.</td><td>→ clients, ticket_categories, assets</td></tr>
+      <tr><td><code>ticket_comments</code></td><td>The update log: notes, the intake, and admin events per ticket.</td><td>→ tickets</td></tr>
+      <tr><td><code>ticket_categories</code></td><td>The work types (Repair, Install, etc.). The master list.</td><td>—</td></tr>
+      <tr><td><code>service_records</code></td><td>Logged service events: date, type, technician, notes, cost.</td><td>→ assets, clients, service_types</td></tr>
+      <tr><td><code>service_types</code></td><td>The service types (Install, Inspection, Maintenance…).</td><td>—</td></tr>
+      <tr><td><code>equipment_types</code></td><td>The equipment categories (HVAC, Refrigeration…).</td><td>—</td></tr>
+      <tr><td><code>locations</code></td><td>The location list (Kitchen, Roof…).</td><td>—</td></tr>
+      <tr><td><code>vendors</code></td><td>The directory of vendors and technicians you assign work to.</td><td>—</td></tr>
+      <tr><td><code>contacts</code></td><td>Leads from the public website contact form.</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h2>The schema in detail</h2>
+  <p>Each table, column by column. <code>uuid</code> is a unique id. <code>text</code> is words. <code>text[]</code> is a list of words (for example a list of photo URLs). <code>timestamptz</code> is a date and time. <code>jsonb</code> is a small structured blob. <span class="pk">PK</span> is the primary key (the unique id of a row). <span class="fk">FK</span> points at another table.</p>
+
+  <div id="schema"></div>
+
+  <h2>How a request flows</h2>
+  <ol style="margin:8px 0 8px 20px">
+    <li>You tap something in the app on your phone.</li>
+    <li>The phone sends an HTTPS request to the Cloudflare Worker (and only the Worker).</li>
+    <li>The Worker checks your signed-in cookie and what you are allowed to see.</li>
+    <li>The Worker reads or writes the Postgres tables, uploads or fetches photos from Storage, or asks Claude to read a photo or draft text. Your secrets stay on the Worker.</li>
+    <li>The Worker sends back just the JSON the screen needs, and the screen updates.</li>
+  </ol>
+
+  <p class="muted" style="margin-top:26px">This page is generated from the live list of tables the code uses, so it stays honest. If we add a table or a field, this is where it gets written down.</p>
+</main>
+<script>
+  // The schema, kept as plain data so it is easy to read and update.
+  var SCHEMA = [
+    { t:"clients", note:"The companies you serve.", cols:[
+      ["id","uuid","pk"],["name","text",""],["status","text","Active or Archived"],
+      ["address","text",""],["color","text","brand color used across the app"],
+      ["primary_contact","text",""],["email","text",""],["phone","text",""],["notes","text",""]
+    ]},
+    { t:"app_users", note:"Logins and access.", cols:[
+      ["id","uuid","pk"],["email","text","real email or a synthetic one for username-only logins"],
+      ["username","text",""],["password_hash","text","PBKDF2, never the raw password"],
+      ["role","text","master or client"],["active","boolean","can sign in"],
+      ["perms","jsonb","per-area view/edit (tickets, assets, service)"],["client_id","uuid","fk → clients"]
+    ]},
+    { t:"login_tokens", note:"Magic-link / one-time sign-in.", cols:[
+      ["token","text","pk"],["user_email","text","fk → app_users.email"],["label","text",""],
+      ["expires_at","timestamptz",""],["revoked","boolean",""],["created_at","timestamptz",""]
+    ]},
+    { t:"assets", note:"Equipment records.", cols:[
+      ["id","uuid","pk"],["name","text","full name (brand + model)"],["nickname","text","short on-screen name"],
+      ["description","text",""],["make","text","manufacturer"],["model","text",""],["serial","text",""],
+      ["qr_tag","text","assigned QR / sticker code"],["verification","text","Pending, AI suggested, or Verified"],
+      ["photo_urls","text[]","list of photo URLs"],["overall_photo_url","text","legacy single slot"],
+      ["nameplate_photo_url","text","legacy"],["serial_photo_url","text","legacy"],
+      ["nameplate_reading","text","what the AI read off the nameplate"],
+      ["equipment_type_id","uuid","fk → equipment_types"],["location_id","uuid","fk → locations"],
+      ["client_id","uuid","fk → clients"],["logged_at","timestamptz","when it was added"]
+    ]},
+    { t:"asset_events", note:"Revision history for an asset.", cols:[
+      ["id","uuid","pk"],["asset_id","uuid","fk → assets"],["author","text","who/what made the change"],
+      ["kind","text","event"],["body","text","what changed, with optional detail"],["created_at","timestamptz",""]
+    ]},
+    { t:"tickets", note:"Work requests.", cols:[
+      ["id","uuid","pk"],["ref","text","RW-#### reference"],["title","text",""],["description","text",""],
+      ["location","text",""],["status","text","Open, In Progress, Complete, Archived…"],
+      ["reviewed","boolean","a person confirmed it"],["assigned_to","text","vendor/tech name"],
+      ["photo_url","text","legacy single slot"],["photo_urls","text[]","main photos"],
+      ["created_at","timestamptz",""],["category_id","uuid","fk → ticket_categories"],
+      ["client_id","uuid","fk → clients"],["asset_id","uuid","fk → assets"]
+    ]},
+    { t:"ticket_comments", note:"The update log on a ticket.", cols:[
+      ["id","uuid","pk"],["ticket_id","uuid","fk → tickets"],["author","text",""],
+      ["role","text","client, master, or agent"],["kind","text","note, intake, or event"],
+      ["body","text",""],["photo_urls","text[]","photos on a note"],["created_at","timestamptz",""]
+    ]},
+    { t:"ticket_categories", note:"The work-type master list.", cols:[
+      ["id","uuid","pk"],["name","text",""],["active","boolean",""],
+      ["photo_required","boolean","require a photo for this type"],["sort_order","int","list order"]
+    ]},
+    { t:"service_records", note:"Logged service events.", cols:[
+      ["id","uuid","pk"],["service_date","date",""],["technician","text","vendor/tech name"],
+      ["notes","text",""],["cost","numeric",""],["photo_urls","text[]",""],
+      ["asset_id","uuid","fk → assets"],["client_id","uuid","fk → clients"],["service_type_id","uuid","fk → service_types"]
+    ]},
+    { t:"service_types", note:"Service type master list.", cols:[
+      ["id","uuid","pk"],["name","text",""],["active","boolean",""],["sort_order","int",""]
+    ]},
+    { t:"equipment_types", note:"Equipment category master list.", cols:[
+      ["id","uuid","pk"],["name","text",""],["active","boolean",""],["sort_order","int",""]
+    ]},
+    { t:"locations", note:"Location master list.", cols:[
+      ["id","uuid","pk"],["name","text",""],["active","boolean",""],["sort_order","int",""]
+    ]},
+    { t:"vendors", note:"Vendors and technicians directory.", cols:[
+      ["id","uuid","pk"],["name","text",""],["kind","text","Vendor (outside) or Internal (Ringwood)"],
+      ["trade","text","e.g. Computer, HVAC"],["phone","text",""],["email","text",""],
+      ["notes","text",""],["active","boolean","shows in the Assigned-to list"],["created_at","timestamptz",""]
+    ]},
+    { t:"contacts", note:"Leads from the public website form.", cols:[
+      ["id","uuid","pk"],["name","text",""],["email","text",""],["phone","text",""],
+      ["company","text",""],["stage","text",""],["timeline","text",""],["message","text",""],["status","text","New…"]
+    ]}
+  ];
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function badge(k){ return k==="pk" ? "<span class='pk'>PK</span>" : (k && k.indexOf("fk")===0 ? "<span class='fk'>FK</span>" : ""); }
+  document.getElementById("schema").innerHTML = SCHEMA.map(function(tb){
+    var rows = tb.cols.map(function(c){
+      var note = c[2]==="pk" ? "" : (c[2] && c[2].indexOf("fk")===0 ? c[2] : (c[2]||""));
+      return "<tr><td><code>"+esc(c[0])+"</code>"+badge(c[2])+"</td><td><code>"+esc(c[1])+"</code></td><td class='muted'>"+esc(note)+"</td></tr>";
+    }).join("");
+    return "<div class='tabletitle'><h3>"+esc(tb.t)+"</h3><span class='tt'>"+esc(tb.note)+"</span></div>"+
+      "<table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>"+rows+"</tbody></table>";
+  }).join("");
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>

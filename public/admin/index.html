@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood Admin" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Admin panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .wrap{max-width:600px;margin:0 auto;padding:0 22px 48px}
+  header{padding:24px 0 8px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:16px 0 18px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:8px}
+  .intro h1{font-family:"Spectral",serif;font-weight:500;font-size:2rem;color:var(--green-deep);line-height:1.1}
+  .intro p{margin-top:8px;color:var(--muted);font-size:1rem}
+
+  /* System overview: collapsible one-line summary */
+  .ov{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;margin-bottom:18px;overflow:hidden}
+  .ovhead{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:13px 16px}
+  .ovhead:hover{background:rgba(33,68,58,.04)}
+  .ovsum{font-size:.92rem;color:var(--green-deep);font-weight:600}
+  .ovsum .mut{color:var(--muted);font-weight:400}
+  .ovtog{flex:0 0 auto;width:24px;height:24px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--green-deep);font-size:1rem;background:var(--bg)}
+  .ovbody{display:none;padding:0 16px 16px}
+  .statgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:480px){.statgrid{grid-template-columns:repeat(4,1fr)}}
+  .stile{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 12px}
+  .stile .num{font-family:"Spectral",serif;font-size:1.35rem;font-weight:600;color:var(--green-deep);line-height:1.1}
+  .stile .lab{font-size:.78rem;color:var(--muted);margin-top:3px}
+  .stile.wide{grid-column:1/-1}
+
+  .grid{display:grid;gap:13px}
+  .tile{display:flex;align-items:center;gap:15px;text-decoration:none;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:18px 16px;color:var(--ink);transition:border-color .15s, transform .05s}
+  .tile:active{transform:scale(.99)}
+  .tile:hover{border-color:var(--green)}
+  .ic{flex:0 0 auto;width:44px;height:44px;border-radius:10px;background:var(--green-deep);display:flex;align-items:center;justify-content:center}
+  .ic svg{stroke:#f4efe4}
+  .tx{flex:1;min-width:0}
+  .tx .t{display:block;font-family:"Spectral",serif;font-size:1.15rem;font-weight:500;color:var(--green-deep)}
+  .tx .s{display:block;color:var(--muted);font-size:.9rem;margin-top:2px}
+  .chev{flex:0 0 auto;color:var(--muted)}
+  footer{margin-top:26px;text-align:center;color:var(--muted);font-size:.82rem}
+  footer a{color:var(--green-deep)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="2.6"/><circle cx="13" cy="13" r="6"/><circle cx="13" cy="13" r="9.5"/></g></svg>
+    Ringwood
+  </div>
+  <a class="back" href="/app">Home</a>
+</header>
+<div class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Admin</div>
+    <h1>Admin panel</h1>
+    <p>Setup and management, kept out of the way of day-to-day field work.</p>
+  </div>
+
+  <div class="ov" id="ov">
+    <div class="ovhead" id="ovHead">
+      <div class="ovsum" id="ovSum">System overview <span class="mut">— loading…</span></div>
+      <div class="ovtog" id="ovTog">+</div>
+    </div>
+    <div class="ovbody" id="ovBody"><div id="stats" class="statgrid"></div></div>
+  </div>
+
+  <div class="grid">
+    <a class="tile" href="/clients">
+      <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3"/></svg></span>
+      <span class="tx"><span class="t">Client setup</span><span class="s">Clients and their details: address, contact, color</span></span>
+      <span class="chev"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
+    </a>
+
+    <a class="tile" href="/vendors">
+      <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h18"/></svg></span>
+      <span class="tx"><span class="t">Vendors &amp; technicians</span><span class="s">The people and companies you assign work to</span></span>
+      <span class="chev"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
+    </a>
+
+    <a class="tile" href="/users">
+      <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-1.5-1.5"/></svg></span>
+      <span class="tx"><span class="t">Logins &amp; access</span><span class="s">Who can sign in, which client, and what they can do</span></span>
+      <span class="chev"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
+    </a>
+
+    <a class="tile" href="/architecture">
+      <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M14 7h4a2 2 0 0 1 2 2v2M7 14v3a2 2 0 0 0 2 2h2"/></svg></span>
+      <span class="tx"><span class="t">System architecture</span><span class="s">How it is built, the tech stack, and the full data schema</span></span>
+      <span class="chev"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
+    </a>
+  </div>
+
+  <footer><a href="/app">Back to home</a> &middot; <a href="/account">Account</a></footer>
+</div>
+<script>
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/admin"); return; }
+    if(d.role!=="master"){ location.replace("/app"); return; }
+    loadStats();
+  }).catch(function(){});
+
+  document.getElementById("ovHead").addEventListener("click", function(){
+    var b=document.getElementById("ovBody"), t=document.getElementById("ovTog");
+    var open=b.style.display==="block"; b.style.display=open?"none":"block"; t.textContent=open?"+":"−";
+  });
+
+  function fmtSize(b){ b=Number(b)||0; if(b<1024) return b+" B"; if(b<1048576) return (b/1024).toFixed(b<10240?1:0)+" KB"; if(b<1073741824) return (b/1048576).toFixed(b<10485760?1:0)+" MB"; return (b/1073741824).toFixed(2)+" GB"; }
+  var LIMIT=1073741824; // 1 GB free tier
+  function loadStats(){
+    fetch("/api/admin/stats").then(function(r){return r.json();}).then(function(d){
+      var sum=document.getElementById("ovSum"), el=document.getElementById("stats");
+      if(!d||!d.ok){ sum.innerHTML="System overview <span class='mut'>— unavailable</span>"; return; }
+      var pct=Math.min(100, Math.round((d.storageBytes/LIMIT)*100));
+      sum.innerHTML="System overview <span class='mut'>— "+fmtSize(d.storageBytes)+(d.storageApprox?"+":"")+" ("+pct+"% of 1 GB) · "+d.photos+" photos · "+d.assets+" assets · "+d.clients+" clients · "+d.users+" logins</span>";
+      function tile(num,lab,wide){ return "<div class='stile"+(wide?" wide":"")+"'><div class='num'>"+num+"</div><div class='lab'>"+lab+"</div></div>"; }
+      el.innerHTML = tile(fmtSize(d.storageBytes)+(d.storageApprox?"+":"")+" · "+pct+"% of 1 GB","Storage used (free tier)",true)+
+        tile(d.photos+(d.storageApprox?"+":""),"Photos")+tile(d.assets,"Assets")+tile(d.clients,"Clients")+tile(d.users,"Logins");
+    }).catch(function(){ document.getElementById("ovSum").innerHTML="System overview <span class='mut'>— couldn't load</span>"; });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
