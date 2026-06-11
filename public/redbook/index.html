@@ -91,6 +91,8 @@
   .up.drag{border-color:var(--green);border-style:solid;background:rgba(47,93,80,.1)}
   .umsg{font-size:.82rem;color:var(--muted);margin-top:6px}
   .empty{color:var(--muted);padding:8px 0;font-size:.9rem}
+  .adminnote{display:flex;align-items:center;gap:9px;background:rgba(33,68,58,.06);border:1px solid var(--line);border-radius:8px;padding:10px 13px;color:var(--muted);font-size:.84rem;margin-bottom:14px}
+  .admincrown{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;background:rgba(33,68,58,.12);color:var(--green-deep);border-radius:999px;padding:1px 8px 1px 7px;font-size:.64rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
   .coming{margin-top:22px}
   .coming .sectitle{opacity:.7}
   .cwrap{background:var(--bg-2);border:1px dashed var(--line);border-radius:8px;padding:14px 15px;color:var(--muted);font-size:.9rem}
@@ -118,6 +120,7 @@
     <p class="lead">Your food-safety binder: permits, certifications, training, pest, chemicals, self-assessments, and more. Upload a PDF or photo into each section so it's ready for an EcoSure or health-department review.</p>
   </div>
   <div id="clientPick" style="display:none;margin-bottom:14px"><label for="clientSel">Client</label><select id="clientSel"></select></div>
+  <div id="adminNote" class="adminnote" style="display:none"><span class="admincrown"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 7l4 4 5-7 5 7 4-4-2 12H5z"/></svg> Admin</span> Clients can view and open documents. Only you can add, rename, move, or delete them.</div>
   <div id="note" class="note" style="display:none"></div>
   <div id="expSummary" class="expbanner" style="display:none"></div>
   <div id="rbtools" style="display:none"><button type="button" class="tidyall" id="tidyAllBtn">✨ Tidy all titles</button></div>
@@ -160,8 +163,11 @@
     IS_MASTER = d.role==="master";
     var lvl = IS_MASTER ? "edit" : ((d.perms&&d.perms.foodSafety)||"none");
     if(!IS_MASTER && lvl==="none"){ location.replace("/app"); return; }
-    CAN_EDIT = IS_MASTER || lvl==="edit";
+    // The Red Book is admin-only to manage. Clients (even with Edit) can view and
+    // open documents, but adding, renaming, moving, and deleting is master-only.
+    CAN_EDIT = IS_MASTER;
     if(IS_MASTER){
+      document.getElementById("adminNote").style.display="block";
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
         var clients=(o&&o.clients)||[];
