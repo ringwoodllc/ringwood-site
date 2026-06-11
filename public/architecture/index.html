@@ -220,6 +220,7 @@
       <tr><td><code>tickets</code></td><td>Work requests: ref, title, description, status, photos.</td><td>→ clients, ticket_categories, assets</td></tr>
       <tr><td><code>ticket_comments</code></td><td>The update log: notes, the intake, and admin events per ticket.</td><td>→ tickets</td></tr>
       <tr><td><code>ticket_categories</code></td><td>The work types (Repair, Install, etc.). The master list.</td><td>—</td></tr>
+      <tr><td><code>ticket_parts</code></td><td>Parts, materials, and tools needed to complete a ticket; rolls up into the buy list.</td><td>→ tickets</td></tr>
       <tr><td><code>service_records</code></td><td>Logged service events: date, type, technician, notes, cost.</td><td>→ assets, clients, service_types</td></tr>
       <tr><td><code>service_types</code></td><td>The service types (Install, Inspection, Maintenance…).</td><td>—</td></tr>
       <tr><td><code>equipment_types</code></td><td>The equipment categories (HVAC, Refrigeration…).</td><td>—</td></tr>
@@ -293,6 +294,12 @@
     { t:"ticket_categories", note:"The work-type master list.", cols:[
       ["id","uuid","pk"],["name","text",""],["active","boolean",""],
       ["photo_required","boolean","require a photo for this type"],["sort_order","int","list order"]
+    ]},
+    { t:"ticket_parts", note:"Parts/materials needed to complete a ticket.", cols:[
+      ["id","uuid","pk"],["ticket_id","uuid","fk → tickets"],["item","text",""],
+      ["quantity","numeric",""],["unit","text","each, box, pack…"],
+      ["status","text","Needed, Ordered, or Received"],["est_cost","numeric","optional estimate"],
+      ["source","text","where to get it"],["notes","text",""],["created_at","timestamptz",""]
     ]},
     { t:"service_records", note:"Logged service events.", cols:[
       ["id","uuid","pk"],["service_date","date",""],["technician","text","vendor/tech name"],

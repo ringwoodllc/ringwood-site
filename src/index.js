@@ -80,6 +80,11 @@ export default {
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
     if (url.pathname === "/api/ai/polish" && request.method === "POST") return polishNote(request, env, session);
     if (url.pathname === "/api/tickets/fold-notes" && request.method === "POST") return foldNotesIntoDescription(request, env, session);
+    if (url.pathname === "/api/tickets/parts" && request.method === "GET") return listTicketParts(url, env, session);
+    if (url.pathname === "/api/tickets/part" && request.method === "POST") return saveTicketPart(request, env, session);
+    if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
+    if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
+    if (url.pathname === "/api/parts/list" && request.method === "GET") return listAllParts(url, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
     // Master-only user management
@@ -125,6 +130,7 @@ export default {
       "/vendors": "/vendors/",
       "/admin": "/admin/",
       "/architecture": "/architecture/",
+      "/parts": "/parts/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -2966,6 +2972,120 @@ async function foldNotesIntoDescription(request, env, session) {
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }
+}
+
+/* ===================== Ticket parts / materials ===================== */
+// Parts needed to complete a ticket. Admin-only (it's procurement/triage work).
+// Lives in the `ticket_parts` table; degrades gracefully until that table exists.
+const PART_STATUSES = ["Needed", "Ordered", "Received"];
+
+async function listTicketParts(url, env, session) {
+  if (!session || session.role !== "master") return json([]);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json([]);
+  const rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,created_at&order=created_at.asc`);
+  if (rows === null) return json([]); // table not added yet
+  return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "" })));
+}
+
+async function saveTicketPart(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const id = c(body.id);
+  const patch = {};
+  if ("item" in body) patch.item = c(body.item);
+  if ("unit" in body) patch.unit = c(body.unit) || null;
+  if ("source" in body) patch.source = c(body.source) || null;
+  if ("notes" in body) patch.notes = c(body.notes) || null;
+  if ("quantity" in body) { const q = Number(body.quantity); patch.quantity = isNaN(q) || q < 0 ? 1 : q; }
+  if ("status" in body) { const s = c(body.status); patch.status = PART_STATUSES.indexOf(s) >= 0 ? s : "Needed"; }
+  if ("estCost" in body) { const ec = Number(body.estCost); patch.est_cost = isNaN(ec) ? null : ec; }
+  let res;
+  if (id) {
+    res = await sbUpdate(env, "ticket_parts", id, patch);
+  } else {
+    const ticketId = c(body.ticketId);
+    if (!ticketId) return json({ ok: false, error: "No ticket." }, 400);
+    if (!patch.item) return json({ ok: false, error: "Enter an item." }, 400);
+    res = await sbInsert(env, "ticket_parts", Object.assign({ ticket_id: ticketId, status: "Needed", quantity: 1 }, patch));
+  }
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
+  return json({ ok: true, part: res.data || null });
+}
+
+async function deleteTicketPart(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No part id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/ticket_parts?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+// AI: from a ticket's title, description, and photos, propose the parts, materials
+// and tools a tech would need. The admin reviews and adds the ones they want.
+async function suggestTicketParts(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No ticket id." }, 400);
+  const trows = await sbSelect(env, `tickets?id=eq.${id}&select=title,description,photo_urls,asset:assets(name,nickname)`);
+  const t = trows && trows[0];
+  if (!t) return json({ ok: false, error: "Ticket not found." }, 404);
+  const assetName = (t.asset && (t.asset.nickname || t.asset.name)) || "";
+  const content = [];
+  const urls = Array.isArray(t.photo_urls) ? t.photo_urls.slice(0, 3) : [];
+  for (const u of urls) {
+    const img = await fetchImageBase64(u);
+    if (img) content.push({ type: "image", source: { type: "base64", media_type: img.media_type, data: img.base64 } });
+  }
+  content.push({ type: "text", text:
+    "You are helping a facilities coordinator plan a repair. From the work below (and any photos), list the parts, materials, and tools a technician should bring to complete it. " +
+    "Be specific and conservative: only items the work clearly needs. Give each a short item name, a quantity (a number), and a unit (each, pack, box, ft, etc.). " +
+    "Do NOT invent brands, exact model numbers, or specs you cannot know from the text/photos. If unsure of a quantity, use 1. Return up to 8 items.\n\n" +
+    (assetName ? "Equipment: " + assetName + "\n" : "") +
+    "Title: " + (t.title || "") + "\nWork: " + (t.description || "") });
+  const schema = { type: "object", properties: { parts: { type: "array", items: { type: "object", properties: { item: { type: "string" }, quantity: { type: "number" }, unit: { type: "string" } }, required: ["item", "quantity", "unit"], additionalProperties: false } } }, required: ["parts"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out;
+    try { out = JSON.parse(block.text); } catch { return json({ ok: false, error: "Couldn't read the suggestion." }, 502); }
+    const parts = (out.parts || []).map((p) => ({ item: (p.item || "").toString().trim(), quantity: Number(p.quantity) || 1, unit: (p.unit || "each").toString().trim() })).filter((p) => p.item);
+    return json({ ok: true, parts });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
+}
+
+// Rollup across all tickets for the "Parts to buy" screen.
+async function listAllParts(url, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!sbReady(env)) return json({ ok: true, parts: [] });
+  const rows = await sbSelect(env, "ticket_parts?select=id,item,quantity,unit,status,est_cost,source,ticket:tickets(id,ref,title,status,client:clients(name))&order=created_at.desc");
+  if (rows === null) return noStore({ ok: true, parts: [], missing: true });
+  return noStore({
+    ok: true,
+    parts: (rows || []).map((r) => ({
+      id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "",
+      ticketId: (r.ticket && r.ticket.id) || "", ref: (r.ticket && r.ticket.ref) || "", ticketTitle: (r.ticket && r.ticket.title) || "",
+      ticketStatus: (r.ticket && r.ticket.status) || "", client: (r.ticket && r.ticket.client && r.ticket.client.name) || "",
+    })),
+  });
 }
 
 async function suggestTicket(request, env, session) {

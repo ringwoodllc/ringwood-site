@@ -113,6 +113,21 @@
   .lgbtn{background:var(--bg);border:1px solid var(--line);color:var(--green-deep);border-radius:999px;padding:3px 11px;font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
   .lgbtn:hover{border-color:var(--green)}
   .lgbtn.del{color:#8a3d1c}
+  .prow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 11px;margin-bottom:7px}
+  .prow .pmain{min-width:0;font-size:.96rem}
+  .prow .pqty{font-weight:700;color:var(--green-deep)}
+  .prow .psrc{color:var(--muted);font-size:.86rem}
+  .prow .pctrl{flex:0 0 auto;display:flex;align-items:center;gap:7px}
+  .pstat{border:1px solid var(--line);border-radius:999px;padding:3px 11px;font:inherit;font-size:.76rem;font-weight:700;cursor:pointer;background:var(--bg-2)}
+  .pstat.needed{background:#f6eccf;color:#7a5a12;border-color:transparent}
+  .pstat.ordered{background:#dfe9f4;color:#274a73;border-color:transparent}
+  .pstat.received{background:#e3efe7;color:var(--green-deep);border-color:transparent}
+  .paddrow{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .paddrow #p_item{flex:1;min-width:140px}
+  .paddrow #p_qty{width:64px}
+  .paddrow #p_unit{width:84px}
+  .sugg{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:.92rem}
+  .sugg:first-of-type{border-top:none}
   .lgedit{margin-top:6px}
   .lgedit textarea{min-height:56px}
   .lgeditbar{display:flex;gap:8px;margin-top:6px}
@@ -534,6 +549,7 @@
               "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_foldUse'>Use this</button><button type='button' class='qbtn' id='e_foldKeep'>Keep mine</button></div>" +
             "</div>") +
         "</div>" +
+        (IS_MASTER ? "<div class='field' id='e_partsField'><label>Parts &amp; materials needed</label><div id='e_parts'></div></div>" : "") +
         "<div class='field'><label>Main photos <span style='font-weight:400;color:var(--muted);font-size:.86rem'>— the headline shots shown up top</span></label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
           "<label class='qbtn' for='e_file' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
@@ -680,6 +696,70 @@
     if(foldUse) foldUse.addEventListener("click", function(){ document.getElementById("e_desc").value=document.getElementById("e_foldText").textContent; document.getElementById("e_foldWrap").style.display="none"; });
     var foldKeep=document.getElementById("e_foldKeep");
     if(foldKeep) foldKeep.addEventListener("click", function(){ document.getElementById("e_foldWrap").style.display="none"; });
+
+    // ---- Parts & materials needed (admin-only) ----
+    if (IS_MASTER && document.getElementById("e_parts")){
+      var partsEl=document.getElementById("e_parts"), PARTS=[], SUGG=[];
+      function renderParts(){
+        var rows = PARTS.map(function(p){
+          var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
+          return "<div class='prow' data-id='"+esc(p.id)+"'>"+
+            "<div class='pmain'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+(p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+"</div>"+
+            "<div class='pctrl'><button type='button' class='pstat "+esc((p.status||'Needed').toLowerCase())+"' data-act='cycle'>"+esc(p.status||"Needed")+"</button>"+
+              "<button type='button' class='lgbtn del' data-act='del' title='Remove'>×</button></div>"+
+          "</div>";
+        }).join("");
+        partsEl.innerHTML =
+          (rows || "<div style='color:var(--muted);font-size:.9rem;margin-bottom:6px'>None added yet.</div>") +
+          "<div class='paddrow'>"+
+            "<input id='p_item' type='text' placeholder='Item (e.g. AAA batteries)' />"+
+            "<input id='p_qty' type='number' min='0' step='1' value='1' />"+
+            "<input id='p_unit' type='text' placeholder='unit' />"+
+            "<button type='button' class='qbtn rev' id='p_add'>Add</button>"+
+          "</div>"+
+          "<button type='button' class='qbtn' id='p_suggest' style='border-color:var(--clay);color:var(--clay);margin-top:8px'>✨ Suggest with AI</button>"+
+          "<div id='p_sugg' style='display:none;margin-top:8px'></div>";
+        var addBtn=document.getElementById("p_add");
+        addBtn.addEventListener("click", function(){
+          var item=(document.getElementById("p_item").value||"").trim(); if(!item){ document.getElementById("p_item").focus(); return; }
+          addBtn.disabled=true;
+          fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:item,quantity:document.getElementById("p_qty").value,unit:document.getElementById("p_unit").value})})
+            .then(function(r){return r.json();}).then(function(d){ addBtn.disabled=false; if(d&&d.ok){ loadParts(); } else { alert((d&&d.error)||"Couldn't add the part."); } })
+            .catch(function(){ addBtn.disabled=false; });
+        });
+        document.getElementById("p_suggest").addEventListener("click", suggestParts);
+      }
+      partsEl.addEventListener("click", function(e){
+        var btn=e.target.closest?e.target.closest(".prow [data-act]"):null; if(!btn) return;
+        var row=btn.closest(".prow"), id=row.getAttribute("data-id"), act=btn.getAttribute("data-act");
+        var p=PARTS.filter(function(x){return x.id===id;})[0]; if(!p) return;
+        if(act==="cycle"){
+          var order=["Needed","Ordered","Received"], next=order[(order.indexOf(p.status||"Needed")+1)%3];
+          fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,status:next})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); });
+        } else if(act==="del"){
+          fetch("/api/tickets/part/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); });
+        }
+      });
+      function suggestParts(){
+        var sg=document.getElementById("p_suggest"), wrap=document.getElementById("p_sugg");
+        sg.disabled=true; sg.textContent="Thinking…";
+        fetch("/api/tickets/parts/suggest",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:t.id})})
+          .then(function(r){return r.json();}).then(function(d){
+            sg.disabled=false; sg.textContent="✨ Suggest with AI";
+            if(!d||!d.ok){ alert((d&&d.error)||"Couldn't suggest parts."); return; }
+            SUGG=d.parts||[]; wrap.style.display="block";
+            if(!SUGG.length){ wrap.innerHTML="<div style='color:var(--muted);font-size:.88rem'>Nothing obvious to suggest. Add parts by hand above.</div>"; return; }
+            wrap.innerHTML="<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Suggested — add the ones you need</div>"+
+              SUGG.map(function(p,i){ return "<div class='sugg'><span>"+esc(p.quantity)+" "+esc(p.unit)+" "+esc(p.item)+"</span><button type='button' class='qbtn rev sugadd' data-i='"+i+"'>＋ Add</button></div>"; }).join("")+
+              "<button type='button' class='qbtn' id='p_sugall' style='margin-top:6px'>Add all</button>";
+            wrap.querySelectorAll(".sugadd").forEach(function(b){ b.addEventListener("click", function(){ var i=+b.getAttribute("data-i"); b.disabled=true; addSugg(SUGG[i], function(){ var r=b.closest(".sugg"); if(r) r.remove(); loadParts(); }); }); });
+            document.getElementById("p_sugall").addEventListener("click", function(){ var all=this; all.disabled=true; var n=SUGG.length, done=0; SUGG.forEach(function(p){ addSugg(p, function(){ done++; if(done>=n){ wrap.style.display="none"; loadParts(); } }); }); });
+          }).catch(function(){ sg.disabled=false; sg.textContent="✨ Suggest with AI"; alert("Couldn't reach the assistant."); });
+      }
+      function addSugg(p, cb){ fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:p.item,quantity:p.quantity,unit:p.unit})}).then(function(r){return r.json();}).then(function(d){ if(cb) cb(d); }).catch(function(){ if(cb) cb({}); }); }
+      function loadParts(){ fetch("/api/tickets/parts?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(rows){ PARTS=Array.isArray(rows)?rows:[]; renderParts(); }).catch(function(){ PARTS=[]; renderParts(); }); }
+      loadParts();
+    }
 
     // Assigned-to dropdown + quick-add a new vendor without leaving the ticket.
     var asgSel = document.getElementById("e_assigned");

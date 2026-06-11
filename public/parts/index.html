@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Parts to buy" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Parts to buy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="/client-color.js"></script>
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:0 22px 56px}
+  header{padding:24px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:18px 0 18px}
+  .eyebrow{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(2rem,7vw,2.6rem);color:var(--green-deep)}
+  .lead{color:var(--muted);font-size:1rem;margin:10px 0 16px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font:inherit;font-size:.9rem;font-weight:600;color:var(--green-deep);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .chip:hover{border-color:var(--green)}
+  .chip.on{background:var(--green);color:#f6f2e8;border-color:var(--green)}
+  .chip b{background:var(--line);color:var(--muted);border-radius:999px;padding:1px 8px;font-size:.78rem;min-width:20px;text-align:center}
+  .chip.on b{background:rgba(255,255,255,.28);color:#f6f2e8}
+  h2{font-family:"Spectral",serif;font-weight:500;font-size:1.15rem;color:var(--green-deep);margin:18px 0 8px}
+  .summary{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:18px}
+  .sline{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:.96rem}
+  .sline:first-child{border-top:none}
+  .sline .sq{font-weight:700;color:var(--green-deep);white-space:nowrap}
+  .rec{background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:9px;display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+  .rec .bd{min-width:0}
+  .rec .it{font-weight:600;color:var(--green-deep)}
+  .rec .qy{font-weight:700}
+  .rec .mt{color:var(--muted);font-size:.85rem;margin-top:2px}
+  .rec .mt a{color:var(--green-deep);border-bottom:1px solid var(--clay);text-decoration:none}
+  .rcol{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .pstat{border:none;border-radius:999px;padding:4px 12px;font:inherit;font-size:.76rem;font-weight:700;cursor:pointer}
+  .pstat.needed{background:#f6eccf;color:#7a5a12}
+  .pstat.ordered{background:#dfe9f4;color:#274a73}
+  .pstat.received{background:#e3efe7;color:var(--green-deep)}
+  .client-chip{font-size:.74rem;font-weight:700;color:#f6f2e8;background:var(--green-deep);padding:2px 9px;border-radius:999px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:var(--muted);padding:16px 4px}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Home</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Field operations</div>
+    <h1>Parts to buy</h1>
+    <p class="lead">Everything the open tickets need, in one list. Tally what to buy, then check it off as you order and receive it.</p>
+  </div>
+  <div id="note" class="note" style="display:none"></div>
+  <div class="chips" id="chips"></div>
+  <div id="summaryWrap"></div>
+  <h2>Items</h2>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+<script>
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  var ALL=[], filt="Needed";
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/parts"); return; }
+    if(d.role!=="master"){ location.replace("/app"); return; }
+    load();
+  }).catch(function(){});
+
+  function load(){
+    fetch("/api/parts/list",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      var note=document.getElementById("note");
+      if(d.missing){ note.style.display="block"; note.textContent="The parts table isn't set up yet. Add it in Supabase (one-time), then this list fills in."; }
+      else note.style.display="none";
+      ALL=d.parts||[]; render();
+    }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function counts(){ var c={Needed:0,Ordered:0,Received:0}; ALL.forEach(function(p){ if(c[p.status]!=null) c[p.status]++; }); c.All=ALL.length; return c; }
+  function renderChips(){
+    var c=counts();
+    var defs=[["Needed","Needed"],["Ordered","Ordered"],["Received","Received"],["All","All"]];
+    document.getElementById("chips").innerHTML = defs.map(function(d){
+      return "<button type='button' class='chip"+(filt===d[0]?" on":"")+"' data-f='"+d[0]+"'>"+d[1]+" <b>"+(c[d[0]]||0)+"</b></button>";
+    }).join("");
+    Array.prototype.slice.call(document.querySelectorAll(".chip")).forEach(function(b){ b.addEventListener("click", function(){ filt=b.getAttribute("data-f"); render(); }); });
+  }
+
+  function rowsFor(){ return ALL.filter(function(p){ return filt==="All" ? true : p.status===filt; }); }
+
+  function renderSummary(rows){
+    // Group identical items (case-insensitive) and sum quantity — the buy list.
+    var g={};
+    rows.forEach(function(p){ var k=(p.item||"").trim().toLowerCase()+"|"+(p.unit||"").toLowerCase(); if(!g[k]) g[k]={item:p.item,unit:p.unit,qty:0}; g[k].qty+=(Number(p.quantity)||0); });
+    var keys=Object.keys(g).sort(function(a,b){ return g[a].item.toLowerCase().localeCompare(g[b].item.toLowerCase()); });
+    var w=document.getElementById("summaryWrap");
+    if(!keys.length){ w.innerHTML=""; return; }
+    w.innerHTML="<h2>Shopping summary <span style='font-weight:400;color:var(--muted);font-size:.8rem'>("+filt.toLowerCase()+", combined)</span></h2><div class='summary'>"+
+      keys.map(function(k){ var x=g[k]; return "<div class='sline'><span>"+esc(x.item)+"</span><span class='sq'>"+esc(x.qty)+(x.unit?(" "+esc(x.unit)):"")+"</span></div>"; }).join("")+"</div>";
+  }
+
+  function render(){
+    renderChips();
+    var rows=rowsFor();
+    renderSummary(rows);
+    var el=document.getElementById("list");
+    if(!rows.length){ el.innerHTML="<div class='empty'>Nothing "+esc(filt.toLowerCase())+".</div>"; return; }
+    el.innerHTML = rows.map(function(p){
+      var qy=(p.quantity==null?"":p.quantity)+(p.unit?(" "+esc(p.unit)):"");
+      var tk = p.ref||p.ticketTitle ? "<a href='/status?id="+esc(p.ticketId)+"'>"+esc(p.ref||"")+(p.ticketTitle?(" · "+esc(p.ticketTitle)):"")+"</a>"+(p.ticketStatus?" <span style='color:var(--muted)'>("+esc(p.ticketStatus)+")</span>":"") : "";
+      var cli = p.client ? "<span class='client-chip' style='background:"+(window.clientColor?clientColor(p.client):'#21443a')+"'>"+esc(p.client)+"</span>" : "";
+      var cost = (p.estCost!=null&&p.estCost!=="") ? "<span style='color:var(--muted);font-size:.84rem'>$"+esc(Number(p.estCost).toFixed(2))+"</span>" : "";
+      return "<div class='rec'><div class='bd'><div class='it'><span class='qy'>"+esc(qy)+"</span> "+esc(p.item)+"</div>"+
+        (tk?"<div class='mt'>"+tk+"</div>":"")+"</div>"+
+        "<div class='rcol'>"+cli+"<button type='button' class='pstat "+esc((p.status||'Needed').toLowerCase())+"' data-id='"+esc(p.id)+"'>"+esc(p.status||"Needed")+"</button>"+cost+"</div></div>";
+    }).join("");
+    Array.prototype.slice.call(document.querySelectorAll(".pstat")).forEach(function(b){ b.addEventListener("click", function(){
+      var id=b.getAttribute("data-id"), p=ALL.filter(function(x){return x.id===id;})[0]; if(!p) return;
+      var order=["Needed","Ordered","Received"], next=order[(order.indexOf(p.status||"Needed")+1)%3];
+      b.disabled=true;
+      fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,status:next})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ p.status=next; render(); } else { b.disabled=false; } }).catch(function(){ b.disabled=false; });
+    }); });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
