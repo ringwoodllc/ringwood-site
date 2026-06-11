@@ -4140,13 +4140,16 @@ async function foodSafetySummary(url, env, session) {
   // Self-assessment: the most recent one, whenever it was.
   let assessment = { missing: true };
   if (aQs !== null && aDay !== null) {
-    const total = (aQs || []).length;
+    const qids = new Set((aQs || []).map((q) => q.id));
+    const total = qids.size;
     const last = (aDay || [])[0];
     if (!last) assessment = { missing: false, total, date: "" };
     else {
       const ans = (last.data && last.data.ans) || {};
       let no = 0, answered = 0;
-      for (const k of Object.keys(ans)) { answered++; if (ans[k] === "no") no++; }
+      // Count only answers to questions that still exist, so orphaned answers
+      // from edited or removed questions can't push the tally past the total.
+      for (const k of Object.keys(ans)) { if (!qids.has(k)) continue; answered++; if (ans[k] === "no") no++; }
       assessment = { missing: false, total, date: last.log_date || "", answered, no };
     }
   }

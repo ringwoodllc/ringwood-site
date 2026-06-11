@@ -108,10 +108,6 @@
     <div><label for="dateSel">Assessment date</label><input type="date" id="dateSel" /></div>
   </div>
   <div id="note" class="note" style="display:none"></div>
-  <div id="clTools" style="display:none;margin-bottom:12px">
-    <button type="button" class="btn" id="resetBtn">↺ Load the standard questions</button>
-    <span class="savemsg" id="resetMsg" style="margin-left:10px"></span>
-  </div>
   <div id="summary" class="summary" style="display:none"></div>
   <div class="toolbar"><button type="button" class="btn ghost" id="pdfBtn">🖨 Save as PDF</button><span class="savemsg">Answers save automatically. Reopen this date anytime to edit.</span></div>
   <div id="list"><div class="empty">Loading…</div></div>
@@ -147,7 +143,7 @@
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
         RWClientPins.mount({ selectEl: document.getElementById("clientSel"), clients:(o&&o.clients)||[], placeholder:"Select a client…",
-          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to start.</div>"; document.getElementById("summary").style.display="none"; document.getElementById("clTools").style.display="none"; } else load(); } });
+          onPick:function(name){ CLIENT=name; if(!name){ document.getElementById("list").innerHTML="<div class='empty'>Pick a client to start.</div>"; document.getElementById("summary").style.display="none"; } else load(); } });
       }).catch(function(){});
     } else { CLIENT=d.client||""; load(); }
   }).catch(function(){});
@@ -162,14 +158,13 @@
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The assessment tables aren't set up yet. Add them in Supabase (one-time), then answers save."; } else note.style.display="none";
       QS=d.questions||[]; ANS=d.ans||{}; FIND=d.find||{}; FINDPICS=d.findpics||{};
-      document.getElementById("clTools").style.display = IS_MASTER ? "block" : "none";
       render(); renderManage();
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
   function render(){
     var el=document.getElementById("list");
-    if(!QS.length){ el.innerHTML="<div class='empty'>No questions yet."+(IS_MASTER?" Use Load the standard questions above, or add your own in Edit questions.":"")+"</div>"; document.getElementById("summary").style.display="none"; return; }
+    if(!QS.length){ el.innerHTML="<div class='empty'>Loading the assessment…"+(IS_MASTER?" If nothing appears, add questions in Edit questions below.":"")+"</div>"; document.getElementById("summary").style.display="none"; return; }
     var bySec=[], idx={};
     QS.forEach(function(q){ if(idx[q.section]==null){ idx[q.section]=bySec.length; bySec.push({name:q.section, qs:[]}); } bySec[idx[q.section]].qs.push(q); });
     el.innerHTML = bySec.map(function(s){
@@ -337,14 +332,6 @@
     var b=document.getElementById("mgBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none";
     this.querySelector(".back").textContent=open?"Hide ▴":"Edit ▾";
   });
-  document.getElementById("resetBtn").addEventListener("click", function(){
-    if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
-    if(!confirm("Replace all questions with the standard set? This deletes the current questions.")) return;
-    var b=this, m=document.getElementById("resetMsg"); b.disabled=true; var old=b.textContent; b.textContent="Loading…"; m.textContent="";
-    fetch("/api/assessment/reset",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT})})
-      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent=old; if(d&&d.ok){ m.style.color="var(--ok)"; m.textContent="Loaded "+d.count+" questions ✓"; load(); } else { m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't load."; } })
-      .catch(function(){ b.disabled=false; b.textContent=old; m.style.color="var(--red)"; m.textContent="No connection"; });
-  });
   document.getElementById("addQ").addEventListener("click", function(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
     var sec=document.getElementById("nSec").value.trim(), code=document.getElementById("nCode").value.trim(), q=document.getElementById("nQ").value.trim();
@@ -357,7 +344,7 @@
     if(!IS_MASTER) return;
     var box=document.getElementById("mgList");
     if(!CLIENT){ box.innerHTML="<div class='empty'>Pick a client first.</div>"; return; }
-    if(!QS.length){ box.innerHTML="<div class='empty'>No questions. Add one below or load the standard set.</div>"; return; }
+    if(!QS.length){ box.innerHTML="<div class='empty'>No questions yet. Add one below.</div>"; return; }
     box.innerHTML=QS.map(function(q){
       return "<div class='mgrow' data-id='"+esc(q.id)+"'>"+
         "<input class='mgsec' value='"+esc(q.section)+"' />"+
