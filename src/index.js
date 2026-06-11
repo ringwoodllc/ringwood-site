@@ -104,6 +104,7 @@ export default {
     if (url.pathname === "/api/temps/round" && request.method === "POST") return logTempRound(request, env, session);
     if (url.pathname === "/api/temps/grid" && request.method === "POST") return logTempGrid(request, env, session);
     if (url.pathname === "/api/temps/log/delete" && request.method === "POST") return deleteTempLog(request, env, session);
+    if (url.pathname === "/api/temps/log/update" && request.method === "POST") return updateTempLog(request, env, session);
     if (url.pathname === "/api/temps/demo" && request.method === "POST") return setTempDemo(request, env, session);
     if (url.pathname === "/api/tickets/retitle") return retitleTickets(request, env);
     if (url.pathname === "/api/tickets/relink-photos") return relinkTicketPhotos(request, env);
@@ -3427,6 +3428,26 @@ async function deleteTempLog(request, env, session) {
   }
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/temp_logs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+// Override an already-logged reading (admin fixing a value entered in error).
+async function updateTempLog(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  const temp = parseFloat(body.temp);
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  if (isNaN(temp)) return json({ ok: false, error: "Enter a temperature." }, 400);
+  const forced = scopeName(session);
+  if (forced != null) {
+    const rows = await sbSelect(env, `temp_logs?id=eq.${id}&select=client:clients(name)`);
+    const cn = rows && rows[0] && rows[0].client && rows[0].client.name;
+    if (cn !== forced) return json({ ok: false, error: "Not found." }, 404);
+  }
+  const res = await sbUpdate(env, "temp_logs", id, { temp });
+  if (!res.ok) return json({ ok: false, error: "Could not update." }, 502);
   return json({ ok: true });
 }
 

@@ -216,6 +216,15 @@
   function byName(a,b){ return (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); }
   function outOf(temp,min,max){ if(temp==null||isNaN(temp)) return false; if(min!=null&&temp<min) return true; if(max!=null&&temp>max) return true; return false; }
   function rangeText(min,max){ if(min==null&&max==null) return "No range set"; if(min!=null&&max!=null) return min+"° to "+max+"°F"; if(max!=null) return "≤ "+max+"°F"; return "≥ "+min+"°F"; }
+  // The range used for flagging: the unit's own if set, otherwise a generic by type.
+  function unitRange(u){
+    if(u.min!=null || u.max!=null) return {min:u.min, max:u.max, generic:false};
+    var n=(u.name||"").toLowerCase();
+    if(/freezer|flash/.test(n)) return {min:-15, max:0, generic:true};
+    if(/dipping/.test(n)) return {min:-5, max:5, generic:true};
+    return {min:33, max:41, generic:true};
+  }
+  function rangeDisplay(u){ var r=unitRange(u); return rangeText(r.min,r.max)+(r.generic?" (generic)":""); }
 
   function timeOf(s){ return s?new Date(s).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):""; }
 
@@ -238,13 +247,20 @@
     }).join("");
     var addTh = CAN_EDIT ? "<th class='c-addslot'><button type='button' id='addSlot' title='Add a time'>＋</button></th>" : "";
     var rows = UNITS.map(function(u){
+      var rg=unitRange(u);
       var cells = SLOTS.map(function(s){
         var key=slotKey(s);
         var ex=(byUnitSlot[u.id]||{})[key];
-        if(ex){ var out=outOf(ex.temp,u.min,u.max); return "<td class='c-cell'><input type='number' class='gcell logged"+(out?" out":"")+"' value='"+esc(ex.temp)+"' disabled title='Logged "+esc(timeOf(ex.at))+"' /></td>"; }
+        if(ex){
+          var out=outOf(ex.temp,rg.min,rg.max);
+          // Admin can override a logged value (typed in error); staff see it locked.
+          if(IS_MASTER) return "<td class='c-cell'><input type='number' inputmode='decimal' step='0.1' class='gcell logged loggededit"+(out?" out":"")+"' data-id='"+esc(ex.id)+"' value='"+esc(ex.temp)+"' title='Logged "+esc(timeOf(ex.at))+". Edit to override, clear to remove.' /></td>";
+          return "<td class='c-cell'><input type='number' class='gcell logged"+(out?" out":"")+"' value='"+esc(ex.temp)+"' disabled title='Logged "+esc(timeOf(ex.at))+"' /></td>";
+        }
         return "<td class='c-cell'>"+(CAN_EDIT?"<input type='number' inputmode='decimal' step='0.1' class='gcell tinput' data-aid='"+esc(u.id)+"' data-slot='"+esc(key)+"' placeholder='—' />":"<span class='cell-none'>—</span>")+"</td>";
       }).join("");
-      return "<tr id='row_"+esc(u.id)+"'><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div><div class='u-range'>"+esc(rangeText(u.min,u.max))+"</div></td>"+cells+(addTh?"<td></td>":"")+"</tr>";
+      var rangeDiv = IS_MASTER ? "<div class='u-range'>"+esc(rangeDisplay(u))+"</div>" : "";
+      return "<tr id='row_"+esc(u.id)+"'><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div>"+rangeDiv+"</td>"+cells+(addTh?"<td></td>":"")+"</tr>";
     }).join("");
     var table="<div class='tlogwrap'><table class='tlog'><thead><tr><th>Unit</th>"+ths+addTh+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
     var saveBtn = CAN_EDIT ? "<div class='saverow'><button type='button' class='btn savebtn' id='saveRound'>✓ Save readings</button><span class='savemsg' id='saveMsg'></span></div>" : "";
@@ -253,6 +269,14 @@
     var sb=document.getElementById("saveRound");
     if(sb) sb.addEventListener("click", saveGrid);
     Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")).forEach(function(i){ i.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveGrid(); } }); });
+    // Admin override of a logged reading: change updates it, clearing removes it.
+    Array.prototype.slice.call(document.querySelectorAll(".gcell.loggededit")).forEach(function(i){ i.addEventListener("change", function(){
+      var id=i.getAttribute("data-id"), v=(i.value||"").trim();
+      if(v===""){ if(!confirm("Remove this reading?")){ load(); return; } fetch("/api/temps/log/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(d){ if(!(d&&d.ok)) alert((d&&d.error)||"Couldn't remove."); load(); }); return; }
+      var n=parseFloat(v); if(isNaN(n)){ load(); return; }
+      i.disabled=true;
+      fetch("/api/temps/log/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,temp:n})}).then(function(r){return r.json();}).then(function(d){ if(!(d&&d.ok)) alert((d&&d.error)||"Couldn't update."); load(); }).catch(function(){ i.disabled=false; alert("Couldn't reach the server."); });
+    }); });
     // editable slot times: update the column's cells in place (don't wipe typed values)
     Array.prototype.slice.call(document.querySelectorAll(".slottime")).forEach(function(inp){ inp.addEventListener("change", function(){
       var si=+this.getAttribute("data-si"), oldKey=slotKey(SLOTS[si]); var v=this.value||SLOTS[si]; var nk=slotKey(v);
@@ -275,7 +299,7 @@
     if(!READS.length) return "";
     var uName={}; UNITS.forEach(function(u){ uName[u.id]=u; });
     var items = READS.slice().sort(function(a,b){ return (b.at||"").localeCompare(a.at||""); }).map(function(r){
-      var u=uName[r.assetId]||{}; var out=outOf(r.temp,u.min,u.max);
+      var u=uName[r.assetId]||{}; var rg=unitRange(u); var out=outOf(r.temp,rg.min,rg.max);
       return "<div class='read'><span class='rtemp"+(out?" out":"")+"'>"+esc(r.temp)+"°F</span>"+
         (r.demo?"<span class='rtag'>DEMO</span>":"")+
         "<span class='rmeta'><b>"+esc(u.name||"Unit")+"</b> · "+esc(timeOf(r.at))+(r.by&&!r.demo?" · "+esc(r.by):"")+"</span>"+
@@ -396,14 +420,16 @@
     var fmtDay=function(ds){ var p=ds.split("-"); return (+p[1])+"/"+(+p[2]); };
     var head="<th>Unit</th>"+days.map(function(ds){ return "<th class='h-day'><button type='button' class='daygo' data-d='"+ds+"'>"+fmtDay(ds)+"</button></th>"; }).join("");
     var rows=units.map(function(u){
+      var rg=unitRange(u);
       var cells=days.map(function(ds){
         var rs=idx[u.id+"|"+ds]||[];
         if(!rs.length) return "<td class='h-cell'><span class='h-none'>·</span></td>";
-        var anyOut=rs.some(function(r){ return outOf(r.temp,u.min,u.max); });
+        var anyOut=rs.some(function(r){ return outOf(r.temp,rg.min,rg.max); });
         var latest=rs[rs.length-1];
         return "<td class='h-cell'><span class='h-val"+(anyOut?" out":"")+"'>"+esc(latest.temp)+"°</span>"+(rs.length>1?"<span class='h-n'>"+rs.length+"×</span>":"")+"</td>";
       }).join("");
-      return "<tr><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div><div class='u-range'>"+esc(rangeText(u.min,u.max))+"</div></td>"+cells+"</tr>";
+      var rangeDiv = IS_MASTER ? "<div class='u-range'>"+esc(rangeDisplay(u))+"</div>" : "";
+      return "<tr><td class='c-unit'><div class='u-name'>"+esc(u.name)+"</div>"+rangeDiv+"</td>"+cells+"</tr>";
     }).join("");
     out.innerHTML="<div class='tlogwrap'><table class='tlog hist'><thead><tr>"+head+"</tr></thead><tbody>"+rows+"</tbody></table></div>";
     Array.prototype.slice.call(document.querySelectorAll(".daygo")).forEach(function(b){ b.addEventListener("click", function(){

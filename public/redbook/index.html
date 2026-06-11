@@ -254,7 +254,7 @@
     // wire renames (inline)
     Array.prototype.slice.call(document.querySelectorAll(".dedit")).forEach(function(b){ b.addEventListener("click", function(e){ e.stopPropagation(); startRename(b); }); });
     // wire uploads (file picker)
-    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var fs=e.target.files; var sec=inp.getAttribute("data-sec"), msg=inp.id.replace("up_","umsg_"); e.target.value=""; if(fs&&fs.length) uploadList(fs, sec, msg); }); });
+    Array.prototype.slice.call(document.querySelectorAll("input[type=file][data-sec]")).forEach(function(inp){ inp.addEventListener("change", function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); var sec=inp.getAttribute("data-sec"), msg=inp.id.replace("up_","umsg_"); e.target.value=""; if(fs.length) uploadList(fs, sec, msg); }); });
     // wire drag-and-drop onto each section's upload box
     Array.prototype.slice.call(document.querySelectorAll(".up[data-sec]")).forEach(function(lbl){
       lbl.addEventListener("dragover", function(e){ e.preventDefault(); lbl.classList.add("drag"); });
