@@ -200,6 +200,7 @@
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   var IS_MASTER=false, CAN_EDIT=true, CLIENT="", CUR=null, PHOTOS=[], ITEMS=[], ORD3=[], BUY=[], ALL_PRODUCTS=[];
+  var orderEditorPaste=null; // set while the order editor is open: a paste/drop appends a page
   function loadCatalog(){
     ALL_PRODUCTS=BR_PRODUCTS.slice();
     if(IS_MASTER && !CLIENT) return;
@@ -593,12 +594,30 @@
       "</div>"+
       "<div class='hint' id='oHint'></div>"+
       "<label>Flavors and quantities</label><div id='oLines'>"+items.map(function(it){return lineHtml(it.product,it.qty);}).join("")+"</div>"+
-      "<div class='toolbar'><button type='button' class='btn ghost' id='oAddLine'>＋ Add line</button><button type='button' class='btn ghost' id='oLoadList'>Load full flavor list</button></div>"+
+      "<div class='toolbar'><button type='button' class='btn ghost' id='oAddLine'>＋ Add line</button><button type='button' class='btn ghost' id='oLoadList'>Load full flavor list</button><label class='btn ghost' for='oPageInput' style='cursor:pointer'>＋ Add a page</label><input type='file' id='oPageInput' accept='image/*,application/pdf' style='display:none' /></div>"+
       "<div class='toolbar'><button type='button' class='btn' id='oSave'>Save order</button>"+(!isNew?"<button type='button' class='btn ghost' id='oDelete'>Delete</button>":"")+"<button type='button' class='btn ghost' id='oCancel'>Cancel</button><span class='msg' id='oMsg'></span></div>"+
     "</div>";
     var lines=document.getElementById("oLines");
     function markNew(){ var c=0; Array.prototype.slice.call(lines.querySelectorAll(".oline .p")).forEach(function(i){ var bad=!isKnownProduct(i.value); i.classList.toggle("newp", bad); if(bad) c++; }); var h=document.getElementById("oHint"); if(h) h.textContent=c?(c+" highlighted line"+(c===1?" is":"s are")+" new — fix the name or keep it; new names get added to your list on Save."):""; }
     function wireLine(el){ el.querySelector(".lx").addEventListener("click", function(){ el.remove(); markNew(); }); el.querySelector(".p").addEventListener("input", markNew); }
+    // Read another page/photo and append its lines to this in-progress order.
+    function addPageFile(f){
+      if(!f) return; var msg=document.getElementById("oMsg"); msg.style.color="var(--clay)"; msg.textContent="Reading the added page…";
+      fileToScan(f, function(b64, ct){
+        if(!b64){ msg.style.color="var(--red)"; msg.textContent="Couldn't read that file."; return; }
+        fetch("/api/inventory/order/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,imageBase64:b64,contentType:ct,catalog:ALL_PRODUCTS})})
+          .then(function(r){return r.json();}).then(function(d){
+            if(!(d&&d.ok)){ msg.style.color="var(--red)"; msg.textContent=(d&&d.error)||"Couldn't read it."; return; }
+            var n=0; (d.items||[]).forEach(function(it){ var prod=it.product||it.label; if(!prod) return; var t=document.createElement("div"); t.innerHTML=lineHtml(prod, it.qty); var el=t.firstChild; lines.appendChild(el); wireLine(el); n++; });
+            var no=document.getElementById("oNo"); if(no && !no.value && d.orderNo) no.value=d.orderNo;
+            var amt=document.getElementById("oAmt"); if(amt && !amt.value && d.amount!=null) amt.value=d.amount;
+            markNew();
+            msg.style.color="var(--ok)"; msg.textContent="Added "+n+" line"+(n===1?"":"s")+" from the page. Check and Save.";
+          }).catch(function(){ msg.style.color="var(--red)"; msg.textContent="No connection."; });
+      });
+    }
+    var pageInp=document.getElementById("oPageInput"); if(pageInp) pageInp.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; this.value=""; addPageFile(f); });
+    orderEditorPaste = function(files){ addPageFile(files[0]); }; // drop on / paste into the editor appends a page
     Array.prototype.slice.call(lines.querySelectorAll(".oline")).forEach(wireLine); markNew();
     // Ask for the delivery date if we don't have one yet.
     var dInp=document.getElementById("oDate"); if(!dInp.value){ document.getElementById("oMsg").style.color="var(--clay)"; document.getElementById("oMsg").textContent="What's the ship / delivery date for this order?"+(o&&o._dateHint?(" (the form shows "+fmtFull(o._dateHint)+")"):""); setTimeout(function(){ dInp.focus(); }, 200); }
@@ -607,11 +626,11 @@
       var have={}; Array.prototype.slice.call(lines.querySelectorAll(".oline .p")).forEach(function(i){ have[(i.value||"").trim()]=true; });
       ALL_PRODUCTS.forEach(function(p){ if(!have[p]){ var t=document.createElement("div"); t.innerHTML=lineHtml(p,""); var el=t.firstChild; lines.appendChild(el); wireLine(el); } }); markNew();
     });
-    document.getElementById("oCancel").addEventListener("click", function(){ ed.classList.add("hide"); ed.innerHTML=""; });
+    document.getElementById("oCancel").addEventListener("click", function(){ ed.classList.add("hide"); ed.innerHTML=""; orderEditorPaste=null; });
     if(!isNew) document.getElementById("oDelete").addEventListener("click", function(){
       if(!confirm("Delete this order?")) return;
       fetch("/api/inventory/order/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,id:o.id})})
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ed.classList.add("hide"); ed.innerHTML=""; loadOrders(); } else alert((d&&d.error)||"Couldn't delete."); });
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ ed.classList.add("hide"); ed.innerHTML=""; orderEditorPaste=null; loadOrders(); } else alert((d&&d.error)||"Couldn't delete."); });
     });
     document.getElementById("oSave").addEventListener("click", function(){
       if(!document.getElementById("oDate").value){ document.getElementById("oMsg").textContent="Enter the delivery date first."; document.getElementById("oDate").focus(); return; }
@@ -624,7 +643,7 @@
       var newProds=[]; its.forEach(function(x){ var k=x.product.toLowerCase(); if(!known[k]){ known[k]=1; newProds.push({name:x.product, category:catOf(x.product,"")}); } });
       function doSave(){
         fetch("/api/inventory/order",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
-          .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save order"; if(d&&d.ok){ newProds.forEach(function(p){ if(ALL_PRODUCTS.indexOf(p.name)<0) ALL_PRODUCTS.push(p.name); }); ed.classList.add("hide"); ed.innerHTML=""; loadOrders(); } else document.getElementById("oMsg").textContent=(d&&d.error)||"Couldn't save."; })
+          .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save order"; if(d&&d.ok){ newProds.forEach(function(p){ if(ALL_PRODUCTS.indexOf(p.name)<0) ALL_PRODUCTS.push(p.name); }); ed.classList.add("hide"); ed.innerHTML=""; orderEditorPaste=null; loadOrders(); } else document.getElementById("oMsg").textContent=(d&&d.error)||"Couldn't save."; })
           .catch(function(){ b.disabled=false; b.textContent="Save order"; document.getElementById("oMsg").textContent="No connection"; });
       }
       if(newProds.length){ fetch("/api/inventory/catalog",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,products:newProds})}).then(function(){ doSave(); }).catch(function(){ doSave(); }); }
@@ -663,8 +682,9 @@
   }
   // Photo counts: dropping anywhere on the count detail adds photos.
   makeDropZone(document.getElementById("detailView"), function(files){ uploadPhotos(files); });
-  // Orders by day: dropping anywhere on the orders tab uploads an order.
-  makeDropZone(document.getElementById("ordersTab"), function(files){ uploadOrderFile(files[0]); });
+  // Orders by day: dropping anywhere on the orders tab uploads an order — unless
+  // the order editor is open, then the dropped file appends a page to it.
+  makeDropZone(document.getElementById("ordersTab"), function(files){ if(orderEditorPaste) orderEditorPaste(files); else uploadOrderFile(files[0]); });
 
   // Paste a screenshot / snippet from the clipboard. Routes by which view is open.
   document.addEventListener("paste", function(e){
@@ -674,7 +694,8 @@
     if(!files.length) return;
     var ordersOpen=!document.getElementById("ordersTab").classList.contains("hide");
     var countOpen=CUR && !document.getElementById("detailView").classList.contains("hide");
-    if(ordersOpen){ e.preventDefault(); uploadOrderFile(files[0]); }
+    if(orderEditorPaste){ e.preventDefault(); orderEditorPaste(files); }
+    else if(ordersOpen){ e.preventDefault(); uploadOrderFile(files[0]); }
     else if(countOpen){ e.preventDefault(); uploadPhotos(files); }
   });
 </script>
