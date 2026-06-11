@@ -109,6 +109,7 @@
   .pcard .pcap b{color:var(--green-deep)}
   .chk{display:inline-flex;align-items:center;gap:7px;font-weight:600;color:var(--green-deep);font-size:.86rem;cursor:pointer}
   .chk input{width:auto}
+  #detailView.dragover,#ordersTab.dragover{outline:2px dashed var(--green);outline-offset:6px;border-radius:10px;background:rgba(47,93,80,.04)}
   .ordcol{cursor:pointer}
   .ordcol:hover{text-decoration:underline}
   .editor{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
@@ -187,6 +188,7 @@
       <input type="file" id="orderScanInput" accept="image/*,application/pdf" style="display:none" />
       <a class="btn ghost" href="https://brorders.dfamilk.com/" target="_blank" rel="noopener">Order here ↗</a>
       <span class="msg" id="ordersMsg"></span>
+      <div style="flex-basis:100%;font-size:.78rem;color:var(--muted)">Tip: drag a file here, or paste a screenshot (Ctrl/Cmd+V).</div>
     </div>
     <div id="ordersInfo" class="msg" style="margin-bottom:12px"></div>
     <div id="orderEditor" class="hide"></div>
@@ -460,9 +462,10 @@
     img.onerror=function(){ URL.revokeObjectURL(url); cb(null); };
     img.src=url;
   }
-  document.getElementById("photoInput").addEventListener("change", function(e){
-    var files=Array.prototype.slice.call(e.target.files||[]); this.value="";
-    if(!files.length||!CUR) return;
+  function uploadPhotos(files){
+    files=Array.prototype.slice.call(files||[]).filter(function(f){ return f && (f.type||"").indexOf("image")===0; });
+    if(!CUR){ return; }
+    if(!files.length) return;
     var msg=document.getElementById("photoMsg"); var i=0, added=0;
     (function next(){
       if(i>=files.length){ msg.style.color="var(--ok)"; msg.textContent="Read "+added+" item"+(added===1?"":"s")+" from "+files.length+" photo"+(files.length===1?"":"s")+"."; openCount(CUR.id); return; }
@@ -474,7 +477,8 @@
           .catch(function(){ next(); });
       });
     })();
-  });
+  }
+  document.getElementById("photoInput").addEventListener("change", function(e){ uploadPhotos(e.target.files); this.value=""; });
 
   /* ===================== Orders by day ===================== */
   var ORDERS=[];
@@ -631,9 +635,8 @@
 
   /* ---- Upload an order (photo/PDF): AI reads it, you review, Save ---- */
   function fileToScan(file, cb){ if(file.type==="application/pdf"){ var fr=new FileReader(); fr.onload=function(){ cb((fr.result||"").toString().split(",")[1],"application/pdf"); }; fr.onerror=function(){cb(null);}; fr.readAsDataURL(file); } else downscale(file, cb); }
-  var orderScanInput=document.getElementById("orderScanInput");
-  if(orderScanInput) orderScanInput.addEventListener("change", function(e){
-    var f=e.target.files&&e.target.files[0]; this.value=""; if(!f) return;
+  function uploadOrderFile(f){
+    if(!f) return;
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
     var msg=document.getElementById("ordersMsg"); msg.style.color="var(--muted)"; msg.textContent="Reading the order… a few seconds.";
     fileToScan(f, function(b64, ct){
@@ -647,6 +650,32 @@
           editOrder({ order_date:"", _dateHint:d.date||"", orderedOn:d.orderedOn||"", order_no:d.orderNo||"", amount:(d.amount==null?"":d.amount), label:d.suggestLabel||"", items:(d.items||[]).map(function(it){ return {product: it.product||it.label, qty: it.qty}; }) });
         }).catch(function(){ msg.style.color="var(--red)"; msg.textContent="No connection."; });
     });
+  }
+  var orderScanInput=document.getElementById("orderScanInput");
+  if(orderScanInput) orderScanInput.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; this.value=""; uploadOrderFile(f); });
+
+  /* ---- Drag-and-drop + paste for both Add photos and Upload an order ---- */
+  function makeDropZone(el, handler){
+    if(!el) return;
+    ["dragenter","dragover"].forEach(function(ev){ el.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); el.classList.add("dragover"); }); });
+    ["dragleave","dragend"].forEach(function(ev){ el.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); el.classList.remove("dragover"); }); });
+    el.addEventListener("drop", function(e){ e.preventDefault(); e.stopPropagation(); el.classList.remove("dragover"); var dt=e.dataTransfer; if(dt&&dt.files&&dt.files.length) handler(dt.files); });
+  }
+  // Photo counts: dropping anywhere on the count detail adds photos.
+  makeDropZone(document.getElementById("detailView"), function(files){ uploadPhotos(files); });
+  // Orders by day: dropping anywhere on the orders tab uploads an order.
+  makeDropZone(document.getElementById("ordersTab"), function(files){ uploadOrderFile(files[0]); });
+
+  // Paste a screenshot / snippet from the clipboard. Routes by which view is open.
+  document.addEventListener("paste", function(e){
+    var cd=e.clipboardData; if(!cd) return;
+    var files=[]; Array.prototype.slice.call(cd.items||[]).forEach(function(it){ if(it.kind==="file"){ var f=it.getAsFile(); if(f) files.push(f); } });
+    if(!files.length && cd.files && cd.files.length) files=Array.prototype.slice.call(cd.files);
+    if(!files.length) return;
+    var ordersOpen=!document.getElementById("ordersTab").classList.contains("hide");
+    var countOpen=CUR && !document.getElementById("detailView").classList.contains("hide");
+    if(ordersOpen){ e.preventDefault(); uploadOrderFile(files[0]); }
+    else if(countOpen){ e.preventDefault(); uploadPhotos(files); }
   });
 </script>
 <script src="/lightbox.js"></script>
