@@ -4056,7 +4056,10 @@ async function listAssessment(url, env, session) {
   }
   const days = await sbSelect(env, `assessment_days?client_id=eq.${who.id}&log_date=eq.${date}&select=data&limit=1`);
   const data = (days && days[0] && days[0].data) || {};
-  return noStore({ ok: true, client: who.name, date, questions: (qs || []).map((q) => ({ id: q.id, section: q.section || "Other", code: q.code || "", question: q.question || "", sort: q.sort || 0 })), ans: data.ans || {}, find: data.find || {}, findpics: data.findpics || {} });
+  // Has this date's assessment already been filed into the Red Book binder?
+  const filedRows = await sbSelect(env, `redbook_docs?client_id=eq.${who.id}&title=eq.${encodeURIComponent("Self-Assessment — " + date)}&select=file_url&limit=1`);
+  const filed = !!(filedRows && filedRows[0]);
+  return noStore({ ok: true, client: who.name, date, questions: (qs || []).map((q) => ({ id: q.id, section: q.section || "Other", code: q.code || "", question: q.question || "", sort: q.sort || 0 })), ans: data.ans || {}, find: data.find || {}, findpics: data.findpics || {}, filed, filedUrl: filed ? (filedRows[0].file_url || "") : "" });
 }
 
 async function uploadAssessmentPhoto(request, env, session) {

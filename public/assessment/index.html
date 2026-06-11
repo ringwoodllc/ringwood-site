@@ -109,7 +109,18 @@
   </div>
   <div id="note" class="note" style="display:none"></div>
   <div id="summary" class="summary" style="display:none"></div>
-  <div class="toolbar"><button type="button" class="btn ghost" id="pdfBtn">🖨 Save as PDF</button><span class="savemsg">Answers save automatically. Reopen this date anytime to edit.</span></div>
+  <div class="toolbar">
+    <button type="button" class="btn" id="rbBtn">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="vertical-align:-3px"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Save to Red Book
+    </button>
+    <button type="button" class="btn ghost" id="pdfBtn">🖨 Save as PDF</button>
+    <a id="rbStatus" href="/redbook" style="display:none;align-items:center;gap:6px;font-size:.84rem;font-weight:600;color:var(--ok,#2f6b4f);text-decoration:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-3px"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13l2 2 4-4"/></svg>
+      Recorded to Red Book
+    </a>
+  </div>
+  <div class="savemsg" style="margin:-6px 0 12px">Answers save automatically. Use Save to Red Book to file the signed copy in the binder.</div>
   <div id="list"><div class="empty">Loading…</div></div>
   <div class="savemsg" id="saveMsg" style="margin:4px 0 18px"></div>
 
@@ -158,6 +169,7 @@
       MISSING=!!d.missing;
       if(MISSING){ note.style.display="block"; note.textContent="The assessment tables aren't set up yet. Add them in Supabase (one-time), then answers save."; } else note.style.display="none";
       QS=d.questions||[]; ANS=d.ans||{}; FIND=d.find||{}; FINDPICS=d.findpics||{};
+      if(d.filed) markFiled(d.filedUrl); else clearFiled();
       render(); renderManage();
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
@@ -294,38 +306,52 @@
     return pdf.output();
   }
 
-  function printReport(){
+  // Build the assessment PDF as a Blob (shared by Save as PDF and Save to Red Book).
+  function buildBlob(cb){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
     if(!QS.length){ alert("Nothing to save yet."); return; }
-    // Flush any pending answer edits so the PDF and the saved record match.
-    if(CAN_EDIT) saveDay();
-    var btn=document.getElementById("pdfBtn"); btn.disabled=true; var old=btn.textContent; btn.textContent="Building PDF…";
+    if(CAN_EDIT) saveDay(); // flush pending answers so the PDF matches the record
     var urls=[]; QS.forEach(function(q){ (FINDPICS[q.id]||[]).forEach(function(u){ urls.push(u); }); });
     Promise.all(urls.map(fetchPhotoJpeg)).then(function(arr){
       var map={}; urls.forEach(function(u,i){ if(arr[i]) map[u]=arr[i]; });
-      var bytes=buildPdf(map);
-      var blob=new Blob([bytes],{type:"application/pdf"});
-      var a=document.createElement("a");
-      a.href=URL.createObjectURL(blob);
+      cb(new Blob([buildPdf(map)],{type:"application/pdf"}));
+    }).catch(function(){ cb(null); });
+  }
+  // Save as PDF: download the file for the person.
+  function downloadPdf(){
+    var btn=document.getElementById("pdfBtn"); btn.disabled=true; var old=btn.textContent; btn.textContent="Building PDF…";
+    buildBlob(function(blob){
+      btn.disabled=false; btn.textContent=old;
+      if(!blob){ alert("Couldn't build the PDF."); return; }
+      var a=document.createElement("a"); a.href=URL.createObjectURL(blob);
       a.download="Self-Assessment "+(CLIENT||"")+" "+DATE+".pdf";
       document.body.appendChild(a); a.click(); a.remove();
-      btn.disabled=false; btn.textContent=old;
-      // File the frozen copy into the Red Book (one per assessment date).
+    });
+  }
+  // Save to Red Book: file the signed copy into the binder (one per date; re-filing replaces it).
+  function saveToRedBook(){
+    var btn=document.getElementById("rbBtn"); btn.disabled=true; var old=btn.textContent; btn.textContent="Saving…";
+    buildBlob(function(blob){
+      if(!blob){ btn.disabled=false; btn.textContent=old; setMsg("Couldn't build the PDF.","var(--red)"); return; }
       var rd=new FileReader();
-      rd.onload=function(){ var b64=(rd.result||"").toString().split(",")[1]; if(b64) fileToBinder(b64); };
+      rd.onload=function(){
+        var b64=(rd.result||"").toString().split(",")[1];
+        if(!b64){ btn.disabled=false; btn.textContent=old; setMsg("Couldn't build the PDF.","var(--red)"); return; }
+        setMsg("Recording to the Red Book…","var(--muted)");
+        fetch("/api/assessment/file",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,pdfBase64:b64})})
+          .then(function(r){return r.json();}).then(function(d){ btn.disabled=false; btn.textContent=old;
+            if(d&&d.ok){ markFiled(d.url||""); setMsg("Recorded to Red Book ✓","var(--ok)"); setTimeout(function(){ setMsg(""," "); },2200); }
+            else setMsg((d&&d.error)||"Couldn't record to the Red Book","var(--red)"); })
+          .catch(function(){ btn.disabled=false; btn.textContent=old; setMsg("Couldn't reach the server.","var(--red)"); });
+      };
       rd.readAsDataURL(blob);
-    }).catch(function(){ btn.disabled=false; btn.textContent=old; alert("Couldn't build the PDF."); });
+    });
   }
-  // A frozen PDF goes into the Red Book (Monthly Self-Assessments) automatically,
-  // one per assessment date — re-saving the same date replaces it.
-  function fileToBinder(pdf64){
-    if(!CAN_EDIT) return;
-    setMsg("Filing a copy to the Red Book…","var(--muted)");
-    fetch("/api/assessment/file",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE,pdfBase64:pdf64})})
-      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ setMsg("Filed to Red Book ✓","var(--ok)"); setTimeout(function(){ setMsg(""," "); },2200); } else setMsg((d&&d.error)||"Couldn't file to the Red Book","var(--red)"); })
-      .catch(function(){ setMsg("Couldn't file to the Red Book","var(--red)"); });
-  }
-  document.getElementById("pdfBtn").addEventListener("click", printReport);
+  // Show / hide the "Recorded to Red Book" indicator for the current date.
+  function markFiled(url){ var s=document.getElementById("rbStatus"); if(s){ s.style.display="inline-flex"; s.href=url||"/redbook"; } }
+  function clearFiled(){ var s=document.getElementById("rbStatus"); if(s) s.style.display="none"; }
+  document.getElementById("pdfBtn").addEventListener("click", downloadPdf);
+  document.getElementById("rbBtn").addEventListener("click", saveToRedBook);
 
   /* ---- Edit questions (admin) ---- */
   document.getElementById("mgToggle").addEventListener("click", function(){
