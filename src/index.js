@@ -3591,7 +3591,11 @@ async function scanTempLog(request, env, session) {
   if (units === null) return json({ ok: false, error: "The temperature log table isn't set up yet." }, 400);
   if (!units.length) return json({ ok: false, error: "No cold units set up yet. Add them in Manage units first." }, 400);
 
-  const names = units.map((u) => "- " + (u.nickname ? u.nickname + " (" + u.name + ")" : u.name)).join("\n");
+  const names = units.map((u) => {
+    const rg = effTempRange(u.nickname || u.name, u.temp_min, u.temp_max);
+    const r = (rg.min != null && rg.max != null) ? " [normal range " + rg.min + " to " + rg.max + " F]" : "";
+    return "- " + (u.nickname ? u.nickname + " (" + u.name + ")" : u.name) + r;
+  }).join("\n");
   const prompt =
     "This is a photo of a paper Cold Storage Temperature Log for a food business. The columns are coolers and freezers " +
     "(units); each row is a reading at a date and time. Read every temperature you can see clearly, whether handwritten or " +
@@ -3605,7 +3609,12 @@ async function scanTempLog(request, env, session) {
     "the rows around it by counting days in sequence (the row above is the day before, the row below the day after; the latest " +
     "filled row is usually today, " + today + ", the one above it yesterday). Always give your best date; do not drop a reading " +
     "just because its date cell is hard to read.\n\n" +
-    "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
+    "Each unit's normal operating range is shown in [brackets]. Use it to resolve the sign and any unclear digits. Freezers run " +
+    "below zero, and people often leave the minus sign off, so a freezer value written as 10 means -10. When the sign or a digit " +
+    "is ambiguous, read it as the value that falls within that unit's range. These daily sheets are routine in-range checks; a " +
+    "genuine out-of-range event is recorded separately, so when the writing is unclear prefer the in-range reading. Do not change " +
+    "a value that is clearly written, and never invent a value for a blank cell.\n\n" +
+    "Only include cells with a legible number. Skip blank or illegible cells.\n\n" +
     "This client's known units (match the column to the closest one, but still return the header text you see):\n" + names;
 
   const read = await claudeReadSheet(base64, ct, prompt, TEMPSCAN_SCHEMA, env);
@@ -3681,7 +3690,7 @@ async function scanWeekSheet(request, env, session, opts) {
   if (!cols.length) return json({ ok: false, error: opts.emptyError }, 400);
 
   const today = new Date().toISOString().slice(0, 10);
-  const names = cols.map((c) => "- " + c.name).join("\n");
+  const names = cols.map(opts.colLabel || ((c) => "- " + c.name)).join("\n");
   const prompt = opts.prompt(names, hint, today);
   const read = await claudeReadSheet(base64, ct, prompt, WEEKSCAN_SCHEMA, env);
   if (!read || !Array.isArray(read.readings)) return json({ ok: false, error: "Couldn't read the sheet. Try a sharper, straight-on photo." }, 502);
@@ -3718,6 +3727,7 @@ async function scanHotHolding(request, env, session) {
     table: "hotholding_logs",
     colField: "item",
     loadColumns: (cid) => sbSelect(env, `hotholding_items?client_id=eq.${cid}&select=id,name,kind,min_temp`),
+    colLabel: (c) => "- " + c.name + (c.min_temp != null ? " [hot food, at or above " + c.min_temp + " F]" : " [hot food]"),
     missingError: "The hot holding table isn't set up yet.",
     emptyError: "No items set up yet. Add them in Edit items first.",
     prompt: (names, hint, today) =>
@@ -3732,7 +3742,11 @@ async function scanHotHolding(request, env, session) {
       "the rows around it by counting days in sequence (the row above is the day before, the row below the day after; the latest " +
       "filled row is usually today, " + today + ", the one above it yesterday). Always give your best date; do not drop a reading " +
       "just because its date cell is hard to read.\n\n" +
-      "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
+      "Each item's minimum is shown in [brackets]. These are hot foods, so the temperatures are well above freezing (typically in " +
+      "the 130s to 190s F). Use the minimum to settle any unclear digit, reading toward the in-range value. These are routine " +
+      "in-range checks; a real out-of-range event is recorded separately, so when the writing is unclear prefer the in-range " +
+      "reading. Do not change a clearly written value, and never invent one.\n\n" +
+      "Only include cells with a legible number. Skip blank or illegible cells.\n\n" +
       "This client's known items (match each column to the closest one):\n" + names,
     row: (col, date, temp, cid, author) => ({ client_id: cid, log_date: date, kind: col.kind === "cooking" ? "cooking" : "holding", item: col.name, temp, logged_by: author }),
   });
@@ -3744,6 +3758,7 @@ async function scanReceiving(request, env, session) {
     retryWithout: ["storage"],
     colField: "vendor",
     loadColumns: (cid) => sbSelect(env, `receiving_vendors?client_id=eq.${cid}&select=id,name,storage`),
+    colLabel: (c) => "- " + c.name + (c.storage === "frozen" ? " [Walk-in Freezer, runs below 0 F]" : " [Walk-in Refrigerator, about 33 to 41 F]"),
     missingError: "The receiving table isn't set up yet.",
     emptyError: "No vendor lines set up yet. Add them in Edit vendors first.",
     prompt: (names, hint, today) =>
@@ -3758,7 +3773,11 @@ async function scanReceiving(request, env, session) {
       "the rows around it by counting days in sequence (the row above is the day before, the row below the day after; the latest " +
       "filled row is usually today, " + today + ", the one above it yesterday). Always give your best date; do not drop a reading " +
       "just because its date cell is hard to read.\n\n" +
-      "Only include cells with a legible number. Skip blank or illegible cells. Do not invent values.\n\n" +
+      "Each vendor line's storage type is shown in [brackets]. Frozen lines run below zero and people often leave the minus sign " +
+      "off, so a frozen value written as 8 means -8. When the sign or a digit is ambiguous, read it as the value that fits that " +
+      "line's storage type. These are routine in-range checks; a real out-of-range delivery is recorded separately, so when the " +
+      "writing is unclear prefer the in-range reading. Do not change a clearly written value, and never invent one.\n\n" +
+      "Only include cells with a legible number. Skip blank or illegible cells.\n\n" +
       "This client's known vendor lines (match each column to the closest one):\n" + names,
     row: (col, date, temp, cid, author) => ({ client_id: cid, log_date: date, vendor: col.name, storage: col.storage === "frozen" ? "frozen" : "refrigerated", temp, status: "Accepted", logged_by: author }),
   });
