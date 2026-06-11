@@ -2,6 +2,18 @@
    the badge to act as any user (their data, their permissions, comments posted
    on their behalf). Safe to include anywhere; does nothing when signed out. */
 (function () {
+  // ---- Global client context (master) ----------------------------------------
+  // A single source of truth for "which client(s) am I working in", set from the
+  // header chip and read by every form's picker (client-pins.js). One selected =
+  // scoped to that client (pickers hide); two+ = pickers limit to those; none =
+  // all clients (normal pickers). Stored per-browser, shared across pages.
+  window.RWClient = window.RWClient || {
+    KEY: "rw_active_clients",
+    active: function () { try { var a = JSON.parse(localStorage.getItem(this.KEY) || "[]"); return Array.isArray(a) ? a.filter(function (x) { return typeof x === "string" && x; }) : []; } catch (e) { return []; } },
+    set: function (arr) { try { localStorage.setItem(this.KEY, JSON.stringify(arr || [])); } catch (e) {} },
+    toggle: function (name) { var a = this.active(), i = a.indexOf(name); if (i >= 0) a.splice(i, 1); else a.push(name); this.set(a); return a; },
+  };
+
   // Register the service worker (installable + offline). On every app page.
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
@@ -71,6 +83,9 @@
     ".rw-idwrap{position:relative;display:inline-block;vertical-align:middle}" +
     ".rw-switch{display:inline-flex;align-items:center;gap:5px;background:var(--green-deep,#21443a);color:#f6f2e8;border:none;border-radius:999px;padding:2px 10px;font:inherit;font-weight:700;font-size:.74rem;cursor:pointer}" +
     ".rw-switch.acting{background:var(--clay,#a9633a)}" +
+    ".rw-ctx{display:inline-flex;align-items:center;gap:5px;background:var(--bg,#f4efe4);color:var(--green-deep,#21443a);border:1px solid var(--line,rgba(35,40,42,.14));border-radius:999px;padding:2px 10px;font:inherit;font-weight:700;font-size:.74rem;cursor:pointer;vertical-align:middle}" +
+    ".rw-ctx.on{background:var(--green-deep,#21443a);color:#f6f2e8;border-color:var(--green-deep,#21443a)}" +
+    ".rw-ctxdone{background:var(--green,#2f5d50);color:#f6f2e8;border:none;border-radius:6px;padding:6px 14px;font:inherit;font-weight:600;font-size:.82rem;cursor:pointer;width:100%}" +
     ".rw-switch .car{opacity:.85;font-size:.7rem}" +
     ".rw-menu{position:fixed;right:10px;left:auto;top:60px;background:#fff;border:1px solid var(--line,rgba(35,40,42,.14));border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.18);min-width:220px;max-width:min(290px,92vw);max-height:70vh;overflow:auto;z-index:10000;text-align:left;padding:6px}" +
     ".rw-menu .h{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted,#5f5d52);font-weight:700;padding:8px 10px 4px}" +
@@ -119,11 +134,18 @@
       var label = w.impersonating
         ? "Acting as " + esc(w.name || "user")
         : CROWN + esc(w.realName || w.name || "Master");
+      var act = window.RWClient.active();
+      var ctxLabel = act.length === 0 ? "all clients" : (act.length === 1 ? esc(act[0]) : (esc(act[0]) + " +" + (act.length - 1)));
       idHtml =
         "<span class='rw-idwrap'>" +
           "<button class='rw-switch" + (w.impersonating ? " acting" : "") + "' id='rwSwitch'>" + label + " <span class='car'>&#9662;</span></button>" +
           "<div class='rw-menu' id='rwMenu' style='display:none'></div>" +
-        "</span>" + (w.impersonating ? "" : " &middot; all clients");
+        "</span>" +
+        (w.impersonating ? "" :
+          " &middot; <span class='rw-idwrap'>" +
+            "<button class='rw-ctx" + (act.length ? " on" : "") + "' id='rwCtx'>" + ctxLabel + " <span class='car'>&#9662;</span></button>" +
+            "<div class='rw-menu' id='rwCtxMenu' style='display:none'></div>" +
+          "</span>");
     } else {
       idHtml = "Signed in as <a href='/account'>" + esc(w.client || w.name || "your account") + "</a>";
     }
@@ -190,6 +212,46 @@
         else if (b.getAttribute("data-client")) switchTo({ client: b.getAttribute("data-client") });
       });
       document.addEventListener("click", function () { menu.style.display = "none"; });
+    }
+
+    // ---- Client context chip (master only): pick the client(s) you're working in.
+    if (isMaster && !w.impersonating) {
+      var ctxBtn = document.getElementById("rwCtx"), ctxMenu = document.getElementById("rwCtxMenu");
+      function renderCtxMenu(clients) {
+        var act = window.RWClient.active();
+        var html = "<div class='h'>Working in</div>" +
+          "<button data-ctx-all='1' class='" + (act.length ? "" : "cur") + "'>" + (act.length ? "" : "✓ ") + "All clients</button>" +
+          "<div class='h'>Scope to</div>" +
+          clients.map(function (c) {
+            var on = act.indexOf(c) >= 0;
+            return "<button data-ctx='" + esc(c) + "'>" + (on ? "☑ " : "☐ ") + esc(c) + "</button>";
+          }).join("") +
+          "<div style='padding:7px 10px 3px'><button class='rw-ctxdone' data-ctx-done='1'>Done</button></div>";
+        ctxMenu.innerHTML = html;
+      }
+      function openCtx() {
+        var r = ctxBtn.getBoundingClientRect();
+        ctxMenu.style.top = Math.round(r.bottom + 6) + "px";
+        ctxMenu.style.display = "block";
+        ctxMenu.innerHTML = "<div style='padding:10px;color:var(--muted,#5f5d52)'>Loading…</div>";
+        fetch("/api/options").then(function (r) { return r.json(); }).then(function (o) {
+          renderCtxMenu((o && o.clients) || []);
+        }).catch(function () { ctxMenu.innerHTML = "<div style='padding:10px'>Couldn't load clients.</div>"; });
+      }
+      ctxBtn.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (ctxMenu.style.display === "none") openCtx(); else ctxMenu.style.display = "none";
+      });
+      ctxMenu.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var b = e.target.closest ? e.target.closest("button") : null;
+        if (!b) return;
+        if (b.getAttribute("data-ctx-all")) { window.RWClient.set([]); location.reload(); return; }
+        if (b.getAttribute("data-ctx-done")) { location.reload(); return; }
+        var c = b.getAttribute("data-ctx");
+        if (c != null) { window.RWClient.toggle(c); renderCtxMenu((function () { var out = []; Array.prototype.slice.call(ctxMenu.querySelectorAll("[data-ctx]")).forEach(function (x) { out.push(x.getAttribute("data-ctx")); }); return out; })()); }
+      });
+      document.addEventListener("click", function () { ctxMenu.style.display = "none"; });
     }
 
     // "Filing as <client>" on the create forms (also shows while acting as a client).

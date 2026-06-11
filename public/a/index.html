@@ -217,6 +217,7 @@
   // A client login only sees its own assets; hide the client filter.
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if (w && w.ok && w.role === "client"){ var f = clientFilter.closest(".field"); if (f) f.style.display = "none"; }
+    else if (window.RWClientPins){ try { window.__cpins = RWClientPins.attach({ selectEl: clientFilter, exclude: ["__unassigned"], hide: "field" }); } catch(e){} }
   }).catch(function(){});
 
   // Lists from /api/options, with a resilient cache: render from the last good
@@ -235,6 +236,7 @@
     if(hasUn) html+="<option value='__unassigned'>Unassigned</option>";
     clientFilter.innerHTML=html;
     if(keep){ clientFilter.value=keep; if(clientFilter.value!==keep) clientFilter.value=""; }
+    if(window.__cpins) window.__cpins.refresh();
   }
   var cachedLists = readCache();
   if(cachedLists){ OPTIONS=cachedLists; if(cachedLists.serviceTypes&&cachedLists.serviceTypes.length) SERVICE_TYPES=cachedLists.serviceTypes; renderClientFilter(cachedLists.clients); }
@@ -868,6 +870,7 @@
 </script>
 <script src="/lightbox.js"></script>
 <script src="/native-camera.js"></script>
+<script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

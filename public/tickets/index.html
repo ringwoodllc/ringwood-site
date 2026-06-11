@@ -199,6 +199,8 @@ fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     ["category","location","asset"].forEach(function(id){ var el=document.getElementById(id); var fl=el&&el.closest?el.closest(".field"):null; if(fl) fl.style.display="none"; });
     defaultRepair();
     if (typeof refresh === "function") refresh();
+  } else if (window.RWClientPins) {
+    try { window.__cpins = RWClientPins.attach({ selectEl: clientEl, exclude: ["__add"], hide: "field" }); } catch(e){}
   }
 }).catch(function(){});
 // For the simple client form, pick "Repair" so the required category is satisfied.
@@ -280,6 +282,7 @@ function renderClients(clients) {
   var html = "<option value=''>" + (clients && clients.length ? "Select…" : "No clients yet") + "</option>";
   (clients || []).forEach(function (c) { html += "<option>" + c.replace(/</g, "&lt;") + "</option>"; });
   clientEl.innerHTML = html + ADD_CLIENT;
+  if (window.__cpins) window.__cpins.refresh();
 }
 // Location uses the same Locations master as the asset form.
 var ADD_LOC = "<option value='__add'>＋ Add a location…</option>";
@@ -633,6 +636,7 @@ function watchEquipment(ticketId) {
 </script>
 <script src="/lightbox.js"></script>
 <script src="/native-camera.js"></script>
+<script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

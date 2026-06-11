@@ -221,6 +221,8 @@
     if (w && w.ok && w.role === "client"){
       clientFilter.style.display = "none";
       var lbl = document.querySelector("label[for='clientFilter']"); if (lbl) lbl.style.display = "none";
+    } else if (window.RWClientPins){
+      try { window.__cpins = RWClientPins.attach({ selectEl: clientFilter }); } catch(e){}
     }
   }).catch(function(){});
   var allAssets = [];
@@ -254,6 +256,7 @@
     (clients || []).forEach(function(c){ html += "<option>" + c.replace(/</g,"&lt;") + "</option>"; });
     clientFilter.innerHTML = html;
     if (keep) clientFilter.value = keep;
+    if (window.__cpins) window.__cpins.refresh();
   }
   var cached = readCache() || {};
   renderServiceTypes(cached.serviceTypes || SEED_SVC);
@@ -591,6 +594,7 @@
     });
   });
 </script>
+<script src="/client-pins.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>
