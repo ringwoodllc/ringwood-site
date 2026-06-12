@@ -128,6 +128,16 @@
     .navside.left{left:max(12px, calc(50% - 560px))}
     .navside.right{right:max(12px, calc(50% - 560px))}
   }
+  /* Mobile walkthrough bar: Prev, add-photo, Next, always reachable while you
+     scroll a long ticket. Mirrors the desktop side arrows (hidden under 900px). */
+  .qnav{display:none}
+  @media(max-width:899px){
+    .qnav{display:flex;align-items:center;gap:12px;position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:60;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 10px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+    .qnavb{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--green-deep);font-size:1.6rem;line-height:1;cursor:pointer}
+    .qnavb:disabled{opacity:.3;cursor:default}
+    .qnavb.qphoto{background:var(--green);color:#f6f2e8;border-color:var(--green);font-size:1.3rem}
+    .panel{padding-bottom:84px}
+  }
   .lblrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
   .lblrow label{margin-bottom:0}
   .aibtn{flex:0 0 auto;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:5px 12px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
@@ -511,6 +521,7 @@
     showChrome(false);  // show the ticket on its own, at the top
     var existingPhotos = (t.photos && t.photos.length) ? t.photos.slice() : (t.photo ? [t.photo] : []);
     var newPhotos = [];          // {base64, contentType, preview}
+    window.__uploading = false;  // reset per ticket so the leave-warning is accurate
     var genTitle = t.title || "";  // title the AI suggests, sent on save
 
     var statusList = STATUSES.slice();
@@ -540,6 +551,11 @@
       "</div>" +
       "<button type='button' class='navside left' id='e_prevSide' aria-label='Previous ticket'>&lsaquo;</button>" +
       "<button type='button' class='navside right' id='e_nextSide' aria-label='Next ticket'>&rsaquo;</button>" +
+      "<div class='qnav' id='e_qnav'>" +
+        "<button type='button' class='qnavb' id='e_qprev' aria-label='Previous ticket'>&lsaquo;</button>" +
+        "<label class='qnavb qphoto' for='e_file' aria-label='Add photo' title='Add photo'>📷</label>" +
+        "<button type='button' class='qnavb' id='e_qnext' aria-label='Next ticket'>&rsaquo;</button>" +
+      "</div>" +
       "<div class='panel'>" +
         "<h3>" + esc(t.title) + "</h3>" +
         "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
@@ -599,7 +615,7 @@
         "<div class='field'><label>Main photos <span style='font-weight:400;color:var(--muted);font-size:.86rem'>— the headline shots shown up top</span></label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
           "<label class='qbtn' for='e_file' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
-          "<input type='file' id='e_file' accept='image/*' multiple capture='environment' style='display:none' />" +
+          "<input type='file' id='e_file' accept='image/*' multiple style='display:none' />" +
         "</div>" +
         "<div class='logsec'>" +
           "<h4>Update log</h4>" +
@@ -609,7 +625,7 @@
             "<div id='e_notethumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px'></div>" +
             "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px'>" +
               "<label class='qbtn' for='e_notefile' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
-              "<input type='file' id='e_notefile' accept='image/*' multiple capture='environment' style='display:none' />" +
+              "<input type='file' id='e_notefile' accept='image/*' multiple style='display:none' />" +
               "<button type='button' class='qbtn' id='e_polish' style='border-color:var(--clay);color:var(--clay)'>✨ Clean up with AI</button>" +
               "<label class='chk' style='font-weight:400;font-size:.9rem;display:flex;align-items:center;gap:7px;margin:0'><input type='checkbox' id='e_notetop' /> Also add these to the main photos at the top</label>" +
             "</div>" +
@@ -638,8 +654,8 @@
       if(idx<0){ var anchor=Math.min(Math.max(lastNavIndex,0), list.length-1); target = dir>0 ? anchor : anchor-1; }
       else { target = idx+dir; }
       if(target<0 || target>=list.length) return;
-      var noteEl=document.getElementById("e_note"), unsaved=newPhotos.length||notePhotos.length||(noteEl&&noteEl.value.trim());
-      if(unsaved && !confirm("You have unsaved photos or a note. Leave without saving them?")) return;
+      var noteEl=document.getElementById("e_note"), unsaved=window.__uploading||newPhotos.length||notePhotos.length||(noteEl&&noteEl.value.trim());
+      if(unsaved && !confirm(window.__uploading?"A photo is still uploading. Leave anyway?":"You have an unsaved note. Leave without saving it?")) return;
       lastNavIndex=target; openEdit(list[target], true);
     }
     (function(){
@@ -648,8 +664,8 @@
       var pos=document.getElementById("e_navpos");
       if(pos) pos.textContent = idx>=0 ? ((idx+1)+" of "+list.length) : "";
       var atStart = idx>=0 && idx<=0, atEnd = idx>=0 && idx>=list.length-1;
-      ["e_prev","e_prevSide"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atStart; b.addEventListener("click",function(){ navTo(-1); }); } });
-      ["e_next","e_nextSide"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atEnd; b.addEventListener("click",function(){ navTo(1); }); } });
+      ["e_prev","e_prevSide","e_qprev"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atStart; b.addEventListener("click",function(){ navTo(-1); }); } });
+      ["e_next","e_nextSide","e_qnext"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atEnd; b.addEventListener("click",function(){ navTo(1); }); } });
       window.__navNext = function(){ navTo(1); };
       var sn=document.getElementById("e_saveNext"); if(sn){ if(atEnd) sn.textContent="Save"; sn.addEventListener("click", function(){ window.__pendingNext=true; document.getElementById("e_save").click(); }); }
     })();
@@ -754,8 +770,24 @@
       Promise.all(files.map(processPhoto)).then(function(arr){
         arr.forEach(function(p){ newPhotos.push(p); });
         renderThumbs();
+        autoSavePhotos(arr);  // save right away so you can move to the next ticket
       }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
     });
+    // Add one or more photos and commit them to the ticket immediately (no Save
+    // needed). Only the photos are written, so status/notes you're mid-edit stay.
+    function autoSavePhotos(justAdded){
+      if(!justAdded || !justAdded.length) return;
+      var add = justAdded.map(function(p){ return { base64:p.base64, contentType:p.contentType }; });
+      var msg=document.getElementById("e_msg"); if(msg){ msg.style.color="var(--muted)"; msg.textContent="Saving "+add.length+" photo"+(add.length>1?"s":"")+"…"; }
+      window.__uploading=true;
+      fetch("/api/tickets/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:t.id, keepPhotos:existingPhotos, addPhotos:add })})
+        .then(function(r){return r.json();}).then(function(d){
+          window.__uploading=false;
+          if(d&&d.ok){ if(Array.isArray(d.photos)) existingPhotos=d.photos.slice(); newPhotos=[]; renderThumbs();
+            if(msg){ msg.style.color="var(--green-deep)"; msg.textContent=add.length+" photo"+(add.length>1?"s":"")+" saved."+(d.photoWarning?(" "+d.photoWarning):""); } }
+          else { if(msg){ msg.style.color="#8a3d1c"; msg.textContent=(d&&d.error)||"Couldn't save the photo. Tap Save to retry."; } }
+        }).catch(function(){ window.__uploading=false; if(msg){ msg.style.color="#8a3d1c"; msg.textContent="Couldn't reach the server. Tap Save to retry."; } });
+    }
 
     var aiBtnEl = document.getElementById("e_ai");
     if (aiBtnEl) aiBtnEl.addEventListener("click", function(){
