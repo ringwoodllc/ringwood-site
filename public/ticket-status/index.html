@@ -274,7 +274,7 @@
     var nReview = scoped.filter(function(t){ return !t.reviewed && !isClosed(t); }).length;
     var nClosed = scoped.filter(isClosed).length;
     var chips = [{k:"open",label:"Open",n:nOpen}];
-    if(!IS_CLIENT) chips.push({k:"review",label:"To address",n:nReview});
+    if(!IS_CLIENT) chips.push({k:"review",label:"New",n:nReview});
     chips.push({k:"closed",label:"Closed",n:nClosed});
     chips.push({k:"all",label:"All",n:scoped.length});
     chipsEl.innerHTML = chips.map(function(c){
@@ -305,12 +305,14 @@
       var img = new Image();
       var url = URL.createObjectURL(file);
       img.onload = function(){
-        var max = 1600, w = img.width, h = img.height;
+        // Smaller + lighter so uploads are quick on cell signal. Still legible
+        // for a ticket photo; the eye can't tell at 1280px / 0.7 on a phone.
+        var max = 1280, w = img.width, h = img.height;
         if (w > max || h > max){ if (w >= h){ h = Math.round(h*max/w); w = max; } else { w = Math.round(w*max/h); h = max; } }
         var c = document.createElement("canvas"); c.width = w; c.height = h;
         c.getContext("2d").drawImage(img, 0, 0, w, h);
         URL.revokeObjectURL(url);
-        var dataUrl = c.toDataURL("image/jpeg", 0.82);
+        var dataUrl = c.toDataURL("image/jpeg", 0.7);
         resolve({ base64: dataUrl.split(",")[1], contentType: "image/jpeg", preview: dataUrl });
       };
       img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error("bad image")); };
@@ -483,7 +485,7 @@
         if (t.status !== "Archived") actions += qbtn("Archive", t.id, "Archived");
       }
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
-      var reviewPill = (needsReview && !IS_CLIENT) ? "<span class='pill p-review'>To address</span>" : "";
+      var reviewPill = (needsReview && !IS_CLIENT) ? "<span class='pill p-review'>New</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ", true)'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
@@ -565,7 +567,6 @@
         (IS_CLIENT ? "" :
           // Slim indicator: just the Addressed chip. (AI rewrite lives with the
           // description now, where it actually acts.)
-          "<div id='e_review' style='margin-bottom:14px'></div>" +
           // The two things you actually work day to day: where it stands and who's on it.
           "<div class='frow'>" +
             "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
@@ -602,8 +603,8 @@
         ) +
         "<div class='field'>" +
           (IS_CLIENT ? "<label>Description</label>" :
-            "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_ai'>✨ Rewrite with AI</button><button type='button' class='aibtn' id='e_fold'>✨ Pull updates</button></div></div>") +
-          "<textarea id='e_desc' style='min-height:120px'" + (IS_CLIENT ? " readonly" : "") + ">" + esc(t.description) + "</textarea>" +
+            "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_descEdit'>Edit</button><button type='button' class='aibtn' id='e_ai' style='display:none'>✨ Rewrite</button><button type='button' class='aibtn' id='e_fold' style='display:none'>✨ Pull updates</button></div></div>") +
+          "<textarea id='e_desc' style='min-height:120px' readonly>" + esc(t.description) + "</textarea>" +
           (IS_CLIENT ? "" :
             "<div id='e_foldWrap' style='display:none;margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>" +
               "<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Updated description</div>" +
@@ -611,12 +612,21 @@
               "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_foldUse'>Use this</button><button type='button' class='qbtn' id='e_foldKeep'>Keep mine</button></div>" +
             "</div>") +
         "</div>" +
-        (IS_MASTER ? "<div class='field' id='e_partsField'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>" : "") +
         "<div class='field'><label>Main photos <span style='font-weight:400;color:var(--muted);font-size:.86rem'>— the headline shots shown up top</span></label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
-          "<label class='qbtn' for='e_file' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
-          "<input type='file' id='e_file' accept='image/*' multiple style='display:none' />" +
+          "<div style='display:flex;gap:10px;flex-wrap:wrap'>" +
+            "<label class='qbtn' for='e_file' style='cursor:pointer'>📷 Take photo</label>" +
+            "<label class='qbtn' for='e_fileUp' style='cursor:pointer'>⤴ Upload</label>" +
+          "</div>" +
+          "<input type='file' id='e_file' accept='image/*' capture='environment' style='display:none' />" +
+          "<input type='file' id='e_fileUp' accept='image/*' multiple style='display:none' />" +
         "</div>" +
+        // Parts are usually sorted at the office, not in the field. Tucked behind
+        // a toggle so they don't slow down a quick on-site update.
+        (IS_MASTER ?
+          "<div style='margin:6px 0 14px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
+          "<div id='e_partsField' style='display:none'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
+        : "") +
         "<div class='logsec'>" +
           "<h4>Update log</h4>" +
           "<div class='log' id='e_log'><div class='empty-log'>Loading…</div></div>" +
@@ -669,27 +679,20 @@
 
     // Human review: a ticket is "Needs review" until a person confirms it.
     var reviewed = !!t.reviewed;
-    function renderReview(){
-      var el = document.getElementById("e_review"); if(!el) return;
-      var isClosed = (t.status === "Complete" || t.status === "Closed" || t.status === "Archived");
-      if (isClosed){ el.innerHTML=""; return; }
-      // One chip: tap to mark addressed; tap again to undo. No busy "needs review" text.
-      el.innerHTML = "<button type='button' class='schip review"+(reviewed?" on":"")+"' id='e_addr'><span class='cdot'></span>"+(reviewed?"✓ Addressed":"Mark addressed")+"</button>";
-      document.getElementById("e_addr").addEventListener("click", function(){ setReviewed(!reviewed); });
-    }
     function setReviewed(v){
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, reviewed:v }) })
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ reviewed=v; t.reviewed=v; renderReview(); if(typeof loadLog==="function") loadLog(); } });
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ reviewed=v; t.reviewed=v; if(typeof loadLog==="function") loadLog(); } });
     }
-    renderReview();
-    // Viewing a ticket is the review. Mark it addressed on open (staff only,
-    // open tickets only), so the "To address" list clears itself as you read.
+    // A ticket is "New" until an admin opens it. Opening is the review, so mark it
+    // read on open (staff, open tickets) — that clears "New" from the list. No chip.
     (function(){
       var isClosed = (t.status === "Complete" || t.status === "Closed" || t.status === "Archived");
       if (!IS_CLIENT && !isClosed && !reviewed) setReviewed(true);
     })();
     var moreT=document.getElementById("e_moreToggle");
     if(moreT) moreT.addEventListener("click", function(e){ e.preventDefault(); var mm=document.getElementById("e_more"); var open=mm.style.display!=="none"; mm.style.display=open?"none":"block"; moreT.textContent=open?"More details ▾":"Fewer details ▴"; });
+    var partsT=document.getElementById("e_partsToggle");
+    if(partsT) partsT.addEventListener("click", function(e){ e.preventDefault(); var pf=document.getElementById("e_partsField"); var open=pf.style.display!=="none"; pf.style.display=open?"none":"block"; partsT.textContent=open?"Parts & materials ▾":"Parts & materials ▴"; });
 
     var eClientEl = document.getElementById("e_client");
     if (eClientEl){
@@ -748,13 +751,27 @@
       });
       // A new asset typed in (or suggested) saves when you tap out of the box.
       if(newAssetEl) newAssetEl.addEventListener("change", function(){ var nn=newAssetEl.value.trim(); if(nn) autoSaveTicket({ newAssetName: nn }); });
+      // Description is locked by default so it doesn't change by accident. Tap
+      // Edit to change it (the AI options appear); tap Done to lock and save it.
+      var descEditBtn=document.getElementById("e_descEdit");
+      if(descEditBtn) descEditBtn.addEventListener("click", function(){
+        var de=document.getElementById("e_desc"), ai=document.getElementById("e_ai"), fold=document.getElementById("e_fold");
+        if(de.hasAttribute("readonly")){
+          de.removeAttribute("readonly"); de.focus(); descEditBtn.textContent="Done";
+          if(ai) ai.style.display=""; if(fold) fold.style.display="";
+        } else {
+          de.setAttribute("readonly","readonly"); descEditBtn.textContent="Edit";
+          if(ai) ai.style.display="none"; if(fold) fold.style.display="none";
+          autoSaveTicket({ description: de.value });
+        }
+      });
     }
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
       var html = existingPhotos.map(function(u, i){
         return "<span style='position:relative;display:inline-block'>" +
-          "<img class='zoomable' src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
+          "<img class='zoomable' loading='lazy' decoding='async' src='" + esc(u) + "' alt='' style='width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' />" +
           (IS_CLIENT ? "" : "<button type='button' onclick='__rmPhoto(" + i + ")' style='position:absolute;top:-7px;right:-8px;width:28px;height:28px;border-radius:999px;border:none;background:var(--green-deep);color:#f6f2e8;font-size:13px;line-height:1;cursor:pointer'>×</button>") +
           "</span>";
       }).join("");
@@ -770,15 +787,20 @@
     window.__rmPhoto = function(i){ existingPhotos.splice(i,1); renderThumbs(); autoSaveTicket({ keepPhotos: existingPhotos, addPhotos: [] }); };
     renderThumbs();
 
-    document.getElementById("e_file").addEventListener("change", function(e){
+    // "Take photo" (e_file, camera) and "Upload" (e_fileUp, library, multiple)
+    // both land here, then save right away so you can move to the next ticket.
+    function addMainPhotos(e){
       var files = Array.prototype.slice.call(e.target.files||[]);
       e.target.value = "";
+      if(!files.length) return;
       Promise.all(files.map(processPhoto)).then(function(arr){
         arr.forEach(function(p){ newPhotos.push(p); });
         renderThumbs();
-        autoSavePhotos(arr);  // save right away so you can move to the next ticket
+        autoSavePhotos(arr);
       }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
-    });
+    }
+    document.getElementById("e_file").addEventListener("change", addMainPhotos);
+    var e_fileUpEl=document.getElementById("e_fileUp"); if(e_fileUpEl) e_fileUpEl.addEventListener("change", addMainPhotos);
     // Add one or more photos and commit them to the ticket immediately (no Save
     // needed). Only the photos are written, so status/notes you're mid-edit stay.
     function autoSavePhotos(justAdded){
@@ -971,7 +993,7 @@
         if (hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Add to main photos</button>";
         if (IS_MASTER) bits += "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button><button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
-        var photos = hasPhotos ? "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
+        var photos = hasPhotos ? "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' loading='lazy' decoding='async' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
         return "<div class='lg note' data-cid='" + esc(c.id) + "'>" +
           "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span><span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
           (c.body ? "<div class='text'>" + esc(c.body) + "</div>" : "") + photos + "</div>";
