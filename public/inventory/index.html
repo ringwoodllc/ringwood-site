@@ -176,7 +176,7 @@
       <span class="msg" id="photoMsg"></span>
     </div>
     <div id="photos" class="photos"></div>
-    <div class="toolbar"><label class="chk"><input type="checkbox" id="hideEmpty" /> Hide flavors with nothing on hand and never ordered</label><label class="chk"><input type="checkbox" id="compact" /> Compact</label></div>
+    <div class="toolbar"><label class="chk"><input type="checkbox" id="showAll" /> Show all flavors</label><label class="chk"><input type="checkbox" id="detailed" /> Detailed view</label></div>
     <div id="items"></div>
     <div class="grp">Buy list</div>
     <div id="buy" class="buy"><div class="empty">Set "Need" on items above and they collect here.</div></div>
@@ -278,8 +278,8 @@
     }).catch(function(){ document.getElementById("items").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
   document.getElementById("backToList").addEventListener("click", function(){ showList(); loadCounts(); });
-  document.getElementById("hideEmpty").addEventListener("change", function(){ if(CUR) renderPlan(); });
-  document.getElementById("compact").addEventListener("change", function(){ if(CUR) renderPlan(); });
+  document.getElementById("showAll").addEventListener("change", function(){ if(CUR) renderPlan(); });
+  document.getElementById("detailed").addEventListener("change", function(){ if(CUR) renderPlan(); });
   // Shorthand flavor names for the compact (mobile) view; full name stays in the tooltip.
   function shortName(n){
     return (n||"").replace(/Chocolate/gi,"Choc").replace(/Cookies/gi,"Ckys").replace(/Cookie/gi,"Cky")
@@ -370,8 +370,10 @@
 
   function renderPlan(){
     var box=document.getElementById("items");
-    var he=document.getElementById("hideEmpty"); var hideEmpty=he&&he.checked;
-    var ce=document.getElementById("compact"); var compact=ce&&ce.checked;
+    // Default view is compact and hides untouched flavors. The boxes opt into more:
+    // "Show all flavors" reveals the untouched ones; "Detailed view" un-compacts.
+    var he=document.getElementById("showAll"); var hideEmpty=!(he&&he.checked);
+    var ce=document.getElementById("detailed"); var compact=!(ce&&ce.checked);
     var maps=orderMaps();
     // On-hand from the photos, grouped by flavor.
     var groups={}; ITEMS.forEach(function(it){ var k=ordKey(it.product,it.kind); (groups[k]=groups[k]||[]).push(it); });
@@ -413,7 +415,7 @@
       if(!rows) return;
       html+="<div class='grp'>"+esc(c)+"</div><div class='trendwrap'><table class='plan"+(compact?" compact":"")+"'><thead><tr><th class='prod'>Name</th>"+ohdr+"<th>On hand</th><th>Order</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
     });
-    if(!shown){ box.innerHTML="<div class='empty'>"+(hideEmpty?"Nothing on hand or on order yet. Untick the hide box to see the full order form.":"Loading the order form…")+"</div>"; return; }
+    if(!shown){ box.innerHTML="<div class='empty'>"+(hideEmpty?"Nothing on hand or on order yet. Tick 'Show all flavors' to see the full order form.":"Loading the order form…")+"</div>"; return; }
     box.innerHTML=html;
     Array.prototype.slice.call(box.querySelectorAll("tr[data-key]")).forEach(function(tr){
       var key=tr.getAttribute("data-key"), p=seen[key], g={items:groups[key]||[]};
