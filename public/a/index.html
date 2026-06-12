@@ -772,12 +772,12 @@
     return new Promise(function(resolve, reject){
       var img = new Image(), url = URL.createObjectURL(file);
       img.onload = function(){
-        var max=1600, w=img.width, h=img.height;
+        var max=1280, w=img.width, h=img.height;
         if(w>max||h>max){ if(w>=h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } }
         var c=document.createElement("canvas"); c.width=w; c.height=h;
         c.getContext("2d").drawImage(img,0,0,w,h);
         URL.revokeObjectURL(url);
-        var d=c.toDataURL("image/jpeg",0.82);
+        var d=c.toDataURL("image/jpeg",0.7);
         resolve({ base64:d.split(",")[1], contentType:"image/jpeg", preview:d });
       };
       img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("bad image")); };
@@ -806,7 +806,7 @@
     editKeep = assetPhotoList(a).slice();
     editNew = [];
     return "<div id='editthumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px'></div>"+
-      "<div class='field'><input type='file' id='a_file' accept='image/*' multiple capture='environment' /></div>";
+      "<div class='field'><input type='file' id='a_file' accept='image/*' multiple /></div>";
   }
   function wireEditPhotos(){
     renderEditThumbs();
@@ -999,7 +999,7 @@
         "<div class='field'><label>Notes</label><textarea id='s_notes'>"+esc(s.notes)+"</textarea></div>"+
         "<div class='field'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
         "<div class='field'><label>Photos</label><div id='svcthumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px'></div>"+
-          "<input type='file' id='svcfile' accept='image/*' multiple capture='environment' /></div>"+
+          "<input type='file' id='svcfile' accept='image/*' multiple /></div>"+
         "<div class='btnrow'><button class='btn' id='svcSave' type='button'>Save</button><button class='btn ghost' id='svcBack' type='button'>Back</button></div>";
       document.getElementById("svcBack").addEventListener("click", function(){ renderRead(curAsset); });
       document.getElementById("svcSave").addEventListener("click", function(){ saveService(sid); });

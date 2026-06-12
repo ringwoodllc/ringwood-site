@@ -491,14 +491,14 @@
         var img = new Image();
         img.onerror = reject;
         img.onload = function(){
-          var max = 1600, w = img.width, h = img.height;
+          var max = 1280, w = img.width, h = img.height;
           if (w > max || h > max){
             if (w >= h){ h = Math.round(h * max / w); w = max; } else { w = Math.round(w * max / h); h = max; }
           }
           var canvas = document.createElement("canvas");
           canvas.width = w; canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          var dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          var dataUrl = canvas.toDataURL("image/jpeg", 0.7);
           resolve({ preview: dataUrl, base64: dataUrl.split(",")[1], contentType: "image/jpeg",
             filename: (file.name || "service").replace(/\.[^.]+$/, "") + ".jpg" });
         };

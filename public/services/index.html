@@ -212,9 +212,9 @@
   window.addEventListener("pageshow", function(e){ var ew=document.getElementById("editWrap"); if(e.persisted && (!ew||!ew.innerHTML)) refreshRecords(); });
   function processPhoto(file){
     return new Promise(function(res,rej){ var img=new Image(),u=URL.createObjectURL(file);
-      img.onload=function(){ var max=1600,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
+      img.onload=function(){ var max=1280,w=img.width,h=img.height; if(w>max||h>max){ if(w>=h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;} }
         var c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);URL.revokeObjectURL(u);
-        var d=c.toDataURL("image/jpeg",0.82); res({base64:d.split(",")[1],contentType:"image/jpeg",preview:d}); };
+        var d=c.toDataURL("image/jpeg",0.7); res({base64:d.split(",")[1],contentType:"image/jpeg",preview:d}); };
       img.onerror=function(){ URL.revokeObjectURL(u); rej(new Error("bad")); }; img.src=u; });
   }
   window.openRec=function(id, push){
@@ -247,7 +247,7 @@
             "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' id='s_polishUse' style='background:var(--green);color:#f6f2e8;border:none;border-radius:5px;padding:8px 15px;font:inherit;font-weight:600;cursor:pointer'>Use this</button><button type='button' id='s_polishKeep' style='background:transparent;border:1px solid var(--line);color:var(--green-deep);border-radius:5px;padding:8px 15px;font:inherit;font-weight:600;cursor:pointer'>Keep mine</button></div>"+
           "</div></div>"+
         "<div style='"+fld+"'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
-        "<div style='"+fld+"'><label>Photos</label><div id='s_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div><input type='file' id='s_file' accept='image/*' multiple capture='environment'/></div>"+
+        "<div style='"+fld+"'><label>Photos</label><div id='s_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div><input type='file' id='s_file' accept='image/*' multiple/></div>"+
         "<div style='display:flex;gap:10px;margin-top:6px'><button id='s_save' type='button' style='flex:1;background:var(--green);color:#f6f2e8;border:none;border-radius:5px;padding:13px;font:inherit;font-weight:600;cursor:pointer'>Save</button>"+
         "<button id='s_back' type='button' style='flex:1;background:transparent;color:var(--green-deep);border:1px solid var(--line);border-radius:5px;padding:13px;font:inherit;font-weight:600;cursor:pointer'>Back</button></div>"+
         "<div id='s_msg' style='color:#8a3d1c;font-size:.88rem;margin-top:10px'></div></div>";

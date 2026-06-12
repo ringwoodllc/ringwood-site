@@ -139,6 +139,11 @@
     .panel{padding-bottom:84px}
   }
   .lblrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+  /* Description shown as plain read-only text (like the asset view), clamped when
+     long. It only becomes an editable box after you tap Edit. */
+  .descview{white-space:pre-wrap;font-size:.98rem;line-height:1.55;color:var(--ink);margin:2px 0;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+  .descview.expanded{-webkit-line-clamp:unset;overflow:visible}
+  .descmore{display:inline-block;font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay);margin:0 0 8px;cursor:pointer}
   .lblrow label{margin-bottom:0}
   .aibtn{flex:0 0 auto;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:5px 12px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
   .aibtn:hover{background:rgba(169,99,58,.08)}
@@ -604,7 +609,9 @@
         "<div class='field'>" +
           (IS_CLIENT ? "<label>Description</label>" :
             "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_descEdit'>Edit</button><button type='button' class='aibtn' id='e_ai' style='display:none'>✨ Rewrite</button><button type='button' class='aibtn' id='e_fold' style='display:none'>✨ Pull updates</button></div></div>") +
-          "<textarea id='e_desc' style='min-height:120px' readonly>" + esc(t.description) + "</textarea>" +
+          "<div id='e_descView' class='descview'>" + (t.description ? esc(t.description) : "<span style='color:var(--muted)'>" + (IS_CLIENT ? "No description." : "No description yet. Tap Edit to add one.") + "</span>") + "</div>" +
+          "<a href='#' id='e_descMore' class='descmore' style='display:none'>Show more</a>" +
+          (IS_CLIENT ? "" : "<textarea id='e_desc' style='min-height:120px;display:none'>" + esc(t.description) + "</textarea>") +
           (IS_CLIENT ? "" :
             "<div id='e_foldWrap' style='display:none;margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>" +
               "<div style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:5px'>Updated description</div>" +
@@ -762,21 +769,38 @@
       });
       // A new asset typed in (or suggested) saves when you tap out of the box.
       if(newAssetEl) newAssetEl.addEventListener("change", function(){ var nn=newAssetEl.value.trim(); if(nn) autoSaveTicket({ newAssetName: nn }); });
-      // Description is locked by default so it doesn't change by accident. Tap
-      // Edit to change it (the AI options appear); tap Done to lock and save it.
+      // Description reads as plain text and only becomes an editable box when you
+      // tap Edit (then the AI options appear). Tap Done to save and lock it back.
       var descEditBtn=document.getElementById("e_descEdit");
       if(descEditBtn) descEditBtn.addEventListener("click", function(){
-        var de=document.getElementById("e_desc"), ai=document.getElementById("e_ai"), fold=document.getElementById("e_fold");
-        if(de.hasAttribute("readonly")){
-          de.removeAttribute("readonly"); de.focus(); descEditBtn.textContent="Done";
+        var de=document.getElementById("e_desc"), view=document.getElementById("e_descView"), more=document.getElementById("e_descMore"), ai=document.getElementById("e_ai"), fold=document.getElementById("e_fold");
+        var editing = de.style.display!=="none";
+        if(!editing){
+          view.style.display="none"; if(more) more.style.display="none";
+          de.style.display=""; de.focus(); descEditBtn.textContent="Done";
           if(ai) ai.style.display=""; if(fold) fold.style.display="";
         } else {
-          de.setAttribute("readonly","readonly"); descEditBtn.textContent="Edit";
+          de.style.display="none";
+          if(de.value){ view.textContent=de.value; } else { view.innerHTML="<span style='color:var(--muted)'>No description yet. Tap Edit to add one.</span>"; }
+          view.classList.remove("expanded"); view.style.display="";
+          descEditBtn.textContent="Edit";
           if(ai) ai.style.display="none"; if(fold) fold.style.display="none";
           autoSaveTicket({ description: de.value });
+          refreshDescClamp();
         }
       });
     }
+    // Show the "Show more" link only when the read-only text overflows the clamp.
+    function refreshDescClamp(){
+      var v=document.getElementById("e_descView"), more=document.getElementById("e_descMore");
+      if(!v||!more) return;
+      if(v.classList.contains("expanded")){ more.style.display="inline-block"; more.textContent="Show less"; return; }
+      more.style.display=(v.scrollHeight > v.clientHeight + 2) ? "inline-block" : "none";
+      more.textContent="Show more";
+    }
+    var descMore=document.getElementById("e_descMore");
+    if(descMore) descMore.addEventListener("click", function(e){ e.preventDefault(); document.getElementById("e_descView").classList.toggle("expanded"); refreshDescClamp(); });
+    refreshDescClamp();
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
