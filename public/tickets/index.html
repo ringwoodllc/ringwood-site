@@ -54,6 +54,8 @@
   textarea{min-height:90px;resize:vertical}
 
   .photoBtn{display:flex;flex-direction:column;align-items:center;gap:11px;padding:34px 20px;width:100%;background:var(--bg);border:1.5px dashed rgba(47,93,80,.4);border-radius:6px;color:var(--green-deep);font:inherit;font-size:1rem;font-weight:600;cursor:pointer}
+  .pbtn2{flex:1;min-width:130px;display:flex;align-items:center;justify-content:center;gap:9px;padding:18px 14px;background:var(--bg);border:1.5px dashed rgba(47,93,80,.4);border-radius:6px;color:var(--green-deep);font:inherit;font-size:1rem;font-weight:600;cursor:pointer}
+  .pbtn2:active{background:var(--bg-2)}
   .photoNote{font-size:.86rem;color:var(--muted);margin:8px 0 0;min-height:18px}
   .preview{position:relative;margin-top:4px}
   .preview img{width:100%;border-radius:6px;display:block;max-height:280px;object-fit:cover}
@@ -117,10 +119,17 @@
     <div class="field">
       <label>Photos <span class="hint" id="photoReqLabel">— optional, add as many as help</span></label>
       <input id="file" type="file" accept="image/*" multiple class="hidden" />
-      <button id="photoBtn" class="photoBtn" type="button">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2f5d50" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        <span>Add photos</span>
-      </button>
+      <input id="fileCam" type="file" accept="image/*" capture="environment" class="hidden" />
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="camBtn" class="pbtn2" type="button">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <span>Take photo</span>
+        </button>
+        <button id="photoBtn" class="pbtn2" type="button">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Upload</span>
+        </button>
+      </div>
       <div id="thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
       <p id="photoNote" class="photoNote"></p>
     </div>
@@ -512,12 +521,13 @@ function processPhoto(file) {
       var img = new Image();
       img.onerror = reject;
       img.onload = function () {
-        var max = 1600, w = img.width, h = img.height;
+        // Smaller + lighter so uploads are quick on a phone, still legible.
+        var max = 1280, w = img.width, h = img.height;
         if (w > max || h > max) { if (w > h) { h = Math.round(h * max / w); w = max; } else { w = Math.round(w * max / h); h = max; } }
         var canvas = document.createElement("canvas");
         canvas.width = w; canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        var dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        var dataUrl = canvas.toDataURL("image/jpeg", 0.7);
         resolve({ base64: dataUrl.split(",")[1], contentType: "image/jpeg", preview: dataUrl });
       };
       img.src = ev.target.result;
@@ -534,14 +544,18 @@ function renderThumbs() {
   }).join("");
 }
 window.removePhoto = function (i) { photos.splice(i, 1); renderThumbs(); refresh(); };
-fileInput.addEventListener("change", function (e) {
-  var files = Array.prototype.slice.call(e.target.files || []);
+// "Take photo" (camera) and "Upload" (library/files) both land here.
+function addIncomingPhotos(files) {
   files.forEach(function (file) {
     processPhoto(file).then(function (res) { photos.push(res); renderThumbs(); refresh(); }).catch(function () {});
     tryAutoLinkAsset(file); // if it's a QR, link the asset instantly
   });
-  e.target.value = "";
-});
+}
+fileInput.addEventListener("change", function (e) { addIncomingPhotos(Array.prototype.slice.call(e.target.files || [])); e.target.value = ""; });
+var camInput = document.getElementById("fileCam");
+if (camInput) camInput.addEventListener("change", function (e) { addIncomingPhotos(Array.prototype.slice.call(e.target.files || [])); e.target.value = ""; });
+var camBtn = document.getElementById("camBtn");
+if (camBtn && camInput) camBtn.addEventListener("click", function () { camInput.click(); });
 
 noteEl.addEventListener("input", refresh);
 categoryEl.addEventListener("change", refresh);
