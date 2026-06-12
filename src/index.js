@@ -78,6 +78,7 @@ export default {
     if (url.pathname === "/api/tickets/update" && request.method === "POST") return updateTicket(request, env, session);
     if (url.pathname === "/api/tickets/delete" && request.method === "POST") return deleteTicket(request, env, session);
     if (url.pathname === "/api/tickets/suggest" && request.method === "POST") return suggestTicket(request, env, session);
+    if (url.pathname === "/api/tickets/suggest-asset" && request.method === "POST") return suggestTicketAsset(request, env, session);
     if (url.pathname === "/api/ai/polish" && request.method === "POST") return polishNote(request, env, session);
     if (url.pathname === "/api/tickets/fold-notes" && request.method === "POST") return foldNotesIntoDescription(request, env, session);
     if (url.pathname === "/api/tickets/parts" && request.method === "GET") return listTicketParts(url, env, session);
@@ -5308,6 +5309,104 @@ async function suggestTicket(request, env, session) {
   const out = await suggestTicketFields({ note, asset, pics, urlPics, title, env });
   if (!out) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
   return json({ ok: true, description: out.description || "", category: out.category || "", title: out.title || "" });
+}
+
+// Look at a ticket (its description, title, and photos) against the equipment
+// on file for that client, and recommend which asset it should be tagged with.
+// Returns { assetId, assetName } for a match, or { newAssetName } when the
+// photos clearly show equipment that isn't on file yet, or nothing.
+async function suggestTicketAsset(request, env, session) {
+  if (!can(session, "tickets", "edit")) return deny("tickets");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No ticket id." }, 400);
+  const trows = await sbSelect(env, `tickets?id=eq.${id}&select=title,description,photo_url,photo_urls,client_id`);
+  const t = trows && trows[0];
+  if (!t) return json({ ok: false, error: "Ticket not found." }, 404);
+  if (!t.client_id) return json({ ok: true, assetId: "", reason: "This ticket has no client yet, so there is nothing to match against." });
+
+  const assets = await sbSelect(env, `assets?client_id=eq.${t.client_id}&select=id,name,nickname,make,model,equipment_type:equipment_types(name),location:locations(name)&order=name`);
+  const list = (assets || []).map((a) => ({
+    id: a.id,
+    label: [a.nickname || a.name, a.equipment_type && a.equipment_type.name, [a.make, a.model].filter(Boolean).join(" "), a.location && a.location.name].filter(Boolean).join(" · "),
+  }));
+
+  const urlPics = []
+    .concat(Array.isArray(t.photo_urls) ? t.photo_urls : [])
+    .concat(t.photo_url ? [t.photo_url] : [])
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const desc = [t.title, t.description].filter(Boolean).join(". ").trim();
+  if (!desc && !urlPics.length) return json({ ok: true, assetId: "", reason: "Add a description or a photo first." });
+
+  const prompt =
+    "You are Ringwood's facilities assistant. A work ticket needs to be tagged to the piece of equipment it concerns. " +
+    "Below is the ticket and the equipment already on file for this client. Decide which single asset, if any, this ticket is about, using the description and any photos.\n\n" +
+    "Rules:\n" +
+    "- If one asset clearly matches, return its exact id from the list.\n" +
+    "- If the photos or description clearly point to a piece of equipment that is NOT in the list, leave assetId empty and suggest a short newAssetName (Title Case, e.g. 'Lobby TV', 'Walk-in Freezer').\n" +
+    "- If you are not reasonably sure, leave both empty.\n" +
+    "- reason: one short sentence on why, in plain words.\n\n" +
+    "Ticket: \"" + (desc || "(no text, see photos)") + "\"\n\n" +
+    "Equipment on file:\n" +
+    (list.length ? list.map((a) => "- id " + a.id + ": " + a.label).join("\n") : "(none on file)") +
+    "\n\nReturn only equipment that fits. Do not invent an id that is not in the list.";
+
+  const content = [];
+  for (const u of urlPics) {
+    const img = await fetchImageBase64(u);
+    if (img) content.push({ type: "image", source: { type: "base64", media_type: img.media_type, data: img.base64 } });
+  }
+  content.push({ type: "text", text: prompt });
+
+  const schema = {
+    type: "object",
+    properties: { assetId: { type: "string" }, newAssetName: { type: "string" }, reason: { type: "string" } },
+    required: ["assetId", "newAssetName", "reason"],
+    additionalProperties: false,
+  };
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 400,
+        messages: [{ role: "user", content }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    let out;
+    try {
+      out = JSON.parse(block.text);
+    } catch {
+      return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    }
+    // Only trust an id the assistant was actually given.
+    const hit = list.find((a) => a.id === (out.assetId || "").trim());
+    const newName = (out.newAssetName || "").toString().trim().slice(0, 80);
+    return json({
+      ok: true,
+      assetId: hit ? hit.id : "",
+      assetName: hit ? hit.label : "",
+      newAssetName: hit ? "" : newName,
+      reason: (out.reason || "").toString().trim().slice(0, 200),
+    });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
 }
 
 // The shared AI pass behind "Rewrite with AI" and the automatic enrichment on

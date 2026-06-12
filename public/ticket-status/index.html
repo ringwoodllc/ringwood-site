@@ -567,9 +567,12 @@
                 "</div>" +
               "</div>" +
             "</div>" +
-            "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
+            "<div class='field'>" +
+              "<div class='lblrow'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
+                (IS_MASTER ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
               "<select id='e_asset'>" + assetOpts + "</select>" +
-              "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
+              "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' />" +
+              "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div></div>" +
           "</div>" +
           "<div style='margin:2px 0 14px'><a href='#' id='e_moreToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>More details ▾</a></div>" +
           "<div id='e_more' style='display:none'>" +
@@ -683,6 +686,33 @@
 
     var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
     if (assetSelEl) assetSelEl.addEventListener("change", function(){ var isNew=assetSelEl.value==="__new"; newAssetEl.style.display = isNew ? "block" : "none"; if(isNew) newAssetEl.focus(); else autoSaveTicket({ assetId: assetSelEl.value }); });
+
+    // Recommend an asset to tag, from the description, photos, and the client's
+    // equipment on file. Picks a match (and saves it) or pre-fills a new name.
+    var assetSuggBtn = document.getElementById("e_assetSuggest");
+    if (assetSuggBtn) assetSuggBtn.addEventListener("click", function(){
+      var note = document.getElementById("e_assetSuggMsg");
+      assetSuggBtn.disabled = true; var old = assetSuggBtn.textContent; assetSuggBtn.textContent = "Looking…";
+      if(note){ note.style.color="var(--muted)"; note.textContent="Reading the ticket and the equipment on file…"; }
+      fetch("/api/tickets/suggest-asset", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id }) })
+        .then(function(r){return r.json();}).then(function(d){
+          assetSuggBtn.disabled=false; assetSuggBtn.textContent=old;
+          if(!d||!d.ok){ if(note){ note.style.color="var(--clay)"; note.textContent=(d&&d.error)||"Couldn't get a suggestion."; } return; }
+          if(d.assetId){
+            var found=false;
+            for(var i=0;i<assetSelEl.options.length;i++){ if(assetSelEl.options[i].value===d.assetId){ assetSelEl.selectedIndex=i; found=true; break; } }
+            if(found){ newAssetEl.style.display="none"; autoSaveTicket({ assetId:d.assetId });
+              if(note){ note.style.color="var(--green-deep)"; note.textContent="Tagged "+(d.assetName||"this asset")+". "+(d.reason||"")+" Change above if it's off."; } }
+            else if(note){ note.style.color="var(--clay)"; note.textContent="Suggested an asset that isn't in the list. "+(d.reason||""); }
+          } else if(d.newAssetName){
+            for(var j=0;j<assetSelEl.options.length;j++){ if(assetSelEl.options[j].value==="__new"){ assetSelEl.selectedIndex=j; break; } }
+            newAssetEl.style.display="block"; newAssetEl.value=d.newAssetName;
+            if(note){ note.style.color="var(--green-deep)"; note.textContent="No match on file. Suggested new asset \""+d.newAssetName+"\". "+(d.reason||"")+" Hit Save to add it."; }
+          } else {
+            if(note){ note.style.color="var(--muted)"; note.textContent=d.reason||"No clear equipment match. Pick one above if you know it."; }
+          }
+        }).catch(function(){ assetSuggBtn.disabled=false; assetSuggBtn.textContent=old; if(note){ note.style.color="var(--clay)"; note.textContent="Couldn't reach the assistant."; } });
+    });
 
     // Hybrid auto-save: picking a dropdown saves it instantly (the Save button
     // stays for the title, description, notes and photos you compose and review).

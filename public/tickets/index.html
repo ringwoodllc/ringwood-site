@@ -231,10 +231,14 @@ var submitBtn = document.getElementById("submitBtn");
 var msg = document.getElementById("msg");
 var form = document.getElementById("ticketForm");
 
-// Hide "What kind of work?" on the create form for everyone (clients already
-// don't see it). The category defaults in defaultWork() so the ticket files,
-// and it can be set on the ticket later if needed.
-(function(){ var f = categoryEl && categoryEl.closest ? categoryEl.closest(".field") : null; if (f) f.style.display = "none"; })();
+// Keep the create form simple: hide "What kind of work?", "Where is it?", and
+// "Asset" for everyone (clients already didn't see them). Category defaults in
+// defaultWork() so the ticket still files. Location and asset are advanced
+// details handled on the ticket itself, where AI can recommend the asset to tag.
+["category","location","asset"].forEach(function(id){
+  var el = document.getElementById(id), f = el && el.closest ? el.closest(".field") : null;
+  if (f) f.style.display = "none";
+});
 
 function clientValue() {
   if (CLIENT_LOCK) return CLIENT_LOCK;
