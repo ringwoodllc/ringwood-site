@@ -80,6 +80,7 @@
     <div class="row2">
       <div class="field"><label>Type</label><select id="n_kind"><option value="Vendor">Vendor (outside)</option><option value="Internal">Internal (Ringwood)</option></select></div>
       <div class="field"><label>Trade <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_trade" type="text" autocomplete="off" placeholder="e.g. Computer, HVAC, Electrical" /></div>
+      <div class="field"><label>Hourly rate <span style="font-weight:400;color:var(--muted)">— for labor costing (e.g. 150)</span></label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="$/hr" /></div>
     </div>
     <div class="row2">
       <div class="field"><label>Phone <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_phone" type="tel" autocomplete="off" /></div>
@@ -135,6 +136,7 @@
         "<div class='row2'>"+
           "<div class='field'><label>Type</label><select id='kd_"+k+"'><option value='Vendor'"+(v.kind!=="Internal"?" selected":"")+">Vendor (outside)</option><option value='Internal'"+(v.kind==="Internal"?" selected":"")+">Internal (Ringwood)</option></select></div>"+
           "<div class='field'><label>Trade</label><input id='tr_"+k+"' value='"+esc(v.trade)+"'/></div>"+
+          "<div class='field'><label>Hourly rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(v.rate)+"'/></div>"+
         "</div>"+
         "<div class='row2'>"+
           "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(v.phone)+"'/></div>"+
@@ -155,7 +157,7 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      var payload={ id:v.id, name:name, kind:document.getElementById("kd_"+k).value, trade:document.getElementById("tr_"+k).value, phone:document.getElementById("ph_"+k).value, email:document.getElementById("em_"+k).value, notes:document.getElementById("no_"+k).value, active:document.getElementById("ac_"+k).checked };
+      var payload={ id:v.id, name:name, kind:document.getElementById("kd_"+k).value, trade:document.getElementById("tr_"+k).value, rate:document.getElementById("rt_"+k).value, phone:document.getElementById("ph_"+k).value, email:document.getElementById("em_"+k).value, notes:document.getElementById("no_"+k).value, active:document.getElementById("ac_"+k).checked };
       fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
@@ -176,10 +178,10 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    var payload={ name:name, kind:document.getElementById("n_kind").value, trade:document.getElementById("n_trade").value, phone:document.getElementById("n_phone").value, email:document.getElementById("n_email").value, notes:document.getElementById("n_notes").value };
+    var payload={ name:name, kind:document.getElementById("n_kind").value, trade:document.getElementById("n_trade").value, rate:document.getElementById("n_rate").value, phone:document.getElementById("n_phone").value, email:document.getElementById("n_email").value, notes:document.getElementById("n_notes").value };
     fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_trade","n_phone","n_email","n_notes"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_trade","n_rate","n_phone","n_email","n_notes"].forEach(function(i){document.getElementById(i).value="";}); load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }

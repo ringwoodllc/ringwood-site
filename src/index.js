@@ -86,6 +86,9 @@ export default {
     if (url.pathname === "/api/ai/polish" && request.method === "POST") return polishNote(request, env, session);
     if (url.pathname === "/api/tickets/fold-notes" && request.method === "POST") return foldNotesIntoDescription(request, env, session);
     if (url.pathname === "/api/tickets/parts" && request.method === "GET") return listTicketParts(url, env, session);
+    if (url.pathname === "/api/tickets/labor" && request.method === "GET") return listTicketLabor(url, env, session);
+    if (url.pathname === "/api/tickets/labor/save" && request.method === "POST") return saveTicketLabor(request, env, session);
+    if (url.pathname === "/api/tickets/labor/delete" && request.method === "POST") return deleteTicketLabor(request, env, session);
     if (url.pathname === "/api/tickets/quotes" && request.method === "GET") return listTicketQuotes(url, env, session);
     if (url.pathname === "/api/tickets/quote" && request.method === "POST") return saveTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/quote/delete" && request.method === "POST") return deleteTicketQuote(request, env, session);
@@ -607,22 +610,24 @@ async function deleteClient(request, env) {
 // For the ticket "Assigned to" dropdown: active vendors only, names + trade.
 async function listVendors(request, env, session) {
   if (!sbReady(env) || !can(session, "tickets", "view")) return json([]);
-  const rows = await sbSelect(env, "vendors?select=id,name,kind,trade,active&order=name");
+  let rows = await sbSelect(env, "vendors?select=id,name,kind,trade,hourly_rate,active&order=name");
+  if (rows === null) rows = await sbSelect(env, "vendors?select=id,name,kind,trade,active&order=name");
   if (rows === null) return json([]); // table not added yet -> empty, app keeps working
   return noStore(
-    (rows || []).filter((v) => v.active !== false).map((v) => ({ id: v.id, name: v.name || "", kind: v.kind || "Vendor", trade: v.trade || "" }))
+    (rows || []).filter((v) => v.active !== false).map((v) => ({ id: v.id, name: v.name || "", kind: v.kind || "Vendor", trade: v.trade || "", rate: v.hourly_rate != null ? v.hourly_rate : "" }))
   );
 }
 
 async function adminListVendors(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,active&order=name");
+  let rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,hourly_rate,active&order=name");
+  if (rows === null) rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,active&order=name");
   if (rows === null) return noStore({ ok: true, vendors: [], missing: true });
   return noStore({
     ok: true,
     vendors: (rows || []).map((v) => ({
       id: v.id, name: v.name || "", kind: v.kind || "Vendor", trade: v.trade || "",
-      phone: v.phone || "", email: v.email || "", notes: v.notes || "", active: v.active !== false,
+      phone: v.phone || "", email: v.email || "", notes: v.notes || "", rate: v.hourly_rate != null ? v.hourly_rate : "", active: v.active !== false,
     })),
   });
 }
@@ -697,6 +702,7 @@ async function adminSaveVendor(request, env) {
   if (!name) return json({ ok: false, error: "Enter a name." }, 400);
   const kind = c(body.kind) === "Internal" ? "Internal" : "Vendor";
   const patch = { name, kind, trade: c(body.trade) || null, phone: c(body.phone) || null, email: c(body.email) || null, notes: c(body.notes) || null };
+  if ("rate" in body) { const rt = Number(body.rate); patch.hourly_rate = body.rate === "" || isNaN(rt) ? null : rt; }
   if ("active" in body) patch.active = body.active !== false;
   const id = c(body.id);
   const res = id ? await sbUpdate(env, "vendors", id, patch) : await sbInsert(env, "vendors", Object.assign({ active: true }, patch));
@@ -2754,7 +2760,7 @@ async function listTickets(url, env, session) {
 
   let rows = await sbSelect(
     env,
-    `tickets?select=id,ref,title,description,location,status,reviewed,assigned_to,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name,nickname)${filter}&order=created_at.desc`
+    `tickets?select=id,ref,title,description,location,status,reviewed,assigned_to,client_price,photo_url,photo_urls,created_at,asset_id,category:ticket_categories(name),client:clients(name),asset:assets(id,name,nickname)${filter}&order=created_at.desc`
   );
   // If the foreign-key embed fails (returns null), fall back to a plain read so
   // tickets still show. Resolve client/category names from the cached refs.
@@ -2798,6 +2804,7 @@ async function listTickets(url, env, session) {
         photos: t.photo_urls || (t.photo_url ? [t.photo_url] : []),
         reviewed: t.reviewed === true,
         assignedTo: t.assigned_to || "",
+        clientPrice: t.client_price != null ? t.client_price : "",
         created: created,
         lastActivity: cAct > created ? cAct : created,
         hasNote: !!cAct,
@@ -3023,6 +3030,7 @@ async function updateTicket(request, env, session) {
   if ("title" in body && body.title) patch.title = body.title;
   if ("reviewed" in body) patch.reviewed = !!body.reviewed;
   if ("assignedTo" in body) patch.assigned_to = (body.assignedTo || "").toString().trim() || null;
+  if ("clientPrice" in body) { const cp = Number(body.clientPrice); patch.client_price = body.clientPrice === "" || isNaN(cp) ? null : cp; }
   if ("client" in body && scopeName(session) == null) patch.client_id = body.client ? findId(refs.clients, body.client) : null;
   // Link / relink / unlink an asset.
   if ("assetId" in body) {
@@ -5681,6 +5689,52 @@ async function listTicketParts(url, env, session) {
   if (rows === null) rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,created_at&order=created_at.asc`);
   if (rows === null) return json([]); // table not added yet
   return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "", photos: r.photo_urls || [] })));
+}
+
+// Labor lines on a ticket: internal Ringwood hours, costed at the person's
+// hourly rate (snapshotted when added). Lives in ticket_labor
+// (supabase/ticket_labor.sql), degrading gracefully until it exists.
+async function listTicketLabor(url, env, session) {
+  if (!session || session.role === "client") return json({ ok: true, labor: [] });
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: true, labor: [] });
+  const rows = await sbSelect(env, `ticket_labor?ticket_id=eq.${id}&select=id,person,hours,rate,created_at&order=created_at.asc`);
+  if (rows === null) return noStore({ ok: true, labor: [], missing: true });
+  return noStore({ ok: true, labor: (rows || []).map((l) => ({ id: l.id, person: l.person || "", hours: l.hours != null ? l.hours : "", rate: l.rate != null ? l.rate : "" })) });
+}
+
+async function saveTicketLabor(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const id = c(body.id);
+  const patch = {};
+  if ("person" in body) patch.person = c(body.person);
+  if ("hours" in body) { const h = Number(body.hours); patch.hours = isNaN(h) || h < 0 ? 0 : h; }
+  if ("rate" in body) { const r = Number(body.rate); patch.rate = body.rate === "" || isNaN(r) ? null : r; }
+  let res;
+  if (id) {
+    res = await sbUpdate(env, "ticket_labor", id, patch);
+  } else {
+    const ticketId = c(body.ticketId);
+    if (!ticketId) return json({ ok: false, error: "No ticket." }, 400);
+    if (!patch.person) return json({ ok: false, error: "Pick a person." }, 400);
+    res = await sbInsert(env, "ticket_labor", Object.assign({ ticket_id: ticketId, hours: 0 }, patch));
+  }
+  if (!res.ok) return json({ ok: false, error: "Couldn't save. Run supabase/ticket_labor.sql once, then retry." }, 502);
+  return json({ ok: true });
+}
+
+async function deleteTicketLabor(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/ticket_labor?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Couldn't delete." }, 502);
+  return json({ ok: true });
 }
 
 async function saveTicketPart(request, env, session) {
