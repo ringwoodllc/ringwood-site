@@ -587,6 +587,11 @@
         // The middle of the ticket reads like an asset: a quiet card with the
         // description clamped to a few lines (… expands) and a pencil to edit.
         // Unused fields simply don't show. The form fields live behind the pencil.
+        // Everything that isn't the work — intake description, photos, and the
+        // rarely-touched fields — lives behind ONE arrow. Open while the ticket
+        // is still Open (triage), tucked once we're acting on it.
+        (IS_CLIENT ? "" : "<div style='margin:8px 0 14px'><a href='#' id='e_intakeToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Intake and details " + (t.status==="Open" ? "▴" : "▾") + "</a></div>") +
+        "<div id='e_intakeBody'" + ((!IS_CLIENT && t.status!=="Open") ? " style='display:none'" : "") + ">" +
         (IS_CLIENT ?
           ("<div class='field'><label>Description</label>" +
             "<div id='e_descView' class='descview'>" + (t.description ? esc(t.description) : "<span style='color:var(--muted)'>No description.</span>") + "</div>" +
@@ -632,6 +637,7 @@
           "</div>" +
           "<input type='file' id='e_file' accept='image/*' capture='environment' style='display:none' />" +
           "<input type='file' id='e_fileUp' accept='image/*' multiple style='display:none' />" +
+        "</div>" +
         "</div>" +
         // Service: what the job needs and who's doing it. Parts first (an office /
         // when-you-have-time task), then who it's assigned to.
@@ -807,9 +813,12 @@
     loadTicketSvc();
     window.__loadTicketSvc = loadTicketSvc;
     // Intake (description + photos) tucks away once the ticket is being worked.
-    // No asset on the ticket: the small arrow opens the edit fields at the picker.
+    // One arrow for everything that isn't the work: intake + details.
+    var intakeT=document.getElementById("e_intakeToggle");
+    if(intakeT) intakeT.addEventListener("click", function(e){ e.preventDefault(); var ib=document.getElementById("e_intakeBody"); var open=ib.style.display!=="none"; ib.style.display=open?"none":"block"; intakeT.textContent="Intake and details "+(open?"▾":"▴"); if(!open) refreshDescClamp(); });
+    // No asset on the ticket: the small arrow opens intake + the edit fields at the picker.
     var tagA=document.getElementById("e_tagAsset");
-    if(tagA) tagA.addEventListener("click", function(e){ e.preventDefault(); var ef=document.getElementById("e_editFields"), p=document.getElementById("e_pencil"); if(ef){ ef.style.display="block"; if(p) p.textContent="✓ Done"; } var sel=document.getElementById("e_asset"); if(sel){ sel.scrollIntoView({block:"center",behavior:"smooth"}); sel.focus(); } });
+    if(tagA) tagA.addEventListener("click", function(e){ e.preventDefault(); var ib=document.getElementById("e_intakeBody"); if(ib){ ib.style.display="block"; if(intakeT) intakeT.textContent="Intake and details ▴"; } var ef=document.getElementById("e_editFields"), p=document.getElementById("e_pencil"); if(ef){ ef.style.display="block"; if(p) p.textContent="✓ Done"; } var sel=document.getElementById("e_asset"); if(sel){ sel.scrollIntoView({block:"center",behavior:"smooth"}); sel.focus(); } });
 
     var eClientEl = document.getElementById("e_client");
     if (eClientEl){
