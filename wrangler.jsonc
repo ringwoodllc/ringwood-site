@@ -10,5 +10,8 @@
   "vars": {
     "SUPABASE_URL": "https://zgxayeuipupdeydbpcul.supabase.co",
     "LOGIN_REQUIRED": "1"
+  },
+  "triggers": {
+    "crons": ["1 * * * *"]
   }
 }

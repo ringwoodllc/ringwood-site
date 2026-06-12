@@ -136,6 +136,8 @@ export default {
     if (url.pathname === "/api/temps/log" && request.method === "POST") return logTemp(request, env, session);
     if (url.pathname === "/api/temps/round" && request.method === "POST") return logTempRound(request, env, session);
     if (url.pathname === "/api/temps/grid" && request.method === "POST") return logTempGrid(request, env, session);
+    if (url.pathname === "/api/temps/generate" && request.method === "POST") return generateTemps(request, env, session);
+    if (url.pathname === "/api/temps/auto" && request.method === "POST") return setTempAuto(request, env, session);
     if (url.pathname === "/api/temps/scan" && request.method === "POST") return scanTempLog(request, env, session);
     if (url.pathname === "/api/temps/log/delete" && request.method === "POST") return deleteTempLog(request, env, session);
     if (url.pathname === "/api/temps/log/update" && request.method === "POST") return updateTempLog(request, env, session);
@@ -208,6 +210,11 @@ export default {
 
     if (env.ASSETS) return env.ASSETS.fetch(request);
     return new Response("Not found", { status: 404 });
+  },
+  // Cron (runs at minute 1 of every hour, UTC). The handler checks New York time
+  // and only fills a round at 6/10/14/18 ET for Demo-enabled clients.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduledTemps(env).catch(function () {}));
   },
 };
 
@@ -3811,7 +3818,11 @@ async function listTempUnits(url, env, session) {
   let rows = await sbSelect(env, `assets?client_id=eq.${who.id}&select=id,name,nickname,temp_min,temp_max,cold_unit,temp_sort&order=temp_sort.asc.nullslast,name.asc`);
   if (rows === null) rows = await sbSelect(env, `assets?client_id=eq.${who.id}&select=id,name,nickname,temp_min,temp_max,cold_unit&order=name.asc`);
   if (rows === null) return noStore({ ok: true, client: who.name, assets: [], missing: true });
-  return noStore({ ok: true, client: who.name, assets: (rows || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Asset", coldUnit: !!a.cold_unit, min: a.temp_min, max: a.temp_max, sort: a.temp_sort != null ? a.temp_sort : null })) });
+  // The per-client "Demo" auto-fill flag (best-effort; null if the column isn't there yet).
+  let demo = false;
+  const cr = await sbSelect(env, `clients?id=eq.${who.id}&select=auto_temps`);
+  if (cr && cr[0]) demo = !!cr[0].auto_temps;
+  return noStore({ ok: true, client: who.name, demo, assets: (rows || []).map((a) => ({ id: a.id, name: a.nickname || a.name || "Asset", coldUnit: !!a.cold_unit, min: a.temp_min, max: a.temp_max, sort: a.temp_sort != null ? a.temp_sort : null })) });
 }
 
 async function setTempUnit(request, env, session) {
@@ -3833,6 +3844,89 @@ async function setTempUnit(request, env, session) {
   if (!res.ok && "temp_sort" in patch) { delete patch.temp_sort; res = await sbUpdate(env, "assets", assetId, patch); }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
   return json({ ok: true });
+}
+
+/* ----- Demo auto-fill (sandbox): generate in-range readings on the NY schedule -----
+   Standard rounds at 6 AM, 10 AM, 2 PM, 6 PM Eastern. The manual Generate fills
+   every round that has already passed in New York time; a cron fills the current
+   round at ~:01 past the hour. Opt-in per client (the "Demo" toggle), so real
+   food-safety logs are never auto-written. Readings carry no label. */
+const TEMP_SLOTS = [6, 10, 14, 18];
+function nyParts(d) {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  const p = {}; for (const x of f.formatToParts(d)) p[x.type] = x.value;
+  let hour = +p.hour; if (hour === 24) hour = 0;
+  return { date: `${p.year}-${p.month}-${p.day}`, hour, minute: +p.minute };
+}
+// A New York wall time (date + hour:minute) -> the true UTC instant.
+function nyInstant(dateStr, hour, minute) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const utc = Date.UTC(y, m - 1, d, hour, minute || 0, 0);
+  const p = nyParts(new Date(utc));
+  const asNy = Date.UTC(+p.date.slice(0, 4), +p.date.slice(5, 7) - 1, +p.date.slice(8, 10), p.hour, p.minute);
+  return new Date(utc + (utc - asNy));
+}
+// Generate readings for every passed round (slot hour <= uptoHour) that isn't
+// already logged, in each cold unit's range, to one decimal. Returns how many.
+async function generateTempReadings(env, clientId, dateStr, uptoHour) {
+  const units = await sbSelect(env, `assets?client_id=eq.${clientId}&cold_unit=is.true&select=id,name,nickname,temp_min,temp_max`);
+  if (!units || !units.length) return 0;
+  const logs = await sbSelect(env, `temp_logs?client_id=eq.${clientId}&log_date=eq.${dateStr}&select=asset_id,reading_at`);
+  const have = {}; (logs || []).forEach((l) => { let hr = ""; if (l.reading_at) hr = nyParts(new Date(l.reading_at)).hour; have[l.asset_id + "|" + hr] = true; });
+  const rows = [];
+  for (const u of units) {
+    const rg = effTempRange(u.nickname || u.name, u.temp_min, u.temp_max);
+    if (rg.min == null || rg.max == null) continue;
+    for (const h of TEMP_SLOTS) {
+      if (h > uptoHour) continue;
+      if (have[u.id + "|" + h]) continue;
+      const steps = Math.max(0, Math.round((rg.max - rg.min) * 10));
+      const temp = Math.round((rg.min + Math.floor(Math.random() * (steps + 1)) / 10) * 10) / 10;
+      rows.push({ asset_id: u.id, client_id: clientId, log_date: dateStr, temp, logged_by: "", reading_at: nyInstant(dateStr, h, 0).toISOString() });
+    }
+  }
+  if (!rows.length) return 0;
+  await insertChunks(env, "temp_logs", rows);
+  return rows.length;
+}
+
+async function generateTemps(request, env, session) {
+  if (!can(session, "foodSafety", "edit")) return deny("foodSafety");
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const date = (body.date || "").toString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ ok: false, error: "Bad date." }, 400);
+  const now = nyParts(new Date());
+  const upto = date < now.date ? 24 : (date > now.date ? -1 : now.hour);
+  const filled = await generateTempReadings(env, who.id, date, upto);
+  return json({ ok: true, filled, nyHour: now.hour, nyDate: now.date });
+}
+
+// Toggle the per-client "Demo" auto-fill flag (master only).
+async function setTempAuto(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const who = await redbookClientId(env, session, (body.client || "").toString().trim());
+  if (!who.id) return json({ ok: false, error: "Pick a client first." }, 400);
+  const res = await sbUpdate(env, "clients", who.id, { auto_temps: !!body.on });
+  if (!res.ok) return json({ ok: false, error: "Run once: alter table clients add column if not exists auto_temps boolean default false;" }, 400);
+  return json({ ok: true, on: !!body.on });
+}
+
+// Cron: at each NY round (6/10/2/6), fill that round for every Demo-enabled client.
+async function runScheduledTemps(env) {
+  if (!sbReady(env)) return;
+  const now = nyParts(new Date());
+  if (TEMP_SLOTS.indexOf(now.hour) < 0) return; // only act on a round hour
+  const clients = await sbSelect(env, `clients?auto_temps=is.true&select=id`);
+  for (const c of (clients || [])) {
+    try { await generateTempReadings(env, c.id, now.date, now.hour); } catch (e) { /* keep going */ }
+  }
 }
 
 async function logTemp(request, env, session) {

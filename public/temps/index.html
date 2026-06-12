@@ -128,7 +128,7 @@
       <div class="daterow"><button type="button" class="dstep" id="dPrev" title="Previous day">◀</button><input type="date" id="dateSel" /><button type="button" class="dstep" id="dNext" title="Next day">▶</button></div>
     </div>
   </div>
-  <div id="genRow" style="display:none;margin-bottom:14px"><button type="button" class="btn ghost" id="genBtn">✨ Generate</button><span class="savemsg" id="genMsg" style="margin-left:8px"></span></div>
+  <div id="genRow" style="display:none;margin-bottom:14px"><button type="button" class="btn ghost" id="genBtn">✨ Generate</button><label class="chk" style="margin-left:12px"><input type="checkbox" id="demoToggle" /> Demo — auto-fill at 6/10/2/6 (NY)</label><span class="savemsg" id="genMsg" style="margin-left:8px"></span></div>
   <div id="note" class="note" style="display:none"></div>
   <div id="scanRow" style="display:none;margin-bottom:14px">
     <label class="btn ghost" for="scanInput" style="cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l2-3h6l2 3h5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="11" cy="13" r="3.2"/></svg> Scan a paper sheet</label>
@@ -192,7 +192,12 @@
     document.getElementById("dNext").addEventListener("click", function(){ shiftDate(1); });
     if(IS_MASTER) document.getElementById("manageWrap").style.display="block";
     if(IS_MASTER) document.getElementById("histWrap").style.display="block";
-    if(IS_MASTER){ document.getElementById("genRow").style.display="block"; document.getElementById("genBtn").addEventListener("click", generateReadings); }
+    if(IS_MASTER){
+      document.getElementById("genRow").style.display="block";
+      document.getElementById("genBtn").addEventListener("click", generateReadings);
+      var dt=document.getElementById("demoToggle");
+      dt.addEventListener("change", function(){ var on=dt.checked; fetch("/api/temps/auto",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,on:on})}).then(function(r){return r.json();}).then(function(d){ var m=document.getElementById("genMsg"); if(d&&d.ok){ if(m){ m.style.color="var(--ok)"; m.textContent=on?"Demo auto-fill on.":"Demo auto-fill off."; } } else { dt.checked=!on; if(m){ m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't save."; } } }).catch(function(){ dt.checked=!on; }); });
+    }
     if(IS_MASTER){
       document.getElementById("clientPick").style.display="block";
       fetch("/api/options").then(function(r){return r.json();}).then(function(o){
@@ -340,22 +345,17 @@
       "<div class='secbody' id='todayBody' style='display:none'>"+items+"</div></div>";
   }
 
-  // Fill every empty cell with a believable in-range reading (to .1) and save.
-  // Skips cells that already have a value. Saved as normal readings (no label).
+  // Server-side generate: fills every round that has already passed in New York
+  // time (won't fill 2 PM / 6 PM until those hours arrive), to .1, no label.
   function generateReadings(){
     if(IS_MASTER && !CLIENT){ alert("Pick a client first."); return; }
-    var m=document.getElementById("genMsg");
-    var inputs=Array.prototype.slice.call(document.querySelectorAll(".gcell.tinput")); var filled=0;
-    inputs.forEach(function(inp){
-      if((inp.value||"")!=="") return;
-      var u=UNITS.filter(function(x){return x.id===inp.getAttribute("data-aid");})[0]; if(!u) return;
-      var rg=unitRange(u); if(rg.min==null||rg.max==null) return;
-      var steps=Math.max(0,Math.round((rg.max-rg.min)*10));
-      var v=Math.round((rg.min+(Math.floor(Math.random()*(steps+1)))/10)*10)/10;
-      inp.value=v; inp.classList.add("scanned"); filled++;
-    });
-    if(filled){ if(m){ m.style.color="var(--muted)"; m.textContent="Filling "+filled+" cell"+(filled===1?"":"s")+"…"; } saveGrid(); }
-    else if(m){ m.style.color="var(--muted)"; m.textContent="Nothing empty to fill on this day."; }
+    var b=document.getElementById("genBtn"), m=document.getElementById("genMsg");
+    b.disabled=true; var old=b.textContent; b.textContent="Generating…"; if(m){ m.style.color="var(--muted)"; m.textContent="Filling rounds up to now (NY)…"; }
+    fetch("/api/temps/generate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({client:CLIENT,date:DATE})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent=old;
+        if(d&&d.ok){ if(m){ m.style.color="var(--ok)"; m.textContent=d.filled?("Filled "+d.filled+" reading"+(d.filled===1?"":"s")+"."):"Nothing to fill yet for this date/time."; } load(); }
+        else { if(m){ m.style.color="var(--red)"; m.textContent=(d&&d.error)||"Couldn't generate."; } } })
+      .catch(function(){ b.disabled=false; b.textContent=old; if(m){ m.style.color="var(--red)"; m.textContent="No connection"; } });
   }
 
   function saveGrid(){
@@ -416,6 +416,7 @@
       if(!d||!d.ok){ document.getElementById("mgList").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       var assets=(d.assets||[]).sort(byOrder);
       MG_ASSETS=assets;
+      var dtg=document.getElementById("demoToggle"); if(dtg) dtg.checked=!!d.demo;
       if(!assets.length){ document.getElementById("mgList").innerHTML="<div class='empty'>No assets for this client yet.</div>"; return; }
       document.getElementById("mgList").innerHTML = assets.map(function(a){
         return "<div class='mgrow' data-aid='"+esc(a.id)+"'>"+
