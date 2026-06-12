@@ -2065,10 +2065,18 @@ async function listAllServices(url, env, session) {
   } else {
     filter += archivedClientClause(refsS);  // hide Archived clients' service records
   }
-  const rows = await sbSelect(
+  // ticket_id marks a record as a service call (spawned from a ticket) rather
+  // than standard maintenance. Fall back without it until the migration runs.
+  let rows = await sbSelect(
     env,
-    `service_records?select=id,service_date,technician,notes,cost,asset_id,asset:assets(id,name,nickname),client:clients(name),service_type:service_types(name)${filter}&order=service_date.desc`
+    `service_records?select=id,service_date,technician,notes,cost,asset_id,ticket_id,asset:assets(id,name,nickname),client:clients(name),service_type:service_types(name)${filter}&order=service_date.desc`
   );
+  if (rows === null) {
+    rows = await sbSelect(
+      env,
+      `service_records?select=id,service_date,technician,notes,cost,asset_id,asset:assets(id,name,nickname),client:clients(name),service_type:service_types(name)${filter}&order=service_date.desc`
+    );
+  }
   const cref = await getRefs(env);
   return json(
     (rows || []).map((s) => ({
@@ -2077,6 +2085,7 @@ async function listAllServices(url, env, session) {
       type: (s.service_type && s.service_type.name) || "",
       asset: (s.asset && (s.asset.nickname || s.asset.name)) || "",
       assetId: s.asset_id || "",
+      ticketId: s.ticket_id || "",
       client: (s.client && s.client.name) || "",
       clientColor: clientColorFor(cref, (s.client && s.client.name) || ""),
       technician: s.technician || "",

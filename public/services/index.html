@@ -63,8 +63,8 @@
 <main class="wrap">
   <div class="intro">
     <div class="eyebrow">Service records</div>
-    <h1>Maintenance</h1>
-    <p class="lead">Service records and asset repairs, newest first. Tap one to see its details. Repairs link to the ticket; services open here.</p>
+    <h1>Service calls</h1>
+    <p class="lead">The internal work, newest first: calls opened from tickets, then standard maintenance. Tap one to see its details and costs.</p>
   </div>
   <button type="button" id="scanBtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;cursor:pointer;padding:15px;border:1.5px dashed rgba(47,93,80,.45);border-radius:6px;color:var(--green-deep);background:var(--bg-2);font:inherit;font-weight:600;margin-bottom:6px">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7"/></svg>
@@ -131,15 +131,11 @@
     var list=Object.keys(names).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
     return "<option value=''>— Select —</option>"+list.map(function(n){ var v=names[n]; return "<option value='"+esc(n)+"'"+(cur===n?" selected":"")+">"+esc(n+(v.trade?" · "+v.trade:""))+"</option>"; }).join("");
   }
-  // Build the combined work history: formal service records plus any ticket that
-  // is tied to an asset (a repair is part of that asset's history too).
-  function buildItems(services, tickets){
+  // Service records only — tickets live on their own page. A record spawned
+  // from a ticket is a "service call"; the rest is standard maintenance.
+  function buildItems(services){
     var items = (services||[]).map(function(s){
-      return { kind:"service", id:s.id, asset:s.asset, client:s.client, clientColor:s.clientColor, date:s.date, type:s.type, summary:s.notes, cost:s.cost };
-    });
-    (tickets||[]).forEach(function(t){
-      if(!t.assetId) return;  // only asset-linked tickets belong here
-      items.push({ kind:"ticket", id:t.id, asset:t.asset, client:t.client, clientColor:t.clientColor, date:t.created, type:t.category||"Ticket", summary:t.title||t.description, status:t.status });
+      return { kind:(s.ticketId?"call":"maint"), ticketId:s.ticketId||"", id:s.id, asset:s.asset, client:s.client, clientColor:s.clientColor, date:s.date, type:s.type, summary:s.notes, cost:s.cost };
     });
     items.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
     return items;
@@ -167,19 +163,22 @@
     document.getElementById("total").textContent = rows.length+" record"+(rows.length===1?"":"s")+(total?(" · "+money(total)+" total"):"");
     var el=document.getElementById("list");
     if(!rows.length){ el.innerHTML="<div class='empty'>Nothing"+(ITEMS.length?" matches.":" yet.")+"</div>"; return; }
-    el.innerHTML=rows.map(function(s){
-      var isTicket = s.kind==="ticket";
-      var tag = isTicket ? "<span class='kind kt'>Ticket</span>" : "<span class='kind ks'>Service</span>";
-      var meta=(s.date?"<b>"+esc(fdate(s.date))+"</b>":"")+[s.type, isTicket?s.status:null].filter(Boolean).map(esc).map(function(x){return " · "+x;}).join("");
-      var onclick = isTicket ? ("location.href='/status?id="+esc(s.id)+"'") : ("openRec('"+esc(s.id)+"', true)");
-      return "<div class='rec' onclick=\""+onclick+"\">"+
-        "<div class='bd'><div class='top'>"+tag+" "+esc(s.asset||"Asset")+"</div>"+
+    function rowHtml(s){
+      var meta=(s.date?"<b>"+esc(fdate(s.date))+"</b>":"")+[s.type].filter(Boolean).map(esc).map(function(x){return " · "+x;}).join("");
+      // A call keeps a small link back to its external ticket thread.
+      var tlink = s.ticketId ? "<a href='/status?id="+esc(s.ticketId)+"' onclick='event.stopPropagation()' class='kind kt'>ticket ›</a> " : "";
+      return "<div class='rec' onclick=\"openRec('"+esc(s.id)+"', true)\">"+
+        "<div class='bd'><div class='top'>"+tlink+esc(s.asset||"Asset")+"</div>"+
         (meta?"<div class='meta'>"+meta+"</div>":"")+
         (s.summary?"<div class='notes'>"+esc(s.summary)+"</div>":"")+"</div>"+
         "<div class='rcol'>"+(s.client?"<span class='client-chip' style='background:"+(s.clientColor||clientColor(s.client))+"'>"+esc(s.client)+"</span>":"")+(s.cost!==""&&s.cost!=null?"<span class='cost'>"+esc(money(s.cost))+"</span>":"")+"</div>"+
         "<span class='rchev'>›</span>"+
       "</div>";
-    }).join("");
+    }
+    // Service calls lead; standard maintenance is the secondary section.
+    function sect(title, arr){ if(!arr.length) return ""; return "<div style='font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);font-weight:700;margin:18px 0 8px'>"+title+"</div>"+arr.map(rowHtml).join(""); }
+    el.innerHTML = sect("Service calls", rows.filter(function(s){ return s.kind==="call"; })) +
+                   sect("Standard maintenance", rows.filter(function(s){ return s.kind==="maint"; }));
   }
   document.querySelector("main").insertAdjacentHTML("beforeend","<div id='editWrap'></div>");
   clientSel.addEventListener("change", render);
@@ -187,13 +186,9 @@
   // Re-fetch the records and rebuild the list, so an edit made on a record shows
   // up when you come back. Keeps the current list visible until the data lands.
   function refreshRecords(){
-    return Promise.all([
-      fetch("/api/services/all",{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return [];}),
-      fetch("/api/tickets/list?archived=1",{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return [];})
-    ]).then(function(res){
-      ALL = Array.isArray(res[0])?res[0]:[];
-      var tix = Array.isArray(res[1])?res[1]:[];
-      ITEMS = buildItems(ALL, tix);
+    return fetch("/api/services/all",{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return [];}).then(function(res){
+      ALL = Array.isArray(res)?res:[];
+      ITEMS = buildItems(ALL);
       fillFilters(); render();
     });
   }
@@ -293,7 +288,7 @@
         var b=this; b.disabled=true; b.textContent="Saving…";
         var payload={ id:id, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value, keepPhotos:keep, addPhotos:add.map(function(p){return {base64:p.base64,contentType:p.contentType};}) };
         fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); fetch("/api/services/all").then(function(r){return r.json();}).then(function(rows){ ALL=Array.isArray(rows)?rows:[]; fillFilters(); render(); }); }
+          if(d&&d.ok){ history.replaceState(null,"","/services"); ew.innerHTML=""; showList(true); refreshRecords(); }
           else { b.disabled=false; b.textContent="Save"; document.getElementById("s_msg").textContent=(d&&d.error)||"Save failed."; }
         }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("s_msg").textContent="Couldn't reach the server."; });
       });
