@@ -195,6 +195,8 @@ export default {
       "/receiving": "/receiving/",
       "/hotholding": "/hotholding/",
       "/inventory": "/inventory/",
+      "/privacy": "/privacy/",
+      "/support": "/support/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
     if (env.ASSETS && APP_PAGES[cleanPath]) return env.ASSETS.fetch(rewrite(url, APP_PAGES[cleanPath], request));
@@ -233,6 +235,8 @@ function isPublic(url, sub) {
   if (p === "/download" || p === "/download/" || p === "/get" || p === "/get/") return true;
   if (p === "/api/login" || p === "/api/logout" || p === "/api/whoami") return true;
   if (p === "/api/contact") return true;
+  // Public legal/support pages (App Store requires reachable URLs without login).
+  if (p === "/privacy" || p === "/privacy/" || p === "/support" || p === "/support/") return true;
   if (p === "/manifest.json" || p === "/sw.js" || p === "/install-prompt.js" || p.startsWith("/icons/")) return true;
   if (p.startsWith("/downloads/")) return true; // public app downloads (APK)
   if (sub === "talk" || sub === "contact") return true; // public contact form
