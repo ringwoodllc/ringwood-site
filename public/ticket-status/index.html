@@ -1385,7 +1385,7 @@
           var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
           var thumbs=(p.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='invoice photo' style='width:38px;height:38px;object-fit:cover;border-radius:5px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
           return "<div class='prow' data-id='"+esc(p.id)+"'>"+
-            "<div class='pmain'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+
+            "<div class='pmain' data-act='edit' title='Tap to edit' style='cursor:pointer'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+
               ((p.estCost!=null&&p.estCost!=="")?" <span class='psrc'>· ~$"+esc(Number(p.estCost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}))+"</span>":"")+
               (p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+
               (thumbs?"<div style='display:flex;gap:5px;flex-wrap:wrap;margin-top:5px'>"+thumbs+"</div>":"")+"</div>"+
@@ -1400,8 +1400,8 @@
           (rows || "<div style='color:var(--muted);font-size:.9rem;margin-bottom:6px'>None added yet.</div>") +
           (pTotal ? "<div style='text-align:right;font-size:.88rem;font-weight:700;color:var(--green-deep);padding:7px 2px'>Est. total: $"+pTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+"</div>" : "") +
           "<div class='paddrow'>"+
-            "<input id='p_item' type='text' placeholder='Item (e.g. AAA batteries)' />"+
             "<input id='p_qty' type='number' min='0' step='1' value='1' title='How many' />"+
+            "<input id='p_item' type='text' placeholder='Item (e.g. AAA batteries)' />"+
             "<input id='p_cost' type='number' min='0' step='0.01' placeholder='$ est.' title='Estimated cost, optional' />"+
             "<label class='chk' style='font-weight:400;font-size:.84rem;display:flex;align-items:center;gap:5px;margin:0'><input type='checkbox' id='p_perunit' /> per unit</label>"+
             "<span id='p_totprev' style='font-size:.84rem;color:var(--muted)'></span>"+
@@ -1446,6 +1446,24 @@
         var btn=e.target.closest?e.target.closest(".prow [data-act]"):null; if(!btn) return;
         var row=btn.closest(".prow"), id=row.getAttribute("data-id"), act=btn.getAttribute("data-act");
         var p=PARTS.filter(function(x){return x.id===id;})[0]; if(!p) return;
+        if(act==="edit"){
+          if(row.querySelector(".pedit")) return;
+          var main=row.querySelector(".pmain"); main.style.display="none";
+          var w=document.createElement("div"); w.className="pedit"; w.style.cssText="flex:1;display:flex;gap:6px;flex-wrap:wrap;align-items:center";
+          w.innerHTML="<input class='pe_qty' type='number' min='0' step='1' value='"+esc(p.quantity==null?1:p.quantity)+"' style='width:58px' />"+
+            "<input class='pe_item' type='text' value='"+esc(p.item||"")+"' style='flex:1;min-width:120px' />"+
+            "<input class='pe_cost' type='number' min='0' step='0.01' value='"+esc(p.estCost==null?"":p.estCost)+"' placeholder='$ est.' style='width:90px' />"+
+            "<button type='button' class='qbtn rev pe_save'>Save</button><button type='button' class='icobtn pe_cancel'>×</button>";
+          row.insertBefore(w, row.firstChild);
+          w.querySelector(".pe_item").focus();
+          w.querySelector(".pe_cancel").addEventListener("click", function(ev){ ev.stopPropagation(); loadParts(); });
+          w.querySelector(".pe_save").addEventListener("click", function(ev){ ev.stopPropagation();
+            var it=w.querySelector(".pe_item").value.trim(); if(!it){ w.querySelector(".pe_item").focus(); return; }
+            fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:id, item:it, quantity:w.querySelector(".pe_qty").value, estCost:w.querySelector(".pe_cost").value })})
+              .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); else alert((d&&d.error)||"Couldn\u0027t save."); }).catch(function(){});
+          });
+          return;
+        }
         if(act==="cycle"){
           var order=["Needed","Ordered","Received"], next=order[(order.indexOf(p.status||"Needed")+1)%3];
           fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,status:next})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); });
