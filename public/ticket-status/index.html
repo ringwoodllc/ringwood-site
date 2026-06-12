@@ -547,16 +547,12 @@
         // assigned, asset). A client gets a simple view: read the ticket, add
         // photos and notes. Status, tech, location and asset are admin-only.
         (IS_CLIENT ? "" :
-          "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px'>" +
-            "<div id='e_review'></div>" +
-            "<button class='qbtn' id='e_ai' type='button'>✨ Rewrite with AI</button>" +
-          "</div>" +
-          "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
+          // Slim indicator: just the Addressed chip. (AI rewrite lives with the
+          // description now, where it actually acts.)
+          "<div id='e_review' style='margin-bottom:14px'></div>" +
+          // The two things you actually work day to day: where it stands and who's on it.
           "<div class='frow'>" +
             "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
-            "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
-          "</div>" +
-          "<div class='frow'>" +
             "<div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
               "<div id='e_assignedNew' style='display:none;margin-top:8px'>" +
                 "<input id='e_assignedName' type='text' placeholder='New vendor or person name' style='margin-bottom:6px' />" +
@@ -567,15 +563,21 @@
                 "</div>" +
               "</div>" +
             "</div>" +
-            "<div class='field'>" +
-              "<div class='lblrow'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
-                (IS_MASTER ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
-              "<select id='e_asset'>" + assetOpts + "</select>" +
-              "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' />" +
-              "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div></div>" +
           "</div>" +
-          "<div style='margin:2px 0 14px'><a href='#' id='e_moreToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>More details ▾</a></div>" +
+          // Advanced, rarely changed: the title, the client (whoever entered it),
+          // the asset, and category/where. Kept out of the way so the review stays clean.
+          "<div style='margin:8px 0 14px'><a href='#' id='e_moreToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>More details ▾</a></div>" +
           "<div id='e_more' style='display:none'>" +
+            "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
+            "<div class='frow'>" +
+              "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
+              "<div class='field'>" +
+                "<div class='lblrow'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
+                  (IS_MASTER ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
+                "<select id='e_asset'>" + assetOpts + "</select>" +
+                "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' />" +
+                "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div></div>" +
+            "</div>" +
             "<div class='frow'>" +
               "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
               "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
@@ -584,7 +586,7 @@
         ) +
         "<div class='field'>" +
           (IS_CLIENT ? "<label>Description</label>" :
-            "<div class='lblrow'><label>Description</label><button type='button' class='aibtn' id='e_fold'>✨ Pull updates</button></div>") +
+            "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_ai'>✨ Rewrite with AI</button><button type='button' class='aibtn' id='e_fold'>✨ Pull updates</button></div></div>") +
           "<textarea id='e_desc' style='min-height:120px'" + (IS_CLIENT ? " readonly" : "") + ">" + esc(t.description) + "</textarea>" +
           (IS_CLIENT ? "" :
             "<div id='e_foldWrap' style='display:none;margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px'>" +
