@@ -5565,10 +5565,13 @@ async function listTicketQuotes(url, env, session) {
   if (!session || session.role === "client") return json({ ok: true, quotes: [] });
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: true, quotes: [] });
-  let rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,created_at&order=created_at.asc`);
+  // Newest schema first, then older shapes, so the page keeps working while
+  // migrations catch up. Timestamps on dialog entries are stored but not shown.
+  let rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,comments,created_at&order=created_at.asc`);
+  if (rows === null) rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,created_at&order=created_at.asc`);
   if (rows === null) rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,created_at&order=created_at.asc`);
   if (rows === null) return noStore({ ok: true, quotes: [], missing: true });
-  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending", photos: q.photo_urls || [] })) });
+  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending", photos: q.photo_urls || [], comments: Array.isArray(q.comments) ? q.comments.map((c) => ({ by: c.by || "", text: c.text || "" })) : [] })) });
 }
 
 async function saveTicketQuote(request, env, session) {
@@ -5577,21 +5580,38 @@ async function saveTicketQuote(request, env, session) {
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const c = (v) => (v == null ? "" : v.toString().trim());
   const qid = c(body.id);
-  // Attach photos (the quote sheet itself) to an existing quote.
+  // Edit an existing quote: fields, attached photos, and the dialog thread.
   if (qid) {
-    const cur = await sbSelect(env, `ticket_quotes?id=eq.${qid}&select=id,ticket_id,photo_urls`);
+    const cur = await sbSelect(env, `ticket_quotes?id=eq.${qid}&select=id,ticket_id,photo_urls,comments`)
+      || await sbSelect(env, `ticket_quotes?id=eq.${qid}&select=id,ticket_id,photo_urls`)
+      || await sbSelect(env, `ticket_quotes?id=eq.${qid}&select=id,ticket_id`);
     const row0 = cur && cur[0];
     if (!row0) return json({ ok: false, error: "Quote not found." }, 404);
+    const patch = {};
+    if (c(body.vendor)) patch.vendor = c(body.vendor);
+    if ("notes" in body) patch.notes = c(body.notes) || null;
+    if ("amount" in body) { const n = Number(body.amount); patch.amount = body.amount === "" || isNaN(n) ? null : n; }
     const adds = Array.isArray(body.addPhotos) ? body.addPhotos : [];
-    if (!adds.length) return json({ ok: true });
-    const urls = (row0.photo_urls || []).slice();
-    for (let i = 0; i < adds.length; i++) {
-      const u = await uploadToStorage(env, `tickets/${row0.ticket_id}/quotes/${qid}-${Date.now()}-${i}.jpg`, adds[i] && adds[i].base64, adds[i] && adds[i].contentType);
-      if (u) urls.push(u);
+    if (adds.length) {
+      const urls = (row0.photo_urls || []).slice();
+      for (let i = 0; i < adds.length; i++) {
+        const u = await uploadToStorage(env, `tickets/${row0.ticket_id}/quotes/${qid}-${Date.now()}-${i}.jpg`, adds[i] && adds[i].base64, adds[i] && adds[i].contentType);
+        if (u) urls.push(u);
+      }
+      patch.photo_urls = urls;
     }
-    const res0 = await sbUpdate(env, "ticket_quotes", qid, { photo_urls: urls });
-    if (!res0.ok) return json({ ok: false, error: "Couldn't attach. Run supabase/ticket_attachments.sql once, then retry." }, 502);
-    return json({ ok: true, photos: urls });
+    // Dialog on the quote itself, so the back-and-forth never clutters the
+    // ticket's update log. Timestamp kept for the future, not displayed.
+    if (c(body.addComment)) {
+      const a = authorOf(session);
+      const list = Array.isArray(row0.comments) ? row0.comments.slice() : [];
+      list.push({ by: a.author || "Ringwood", at: new Date().toISOString(), text: c(body.addComment).slice(0, 2000) });
+      patch.comments = list;
+    }
+    if (!Object.keys(patch).length) return json({ ok: true });
+    const res0 = await sbUpdate(env, "ticket_quotes", qid, patch);
+    if (!res0.ok) return json({ ok: false, error: "Couldn't save. Run supabase/ticket_attachments.sql (latest) once, then retry." }, 502);
+    return json({ ok: true });
   }
   const ticketId = c(body.ticketId);
   const vendor = c(body.vendor);
