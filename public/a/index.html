@@ -430,7 +430,18 @@
     var photos = list.map(function(u){ return "<figure><img class='zoomable' src='"+esc(u)+"' alt=''/></figure>"; }).join("");
     photos = photos?"<div class='photos'>"+photos+"</div>":"";
     var added = a.loggedAt ? new Date(a.loggedAt).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) + " at " + new Date(a.loggedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}) : "";
-    var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Type",a.equipmentType)+row("Client",a.client)+row("Location",a.location)+row("Logged",added)+"</dl></div>";
+    var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Client",a.client)+row("Logged",added)+"</dl></div>";
+    // Warranty & purchase, shown only when something has been filled in.
+    var fmtD = function(d){ return d ? new Date(d+"T00:00:00").toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) : ""; };
+    var wRows = row("Purchased on",fmtD(a.purchasedOn))+row("Purchased from",a.purchasedFrom)+row("Price paid",money(a.purchasePrice))+row("Warranty",[a.warrantyProvider,a.warrantyLength].filter(Boolean).join(" · "))+row("Expires",fmtD(a.warrantyExpires))+row("Notes",a.warrantyNotes);
+    var wNote="";
+    if(a.warrantyExpires){
+      var days=Math.round((new Date(a.warrantyExpires+"T00:00:00")-new Date())/86400000);
+      wNote = days<0
+        ? "<div style='font-size:.84rem;color:#8a3d1c;font-weight:600;margin-top:6px'>Warranty expired "+(-days)+" day"+(-days===1?"":"s")+" ago.</div>"
+        : "<div style='font-size:.84rem;color:var(--green-deep);font-weight:600;margin-top:6px'>Under warranty — "+days+" day"+(days===1?"":"s")+" left.</div>";
+    }
+    var warranty = wRows ? "<div class='card'><div style='font-weight:600;color:var(--green-deep);margin-bottom:6px'>Warranty &amp; purchase</div><dl>"+wRows+"</dl>"+wNote+"</div>" : "";
     var ai = a.aiReading?"<div class='card'><button type='button' class='agenttog' id='agentTog'><span id='agentIco'>＋</span> Agent reading</button><div id='agentBody' style='display:none;margin-top:8px'><div class='ainote'>"+esc(a.aiReading)+"</div></div></div>":"";
     var svcArr = a.services || [];
     var lastSvc = svcArr.reduce(function(m,s){ return (s.date && (!m || s.date>m)) ? s.date : m; }, "");
@@ -476,7 +487,7 @@
       "<button type='button' class='navside right' id='a_nextSide' aria-label='Next asset'>&rsaquo;</button>"+
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
-      stats+photos+identity+ai+
+      stats+photos+identity+warranty+ai+
       "<h2 id='history'>History</h2>"+
       "<div class='histadd'>"+
         "<a class='hadd' href='/tickets?asset="+aid+"'>＋ Ticket</a>"+
@@ -766,9 +777,15 @@
       "<div id='editmsg' class='err' style='margin-bottom:10px'></div>"+
       field("f_nickname","Nickname (short name shown as the title)",a.nickname)+field("f_name","Full name (brand and model)",a.name)+field("f_desc","Description",a.description,true)+
       field("f_make","Manufacturer",a.manufacturer)+field("f_model","Model",a.model)+field("f_serial","Serial",a.serial)+
-      comboField("f_type","Type",a.equipmentType,OPTIONS.types)+
       comboField("f_client","Client",a.client,OPTIONS.clients)+
-      comboField("f_location","Location",a.location,OPTIONS.locations)+
+      // Type and Location aren't used yet. Tucked behind a toggle ("future
+      // development") so they don't clutter the form, but still saved if filled.
+      "<div style='margin:2px 0 14px'><a href='#' id='futToggle' style='font-size:.85rem;color:var(--muted);border-bottom:1px solid var(--line)'>Future development +</a></div>"+
+      "<div id='futWrap' style='display:none'>"+
+        "<div class='hint' style='color:var(--muted);margin-bottom:8px'>Not in use yet. These are here for later.</div>"+
+        comboField("f_type","Type",a.equipmentType,OPTIONS.types)+
+        comboField("f_location","Location",a.location,OPTIONS.locations)+
+      "</div>"+
       "<div class='field'><label>QR tag <span class='hint' style='font-weight:400;color:var(--muted)'>— this asset's code, or a store-bought sticker you scan in</span></label>"+
         "<input id='f_qr' type='text' value='"+esc(a.qr||"")+"'/>"+
         "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>"+
@@ -777,6 +794,24 @@
           "<button type='button' id='f_qrprint' class='btn ghost' style='padding:8px 13px;border-radius:999px;font-size:.84rem'>Print a label</button>"+
         "</div>"+
         "<div id='f_qrmsg' style='font-size:.84rem;color:var(--muted);margin-top:6px'></div>"+
+      "</div>"+
+      // Warranty & purchase: an advanced section. Read it straight off a receipt,
+      // invoice, or warranty PDF, then review and Save.
+      "<div style='margin-top:18px;border-top:1px solid var(--line);padding-top:16px'>"+
+        "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px'>"+
+          "<div style='font-size:1rem;font-weight:600;color:var(--green-deep)'>Warranty &amp; purchase</div>"+
+          "<label class='btn ghost' for='w_file' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem;margin:0'>📄 Read from invoice or receipt</label>"+
+        "</div>"+
+        "<div class='hint' style='color:var(--muted);margin-bottom:10px'>Snap the receipt or drop a PDF invoice and the assistant fills in what it can. Works with a Costco order, a store receipt, or a warranty card.</div>"+
+        "<input type='file' id='w_file' accept='image/*,application/pdf' style='display:none' />"+
+        "<div id='w_msg' style='font-size:.85rem;color:var(--muted);margin-bottom:10px'></div>"+
+        "<div class='field'><label>Purchased on</label><input id='f_purchasedOn' type='date' value='"+esc(a.purchasedOn||"")+"'/></div>"+
+        "<div class='field'><label>Purchased from</label><input id='f_purchasedFrom' type='text' value='"+esc(a.purchasedFrom||"")+"' placeholder='e.g. Costco'/></div>"+
+        "<div class='field'><label>Price paid</label><input id='f_purchasePrice' type='number' step='0.01' value='"+esc(a.purchasePrice||"")+"' placeholder='e.g. 2099.00'/></div>"+
+        "<div class='field'><label>Warranty provider</label><input id='f_warrantyProvider' type='text' value='"+esc(a.warrantyProvider||"")+"' placeholder='e.g. Allstate, or the manufacturer'/></div>"+
+        "<div class='field'><label>Warranty length</label><input id='f_warrantyLength' type='text' value='"+esc(a.warrantyLength||"")+"' placeholder='e.g. 3 years'/></div>"+
+        "<div class='field'><label>Warranty expires</label><input id='f_warrantyExpires' type='date' value='"+esc(a.warrantyExpires||"")+"'/></div>"+
+        "<div class='field'><label>Notes</label><textarea id='f_warrantyNotes' placeholder='Order number, what is covered, etc.'>"+esc(a.warrantyNotes||"")+"</textarea></div>"+
       "</div>"+
       "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>"+
       "<div class='btnrow' style='margin-top:18px'><button class='btn ghost' id='delBtn' type='button' style='color:#8a3d1c;border-color:rgba(138,61,28,.4)'>Delete asset</button></div>";
@@ -802,6 +837,43 @@
       }).catch(function(err){ qm.style.color="#8a3d1c"; qm.textContent=(err&&err.message)||"Couldn't read a QR code from that photo."; });
     });
     wireEditPhotos();
+    var fut=document.getElementById("futToggle");
+    if(fut) fut.addEventListener("click", function(e){ e.preventDefault(); var w=document.getElementById("futWrap"); var open=w.style.display!=="none"; w.style.display=open?"none":"block"; fut.textContent=open?"Future development +":"Future development −"; });
+    wireWarrantyScan();
+  }
+
+  // Read a warranty/purchase file (image or PDF) and fill the warranty fields.
+  function readWarrantyFile(file){
+    if(/pdf/i.test(file.type||"")){
+      return new Promise(function(resolve,reject){
+        var r=new FileReader();
+        r.onload=function(){ var s=String(r.result||""); var b=s.indexOf(","); resolve({ base64: b>=0?s.slice(b+1):s, contentType:"application/pdf" }); };
+        r.onerror=function(){ reject(new Error("read")); };
+        r.readAsDataURL(file);
+      });
+    }
+    return processPhoto(file).then(function(p){ return { base64:p.base64, contentType:p.contentType }; });
+  }
+  function wireWarrantyScan(){
+    var wf=document.getElementById("w_file"); if(!wf) return;
+    wf.addEventListener("change", function(e){
+      var file=e.target.files&&e.target.files[0]; e.target.value="";
+      if(!file) return;
+      var wm=document.getElementById("w_msg");
+      wm.style.color="var(--muted)"; wm.textContent="Reading "+(/pdf/i.test(file.type||"")?"the invoice":"the receipt")+"… this can take a few seconds.";
+      readWarrantyFile(file).then(function(payload){
+        return fetch("/api/asset/scan-warranty",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+      }).then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok){ wm.style.color="#8a3d1c"; wm.textContent=(d&&d.error)||"Couldn't read that file."; return; }
+        function setIf(id,val){ var el=document.getElementById(id); if(el&&val) el.value=val; }
+        setIf("f_purchasedOn",d.purchasedOn); setIf("f_purchasedFrom",d.purchasedFrom); setIf("f_purchasePrice",d.purchasePrice);
+        setIf("f_warrantyProvider",d.warrantyProvider); setIf("f_warrantyLength",d.warrantyLength); setIf("f_warrantyExpires",d.warrantyExpires);
+        if(d.notes){ var n=document.getElementById("f_warrantyNotes"); if(n) n.value = n.value ? (n.value+"\n"+d.notes) : d.notes; }
+        var got=[d.purchasedOn,d.purchasedFrom,d.purchasePrice,d.warrantyProvider,d.warrantyLength,d.warrantyExpires].filter(Boolean).length;
+        wm.style.color="var(--green-deep)";
+        wm.textContent = got ? ("Filled in "+got+" field"+(got===1?"":"s")+" from your document. Review and Save.") : "Couldn't find clear warranty details on that file. Enter them by hand.";
+      }).catch(function(){ wm.style.color="#8a3d1c"; wm.textContent="Couldn't read that file."; });
+    });
   }
 
   function runAgentNow(){
@@ -814,7 +886,10 @@
 
   function saveEdit(){
     var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
-    var payload={ id:curId, nickname:document.getElementById("f_nickname").value, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value, keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
+    function fv(id){ var el=document.getElementById(id); return el?el.value:""; }
+    var payload={ id:curId, nickname:document.getElementById("f_nickname").value, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value,
+      purchasedOn:fv("f_purchasedOn"), purchasedFrom:fv("f_purchasedFrom"), purchasePrice:fv("f_purchasePrice"), warrantyProvider:fv("f_warrantyProvider"), warrantyLength:fv("f_warrantyLength"), warrantyExpires:fv("f_warrantyExpires"), warrantyNotes:fv("f_warrantyNotes"),
+      keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }
     }).catch(function(){ b.disabled=false; b.textContent="Save"; setMsg("Couldn't reach the server."); });

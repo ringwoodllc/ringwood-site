@@ -57,6 +57,7 @@ export default {
     if (url.pathname === "/api/asset/events" && request.method === "GET") return listAssetEvents(url, env, request);
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
+    if (url.pathname === "/api/asset/scan-warranty" && request.method === "POST") return scanWarranty(request, env, session);
     if (url.pathname === "/api/asset/qr/generate" && request.method === "POST") return generateAssetQr(request, env, session);
     if (url.pathname === "/api/asset/delete" && request.method === "POST") return deleteAsset(request, env, session);
     if (url.pathname === "/api/assets/review" && request.method === "GET") return assetsForReview(request, env);
@@ -1673,6 +1674,14 @@ async function getAssetFull(url, env, session) {
     overallPhoto: a.overall_photo_url || "",
     nameplatePhoto: a.nameplate_photo_url || "",
     serialPhoto: a.serial_photo_url || "",
+    // Warranty and purchase (optional, often read from an invoice or receipt).
+    purchasedOn: a.purchased_on || "",
+    purchasedFrom: a.purchased_from || "",
+    purchasePrice: a.purchase_price != null ? a.purchase_price : "",
+    warrantyProvider: a.warranty_provider || "",
+    warrantyLength: a.warranty_length || "",
+    warrantyExpires: a.warranty_expires || "",
+    warrantyNotes: a.warranty_notes || "",
     services,
   });
 }
@@ -1795,6 +1804,16 @@ async function updateAsset(request, env, session) {
   if ("client" in body && scopeName(session) == null) patch.client_id = findId(refs.clients, c(body.client));
   if ("location" in body) patch.location_id = findId(refs.locs, c(body.location));
   if ("qrTag" in body) patch.qr_tag = c(body.qrTag);
+  // Warranty and purchase fields. Only touched when a value is actually given,
+  // so a normal asset save never writes these columns (and won't fail if the
+  // warranty migration hasn't been run yet). See supabase/asset_warranty.sql.
+  if (c(body.purchasedOn)) patch.purchased_on = c(body.purchasedOn);
+  if (c(body.purchasedFrom)) patch.purchased_from = c(body.purchasedFrom);
+  if (c(body.purchasePrice)) { const n = parseFloat(body.purchasePrice); if (!isNaN(n)) patch.purchase_price = n; }
+  if (c(body.warrantyProvider)) patch.warranty_provider = c(body.warrantyProvider);
+  if (c(body.warrantyLength)) patch.warranty_length = c(body.warrantyLength);
+  if (c(body.warrantyExpires)) patch.warranty_expires = c(body.warrantyExpires);
+  if (c(body.warrantyNotes)) patch.warranty_notes = c(body.warrantyNotes);
   // Rebuild the photo list when the editor sends one: keep the photos the user
   // didn't delete, then append new uploads. Clear the legacy single-slot columns
   // so photos live in one place from now on.
@@ -3145,6 +3164,84 @@ async function readDocFields(source, ct, section, env) {
     const title = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 200);
     return { title, date: okd(out.date), expiry: okd(out.expiry) };
   } catch { return null; }
+}
+
+// Read a purchase receipt, invoice, or warranty document (image OR PDF) and pull
+// out the warranty and purchase details for an asset. Returns the fields for the
+// editor to fill in for review. Does not save. Conservative: only what's shown.
+async function scanWarranty(request, env, session) {
+  if (!can(session, "assets", "edit")) return deny("assets");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected." }, 503);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "Bad request." }, 400);
+  }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const base64 = c(body.base64);
+  if (!base64) return json({ ok: false, error: "No file to read." }, 400);
+  const ct = c(body.contentType) || "image/jpeg";
+  const isPdf = ct.indexOf("pdf") >= 0;
+  const source = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
+  const block = isPdf ? { type: "document", source } : { type: "image", source };
+  const today = new Date().toISOString().slice(0, 10);
+
+  const prompt =
+    "You are reading a purchase receipt, invoice, order confirmation, or warranty document for a piece of equipment " +
+    "(for example a Costco order, a Home Depot receipt, or a manufacturer warranty card). Today is " + today + ". " +
+    "Pull out the purchase and warranty details. Return:\n" +
+    "- purchasedOn: the order or purchase date as YYYY-MM-DD, or empty.\n" +
+    "- purchasedFrom: the store or retailer it was bought from (e.g. Costco, Home Depot, Amazon, Best Buy), or empty.\n" +
+    "- purchasePrice: the price paid for the main equipment item as a plain number, no currency symbol. If there are several " +
+    "line items, use the main appliance or equipment, not add-ons like protection plans or delivery. Empty if unclear.\n" +
+    "- warrantyProvider: who backs the warranty or protection plan (e.g. the manufacturer's name, Allstate, Asurion, Square Trade). Empty if none shown.\n" +
+    "- warrantyLength: the warranty or plan term in plain words (e.g. \"3 years\", \"1 year manufacturer\"). Empty if none shown.\n" +
+    "- warrantyExpires: the warranty end date as YYYY-MM-DD. If it is not printed but you have a purchase date and a length in years, add them to get the end date. Empty if you cannot tell.\n" +
+    "- notes: a short plain summary of anything else useful (order number, what is covered, protection plan names, item count). Keep it to one or two lines. Empty if nothing.\n" +
+    "Only use what the document actually shows. Do not invent prices, dates, order numbers, or coverage.";
+
+  const schema = {
+    type: "object",
+    properties: {
+      purchasedOn: { type: "string" }, purchasedFrom: { type: "string" }, purchasePrice: { type: "string" },
+      warrantyProvider: { type: "string" }, warrantyLength: { type: "string" }, warrantyExpires: { type: "string" }, notes: { type: "string" },
+    },
+    required: ["purchasedOn", "purchasedFrom", "purchasePrice", "warrantyProvider", "warrantyLength", "warrantyExpires", "notes"],
+    additionalProperties: false,
+  };
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 700, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that file." }, 502);
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return json({ ok: false, error: "The assistant couldn't read that file." }, 502);
+    let out;
+    try {
+      out = JSON.parse(tb.text);
+    } catch {
+      return json({ ok: false, error: "The assistant couldn't read that file." }, 502);
+    }
+    const okd = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? s : "");
+    const price = (out.purchasePrice || "").toString().replace(/[^0-9.]/g, "");
+    return json({
+      ok: true,
+      purchasedOn: okd(out.purchasedOn),
+      purchasedFrom: (out.purchasedFrom || "").toString().trim().slice(0, 120),
+      purchasePrice: price,
+      warrantyProvider: (out.warrantyProvider || "").toString().trim().slice(0, 120),
+      warrantyLength: (out.warrantyLength || "").toString().trim().slice(0, 120),
+      warrantyExpires: okd(out.warrantyExpires),
+      notes: (out.notes || "").toString().trim().slice(0, 500),
+    });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
 }
 
 async function uploadRedbookDoc(request, env, session) {
