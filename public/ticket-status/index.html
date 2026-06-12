@@ -617,8 +617,8 @@
         "<div class='field'><label>Main photos <span style='font-weight:400;color:var(--muted);font-size:.86rem'>— the headline shots shown up top</span></label>" +
           "<div id='e_thumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px'></div>" +
           "<div style='display:flex;gap:10px;flex-wrap:wrap'>" +
-            "<label class='qbtn' for='e_file' style='cursor:pointer'>📷 Take photo</label>" +
-            "<label class='qbtn' for='e_fileUp' style='cursor:pointer'>⤴ Upload</label>" +
+            "<label class='qbtn' for='e_file' id='e_takeBtn' style='cursor:pointer'>📷 Take photo</label>" +
+            "<label class='qbtn' for='e_fileUp' id='e_upBtn' style='cursor:pointer'>⤴ Upload</label>" +
           "</div>" +
           "<input type='file' id='e_file' accept='image/*' capture='environment' style='display:none' />" +
           "<input type='file' id='e_fileUp' accept='image/*' multiple style='display:none' />" +
@@ -934,6 +934,13 @@
     }
     document.getElementById("e_file").addEventListener("change", addMainPhotos);
     var e_fileUpEl=document.getElementById("e_fileUp"); if(e_fileUpEl) e_fileUpEl.addEventListener("change", addMainPhotos);
+    // A computer has no separate camera flow: collapse to one "Attach a photo".
+    // (iPads claim to be Macs, so check touch points too.)
+    var IS_MOBILE_CAM = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    if(!IS_MOBILE_CAM){
+      var tb=document.getElementById("e_takeBtn"); if(tb) tb.style.display="none";
+      var ub=document.getElementById("e_upBtn"); if(ub) ub.textContent="📎 Attach a photo";
+    }
     // Add one or more photos and commit them to the ticket immediately (no Save
     // needed). Only the photos are written, so status/notes you're mid-edit stay.
     function autoSavePhotos(justAdded){

@@ -556,6 +556,24 @@ var camInput = document.getElementById("fileCam");
 if (camInput) camInput.addEventListener("change", function (e) { addIncomingPhotos(Array.prototype.slice.call(e.target.files || [])); e.target.value = ""; });
 var camBtn = document.getElementById("camBtn");
 if (camBtn && camInput) camBtn.addEventListener("click", function () { camInput.click(); });
+// Device-aware photo buttons: a computer has no separate camera flow, so the
+// two buttons collapse into one smart "Attach a photo" (with drag-drop and
+// paste). iPads report a Mac user agent, so check touch points too.
+var IS_MOBILE_CAM = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+if (!IS_MOBILE_CAM) {
+  if (camBtn) camBtn.style.display = "none";
+  var pbSpan = photoBtn.querySelector("span");
+  if (pbSpan) pbSpan.textContent = "Attach a photo";
+  // Desktop niceties: drop a file on the button, or paste a screenshot anywhere.
+  ["dragenter","dragover"].forEach(function(ev){ photoBtn.addEventListener(ev, function(e){ e.preventDefault(); photoBtn.style.borderColor = "var(--green)"; }); });
+  ["dragleave","dragend"].forEach(function(ev){ photoBtn.addEventListener(ev, function(e){ e.preventDefault(); photoBtn.style.borderColor = ""; }); });
+  photoBtn.addEventListener("drop", function(e){ e.preventDefault(); photoBtn.style.borderColor = ""; addIncomingPhotos(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []).filter(function(f){ return /^image\//.test(f.type||""); })); });
+  document.addEventListener("paste", function(e){
+    var items = (e.clipboardData && e.clipboardData.items) || [], fs = [];
+    for (var i = 0; i < items.length; i++) { if (items[i].kind === "file") { var f = items[i].getAsFile(); if (f && /^image\//.test(f.type||"")) fs.push(f); } }
+    if (fs.length) { e.preventDefault(); addIncomingPhotos(fs); }
+  });
+}
 
 noteEl.addEventListener("input", refresh);
 categoryEl.addEventListener("change", refresh);
