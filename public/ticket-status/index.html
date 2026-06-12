@@ -628,6 +628,10 @@
         (IS_CLIENT ? "" :
           "<div class='svcsec'>" +
             "<div class='svchead'>Service</div>" +
+            // The asset's vitals live on the ticket, so a dispatch call doesn't
+            // mean a trip back to Assets: serial, coverage, and who to call first.
+            (t.assetId ? "<div id='e_equip' style='margin:0 0 12px'></div>" : "") +
+            "<div id='e_svclist' style='margin:0 0 12px'></div>" +
             (IS_MASTER ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
               "<div id='e_partsField' style='display:none;margin-bottom:12px'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
@@ -646,8 +650,8 @@
               "</div>" +
             "</div></div>" +
             (IS_MASTER ?
-              "<div style='margin-top:14px'><button type='button' class='qbtn rev' id='e_logSvc'>🧾 Log a service record</button>" +
-                "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>Creates a service record on this ticket's asset, prefilled with the tech and parts, so you can add costs and bill it later.</div></div>"
+              "<div style='margin-top:14px'><button type='button' class='qbtn' id='e_logSvc'>＋ Service call</button>" +
+                "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>One opens automatically when the ticket is accepted (status Scheduled). Use this only to add another by hand.</div></div>"
             : "") +
           "</div>"
         ) +
@@ -724,19 +728,62 @@
     if(moreT) moreT.addEventListener("click", function(e){ e.preventDefault(); var mm=document.getElementById("e_more"); var open=mm.style.display!=="none"; mm.style.display=open?"none":"block"; moreT.textContent=open?"More details ▾":"Fewer details ▴"; });
     var partsT=document.getElementById("e_partsToggle");
     if(partsT) partsT.addEventListener("click", function(e){ e.preventDefault(); var pf=document.getElementById("e_partsField"); var open=pf.style.display!=="none"; pf.style.display=open?"none":"block"; partsT.textContent=open?"Parts & materials ▾":"Parts & materials ▴"; });
-    // Turn the ticket into a service record on its asset (tech + parts prefilled),
-    // so the job can be costed and invoiced from the asset's service history.
+    // Equipment at hand: pull the asset's vitals onto the ticket so a dispatch
+    // call (serial, coverage, who to call first) never needs the Assets page.
+    (function(){
+      var eq=document.getElementById("e_equip"); if(!eq || !t.assetId) return;
+      eq.innerHTML="<div style='color:var(--muted);font-size:.86rem'>Loading equipment…</div>";
+      fetch("/api/asset?id="+encodeURIComponent(t.assetId),{cache:"no-store"}).then(function(r){return r.json();}).then(function(a){
+        if(!a||!a.ok){ eq.innerHTML=""; return; }
+        var rows=[];
+        var mm=[a.manufacturer,a.model].filter(Boolean).join(" · ");
+        if(mm) rows.push("<div>"+esc(mm)+"</div>");
+        if(a.serial) rows.push("<div>Serial: <b>"+esc(a.serial)+"</b></div>");
+        var lastExp=[a.warrantyExpires,a.extExpires].filter(Boolean).sort().pop();
+        if(lastExp){ var days=Math.round((new Date(lastExp+"T00:00:00")-new Date())/86400000);
+          rows.push(days<0 ? "<div style='color:#8a3d1c;font-weight:600'>Coverage ended "+(-days)+" day"+(-days===1?"":"s")+" ago</div>"
+                           : "<div style='color:var(--green-deep);font-weight:600'>Covered — "+days+" day"+(days===1?"":"s")+" left"+(a.extProvider?(" ("+esc(a.extProvider)+")"):"")+"</div>"); }
+        if(a.supportContact){
+          var tel=((a.supportContact.match(/[\d\-\.\(\)\s]{7,}/)||[""])[0]||"").replace(/[^\d+]/g,"");
+          rows.push("<div>Call first: "+(tel?("<a href='tel:"+tel+"' style='font-weight:700;color:var(--green-deep)'>"+esc(a.supportContact)+"</a>"):("<b>"+esc(a.supportContact)+"</b>"))+"</div>");
+        } else {
+          rows.push("<div style='color:var(--muted)'>No support contact on file. <a href='/a/?id="+esc(t.assetId)+"' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Add who to call</a></div>");
+        }
+        eq.innerHTML="<div style='background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:.9rem;line-height:1.6'>"+
+          "<div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap'><b style='color:var(--green-deep)'>⚙ "+esc(a.nickname||a.name||"Equipment")+"</b><a href='/a/?id="+esc(t.assetId)+"' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>full record</a></div>"+
+          rows.join("")+"</div>";
+      }).catch(function(){ eq.innerHTML=""; });
+    })();
+    // The internal service calls spawned from this ticket (the dispatch view).
+    function loadTicketSvc(){
+      var el=document.getElementById("e_svclist"); if(!el) return;
+      fetch("/api/tickets/services?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok){ el.innerHTML=""; return; }
+        if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Service calls need the latest migration (supabase/service_invoice.sql).</div>"; return; }
+        if(!d.services.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No service call yet. Setting the ticket to <b>Scheduled</b> opens one on the asset automatically.</div>"; return; }
+        el.innerHTML = d.services.map(function(s){
+          var total=[s.cost,s.vendorCost,s.partsCost].map(Number).filter(function(n){return !isNaN(n)&&n>0;}).reduce(function(a,b){return a+b;},0);
+          var who=[s.technician,s.tech2].filter(Boolean).join(" + ");
+          return "<a href='/a/?id="+esc(s.assetId)+"' style='display:flex;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 13px;margin-bottom:6px;text-decoration:none;color:var(--ink);font-size:.9rem'>"+
+            "<span>🧾 "+esc(s.date||"")+(s.type?(" · "+esc(s.type)):"")+(who?(" · "+esc(who)):" · unassigned")+"</span>"+
+            "<span style='font-weight:700;color:var(--green-deep)'>"+(total ? ("$"+total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})) : "—")+"</span></a>";
+        }).join("");
+      }).catch(function(){});
+    }
+    loadTicketSvc();
+    window.__loadTicketSvc = loadTicketSvc;
+    // Manual extra service call (one is opened automatically on acceptance).
     var logSvc=document.getElementById("e_logSvc");
     if(logSvc) logSvc.addEventListener("click", function(){
-      if(!t.assetId){ alert("Tag an asset on this ticket first (open More details and use Suggest), so the service record attaches to the right equipment."); return; }
+      if(!t.assetId){ alert("Tag an asset on this ticket first (open More details and use Suggest), so the service call attaches to the right equipment."); return; }
       var tech=document.getElementById("e_assigned"); tech=tech?tech.value:"";
       var partsText=(typeof PARTS!=="undefined" && PARTS.length) ? PARTS.map(function(p){ return (p.quantity?(p.quantity+"x "):"")+p.item; }).join(", ") : "";
       logSvc.disabled=true; var old=logSvc.textContent; logSvc.textContent="Creating…";
-      fetch("/api/service",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ assetId:t.assetId, technician:(tech==="__new"?"":tech), notes:"From ticket "+(t.ref||"")+": "+(t.title||""), ticketId:t.id, parts:partsText, serviceDate:new Date().toISOString().slice(0,10) })})
+      fetch("/api/service",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ assetId:t.assetId, technician:(tech==="__new"?"":tech), notes:"Service call for ticket "+(t.ref||"")+": "+(t.title||""), ticketId:t.id, parts:partsText, serviceDate:new Date().toISOString().slice(0,10) })})
         .then(function(r){return r.json();}).then(function(d){
           logSvc.disabled=false; logSvc.textContent=old;
-          if(d&&d.ok){ if(confirm("Service record created on the asset. Open it now to add cost, travel time, and parts for invoicing?")) location.href="/a/?id="+encodeURIComponent(t.assetId); }
-          else alert((d&&d.error)||"Couldn't create the service record.");
+          if(d&&d.ok){ loadTicketSvc(); loadLog(); }
+          else alert((d&&d.error)||"Couldn't create the service call.");
         }).catch(function(){ logSvc.disabled=false; logSvc.textContent=old; alert("Couldn't reach the server."); });
     });
 
@@ -797,6 +844,9 @@
             var li=null; for(var i=0;i<ALL_TICKETS.length;i++){ if(ALL_TICKETS[i].id===t.id){ li=ALL_TICKETS[i]; break; } }
             Object.keys(payload).forEach(function(k){ if(SYNC_KEYS[k]){ t[k]=payload[k]; if(li) li[k]=payload[k]; } });
             loadLog();
+            // Accepting (Scheduled / In Progress) may have opened a service call
+            // server-side; refresh the dispatch list so it appears right away.
+            if(payload.status && window.__loadTicketSvc) setTimeout(window.__loadTicketSvc, 700);
           } else { var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save."; } }
         })
         .catch(function(){ var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });

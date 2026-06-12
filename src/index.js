@@ -73,6 +73,7 @@ export default {
     if (url.pathname === "/api/tickets" && request.method === "POST") return createTicket(request, env, ctx, session);
     if (url.pathname === "/api/tickets/list" && request.method === "GET") return listTickets(url, env, session);
     if (url.pathname === "/api/tickets/asset" && request.method === "GET") return getTicketAsset(url, env, session);
+    if (url.pathname === "/api/tickets/services" && request.method === "GET") return listTicketServices(url, env, session);
     if (url.pathname === "/api/tickets/comments" && request.method === "GET") return listTicketComments(url, env, session);
     if (url.pathname === "/api/tickets/comment" && request.method === "POST") return addTicketComment(request, env, session);
     if (url.pathname === "/api/tickets/comment/update" && request.method === "POST") return updateTicketComment(request, env, session);
@@ -2992,6 +2993,28 @@ async function updateTicket(request, env, session) {
     let brief = parts.length ? ("Updated " + parts.join(", ")) : "";
     if ("reviewed" in body && body.reviewed === true) brief = brief ? (brief + ", marked reviewed") : "Marked reviewed";
     if (brief) await logTicketEvent(env, id, session, brief, details.length ? details.join("\n\n") : undefined);
+    // Accepting a ticket spawns the internal service call: when the status moves
+    // into Scheduled or In Progress and the ticket has an asset, create a linked
+    // service record (tech + intake prefilled) if none exists yet. The ticket
+    // stays the client-facing thread; the service record is the internal work.
+    if ("status" in body && (body.status === "Scheduled" || body.status === "In Progress") && body.status !== prevStatus) {
+      try {
+        const tr2 = await sbSelect(env, `tickets?id=eq.${id}&select=asset_id,client_id,ref,title,assigned_to`);
+        const tk = tr2 && tr2[0];
+        if (tk && tk.asset_id) {
+          const existing = await sbSelect(env, `service_records?ticket_id=eq.${id}&select=id&limit=1`);
+          // existing === null means the ticket_id column isn't there yet (run
+          // supabase/service_invoice.sql); skip rather than create unlinked rows.
+          if (existing !== null && !existing.length) {
+            const row = { asset_id: tk.asset_id, ticket_id: id, service_date: new Date().toISOString().slice(0, 10), notes: "Service call for ticket " + (tk.ref || "") + ": " + (tk.title || "") };
+            if (tk.client_id) row.client_id = tk.client_id;
+            if (tk.assigned_to) row.technician = tk.assigned_to;
+            const made = await sbInsert(env, "service_records", row);
+            if (made.ok) await logTicketEvent(env, id, session, "Service call opened", "A service record was created on the asset for this job.");
+          }
+        }
+      } catch { /* best-effort; never block the status change */ }
+    }
   }
   if (photoPatch) {
     const res2 = await sbUpdate(env, "tickets", id, photoPatch);
@@ -3001,6 +3024,31 @@ async function updateTicket(request, env, session) {
     ok: true,
     photos: finalPhotos,
     photoWarning: addFailed ? addFailed + " photo" + (addFailed === 1 ? "" : "s") + " didn't upload. Try adding " + (addFailed === 1 ? "it" : "them") + " again." : undefined,
+  });
+}
+
+// The internal service calls spawned from a ticket (the dispatch view). Staff
+// only; a client's ticket view never shows the internal work.
+async function listTicketServices(url, env, session) {
+  if (!session || session.role === "client") return json({ ok: true, services: [] });
+  if (!can(session, "service", "view")) return json({ ok: true, services: [] });
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: true, services: [] });
+  const rows = await sbSelect(env, `service_records?ticket_id=eq.${id}&select=id,service_date,technician,tech2,cost,vendor_cost,parts_cost,asset_id,service_type:service_types(name)&order=service_date.desc`);
+  if (rows === null) return noStore({ ok: true, services: [], missing: true });
+  return noStore({
+    ok: true,
+    services: (rows || []).map((s) => ({
+      id: s.id,
+      date: s.service_date || "",
+      type: (s.service_type && s.service_type.name) || "",
+      technician: s.technician || "",
+      tech2: s.tech2 || "",
+      cost: s.cost != null ? s.cost : "",
+      vendorCost: s.vendor_cost != null ? s.vendor_cost : "",
+      partsCost: s.parts_cost != null ? s.parts_cost : "",
+      assetId: s.asset_id || "",
+    })),
   });
 }
 
