@@ -634,12 +634,10 @@
               "<div id='e_polishText' style='font-size:.95rem;white-space:pre-wrap'></div>" +
               "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_polishUse'>Use this</button><button type='button' class='qbtn' id='e_polishKeep'>Keep mine</button></div>" +
             "</div>" +
-            "<div style='font-size:.84rem;color:var(--muted);margin-top:10px'>Press Save below to post your note and any changes.</div>" +
+            "<div style='display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap'><button type='button' class='btn' id='e_postnote'>Post note</button><span class='msg' id='e_notemsg' style='margin:0'></span></div>" +
           "</div>" +
         "</div>" +
-        "<div class='row2'><button class='btn' id='e_save' type='button'>Save</button>" +
-        "<button class='btn ghost' id='e_back' type='button'>Back</button></div>" +
-        "<div style='margin-top:8px'><button class='btn ghost' id='e_saveNext' type='button' style='width:100%'>Save &amp; next &rarr;</button></div>" +
+        "<div class='row2'><button class='btn ghost' id='e_back' type='button' style='width:100%'>&larr; Back to list</button></div>" +
         "<div class='msg' id='e_msg'></div>" +
         (IS_CLIENT ? "" : "<button class='btn' id='e_del' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);margin-top:16px'>Delete ticket</button>" +
           "<div id='e_rev'></div>") +
@@ -667,7 +665,6 @@
       ["e_prev","e_prevSide","e_qprev"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atStart; b.addEventListener("click",function(){ navTo(-1); }); } });
       ["e_next","e_nextSide","e_qnext"].forEach(function(bid){ var b=document.getElementById(bid); if(b){ b.disabled=atEnd; b.addEventListener("click",function(){ navTo(1); }); } });
       window.__navNext = function(){ navTo(1); };
-      var sn=document.getElementById("e_saveNext"); if(sn){ if(atEnd) sn.textContent="Save"; sn.addEventListener("click", function(){ window.__pendingNext=true; document.getElementById("e_save").click(); }); }
     })();
 
     // Human review: a ticket is "Needs review" until a person confirms it.
@@ -725,7 +722,7 @@
           } else if(d.newAssetName){
             for(var j=0;j<assetSelEl.options.length;j++){ if(assetSelEl.options[j].value==="__new"){ assetSelEl.selectedIndex=j; break; } }
             newAssetEl.style.display="block"; newAssetEl.value=d.newAssetName;
-            if(note){ note.style.color="var(--green-deep)"; note.textContent="No match on file. Suggested new asset \""+d.newAssetName+"\". "+(d.reason||"")+" Hit Save to add it."; }
+            if(note){ note.style.color="var(--green-deep)"; note.textContent="No match on file. Suggested new asset \""+d.newAssetName+"\". "+(d.reason||"")+" Tap out of the box to add it."; }
           } else {
             if(note){ note.style.color="var(--muted)"; note.textContent=d.reason||"No clear equipment match. Pick one above if you know it."; }
           }
@@ -743,6 +740,15 @@
     [["e_status","status"],["e_cat","category"],["e_client","client"],["e_loc","location"]].forEach(function(p){
       var el=document.getElementById(p[0]); if(el) el.addEventListener("change", function(){ var v={}; v[p[1]]=el.value; autoSaveTicket(v); });
     });
+    // Title and description save when you tap out of the field (change = blur for
+    // a textarea). Admin only; a client's description is read-only.
+    if(!IS_CLIENT){
+      [["e_title","title"],["e_desc","description"]].forEach(function(p){
+        var el=document.getElementById(p[0]); if(el) el.addEventListener("change", function(){ var v={}; v[p[1]]=el.value; autoSaveTicket(v); });
+      });
+      // A new asset typed in (or suggested) saves when you tap out of the box.
+      if(newAssetEl) newAssetEl.addEventListener("change", function(){ var nn=newAssetEl.value.trim(); if(nn) autoSaveTicket({ newAssetName: nn }); });
+    }
 
     var thumbsEl = document.getElementById("e_thumbs");
     function renderThumbs(){
@@ -761,7 +767,7 @@
       thumbsEl.innerHTML = html || "<span style='color:var(--muted);font-size:.9rem'>No photos yet.</span>";
     }
     window.__rmNewPhoto = function(i){ newPhotos.splice(i,1); renderThumbs(); };
-    window.__rmPhoto = function(i){ existingPhotos.splice(i,1); renderThumbs(); };
+    window.__rmPhoto = function(i){ existingPhotos.splice(i,1); renderThumbs(); autoSaveTicket({ keepPhotos: existingPhotos, addPhotos: [] }); };
     renderThumbs();
 
     document.getElementById("e_file").addEventListener("change", function(e){
@@ -804,9 +810,12 @@
         .then(function(r){return r.json();}).then(function(d){
           b.disabled = false; b.textContent = "✨ Rewrite with AI";
           if(d&&d.ok){
-            if(d.description) document.getElementById("e_desc").value = d.description;
-            if(d.category){ var cs=document.getElementById("e_cat"); for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===d.category||cs.options[i].text===d.category){ cs.selectedIndex=i; break; } } }
-            if(d.title){ genTitle = d.title; document.getElementById("e_title").value = d.title; }
+            var save={};
+            if(d.description){ document.getElementById("e_desc").value = d.description; save.description = d.description; }
+            if(d.category){ var cs=document.getElementById("e_cat"); for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===d.category||cs.options[i].text===d.category){ cs.selectedIndex=i; save.category=cs.value; break; } } }
+            if(d.title){ genTitle = d.title; document.getElementById("e_title").value = d.title; save.title = d.title; }
+            // The rewrite used to wait for Save; now it persists itself.
+            if(Object.keys(save).length) autoSaveTicket(save);
           } else { msg.textContent = (d&&d.error)||"The assistant couldn't respond."; }
         }).catch(function(){ b.disabled=false; b.textContent="✨ Rewrite with AI"; msg.textContent="Couldn't reach the assistant."; });
     });
@@ -826,7 +835,7 @@
         }).catch(function(){ foldBtn.disabled=false; foldBtn.textContent="✨ Pull updates into description"; if(em) em.textContent="Couldn't reach the assistant."; });
     });
     var foldUse=document.getElementById("e_foldUse");
-    if(foldUse) foldUse.addEventListener("click", function(){ document.getElementById("e_desc").value=document.getElementById("e_foldText").textContent; document.getElementById("e_foldWrap").style.display="none"; });
+    if(foldUse) foldUse.addEventListener("click", function(){ var nv=document.getElementById("e_foldText").textContent; document.getElementById("e_desc").value=nv; document.getElementById("e_foldWrap").style.display="none"; autoSaveTicket({ description: nv }); });
     var foldKeep=document.getElementById("e_foldKeep");
     if(foldKeep) foldKeep.addEventListener("click", function(){ document.getElementById("e_foldWrap").style.display="none"; });
 
@@ -1130,66 +1139,22 @@
           else { db.disabled=false; db.textContent="Delete ticket"; var m=document.getElementById("e_msg"); m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't delete."; }
         }).catch(function(){ db.disabled=false; db.textContent="Delete ticket"; var m=document.getElementById("e_msg"); m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; });
     });
-    document.getElementById("e_save").addEventListener("click", function(){
-      var b = document.getElementById("e_save"); b.disabled = true; b.textContent = "Saving…";
-      var payload = {
-        id: t.id,
-        keepPhotos: existingPhotos,
-        addPhotos: newPhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; })
-      };
-      // The admin fields only exist for non-clients; clients just save photos + notes.
-      if (!IS_CLIENT){
-        var ecl = document.getElementById("e_client");
-        payload.status = document.getElementById("e_status").value;
-        payload.client = ecl ? ecl.value : undefined;
-        payload.category = document.getElementById("e_cat").value;
-        payload.location = document.getElementById("e_loc").value;
-        var _asg = document.getElementById("e_assigned") ? document.getElementById("e_assigned").value : undefined;
-        if (_asg === "__new") _asg = "";  // quick-add wasn't completed
-        payload.assignedTo = _asg;
-        payload.description = document.getElementById("e_desc").value;
-        payload.title = document.getElementById("e_title").value || genTitle;
-        if (assetSelEl && assetSelEl.value === "__new"){ var nn = newAssetEl.value.trim(); if(nn) payload.newAssetName = nn; }
-        else if (assetSelEl) { payload.assetId = assetSelEl.value; }  // "" clears the link
-      }
-      // Save also commits anything typed in the "Add a note" box, so nothing is lost.
+    // The ticket fields and photos auto-save on their own. The note is the one
+    // thing you post deliberately, so it has its own button.
+    var postNoteBtn = document.getElementById("e_postnote");
+    if (postNoteBtn) postNoteBtn.addEventListener("click", function(){
       var noteText = (document.getElementById("e_note").value || "").trim();
-      var pendingNotePhotos = notePhotos.slice();
       var alsoTop = document.getElementById("e_notetop") ? document.getElementById("e_notetop").checked : false;
-      var msgEl = document.getElementById("e_msg"); msgEl.style.color = ""; msgEl.textContent = "";
-
-      function finish(warn){
-        b.disabled = false; b.textContent = "Save";
-        msgEl.style.color = warn ? "#8a3d1c" : "var(--green-deep)";
-        msgEl.textContent = "Saved." + (warn ? " " + warn : "");
-        // Refresh the list quietly (for Back, and so Next re-filters on fresh data),
-        // then step to the next ticket if this was a "Save & next".
-        fetch("/api/tickets/list?archived=1", { cache:"no-store" }).then(function(r){return r.json();}).then(function(rows){
-          if(Array.isArray(rows)) ALL_TICKETS = rows;
-          if(window.__pendingNext){ window.__pendingNext=false; if(window.__navNext) window.__navNext(); }
-        }).catch(function(){ if(window.__pendingNext){ window.__pendingNext=false; if(window.__navNext) window.__navNext(); } });
-      }
-
-      fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload) })
-        .then(function(r){return r.json();}).then(function(d){
-          if(!(d && d.ok)){ b.disabled=false; b.textContent="Save"; msgEl.style.color="#8a3d1c"; msgEl.textContent=(d&&d.error)||"Save failed."; return; }
-          // Reflect the saved photos in place so they stay on screen.
-          if (Array.isArray(d.photos)) existingPhotos = d.photos.slice();
-          newPhotos = []; renderThumbs();
-          var warn = d.photoWarning || "";
-          // Commit the pending note (with its photos), if any.
-          if (noteText || pendingNotePhotos.length){
-            fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:noteText, photos:pendingNotePhotos.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }), alsoTop:alsoTop }) })
-              .then(function(r){return r.json();}).then(function(nd){
-                if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); if(Array.isArray(nd.topPhotos)){ existingPhotos = nd.topPhotos.slice(); renderThumbs(); } }
-                else if(!warn){ warn = "Your note didn't save. Try Save again."; }
-                finish(warn);
-              }).catch(function(){ finish(warn || "Your note didn't save. Try Save again."); });
-          } else {
-            loadLog();
-            finish(warn);
-          }
-        }).catch(function(){ b.disabled=false; b.textContent="Save"; msgEl.style.color="#8a3d1c"; msgEl.textContent="Couldn't reach the server."; });
+      var nm = document.getElementById("e_notemsg");
+      if(!noteText && !notePhotos.length){ if(nm){ nm.style.color="var(--muted)"; nm.textContent="Type a note or add a photo first."; } return; }
+      var pending = notePhotos.slice();
+      postNoteBtn.disabled = true; postNoteBtn.textContent = "Posting…"; if(nm){ nm.textContent=""; }
+      fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:noteText, photos:pending.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }), alsoTop:alsoTop }) })
+        .then(function(r){return r.json();}).then(function(nd){
+          postNoteBtn.disabled=false; postNoteBtn.textContent="Post note";
+          if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); if(Array.isArray(nd.topPhotos)){ existingPhotos = nd.topPhotos.slice(); renderThumbs(); } if(nm){ nm.style.color="var(--green-deep)"; nm.textContent="Posted."; } }
+          else if(nm){ nm.style.color="#8a3d1c"; nm.textContent=(nd&&nd.error)||"Couldn't post the note."; }
+        }).catch(function(){ postNoteBtn.disabled=false; postNoteBtn.textContent="Post note"; if(nm){ nm.style.color="#8a3d1c"; nm.textContent="Couldn't reach the server."; } });
     });
   };
 
