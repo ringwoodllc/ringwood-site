@@ -436,6 +436,7 @@
     var wRows = row("Purchased on",fmtD(a.purchasedOn))+row("Purchased from",a.purchasedFrom)+row("Price paid",money(a.purchasePrice))
       +row("Manufacturer warranty",[a.warrantyProvider,a.warrantyLength].filter(Boolean).join(" · "))+row("Manufacturer expires",fmtD(a.warrantyExpires))
       +row("Extended warranty",[a.extProvider,a.extLength].filter(Boolean).join(" · "))+row("Extended expires",fmtD(a.extExpires))
+      +row("Support contact",a.supportContact)
       +row("Notes",a.warrantyNotes);
     // The coverage line uses the longest expiry on record (the extended plan when set).
     var lastExp = [a.warrantyExpires,a.extExpires].filter(Boolean).sort().pop();
@@ -447,6 +448,32 @@
         : "<div style='font-size:.84rem;color:var(--green-deep);font-weight:600;margin-top:6px'>Covered — "+days+" day"+(days===1?"":"s")+" left.</div>";
     }
     var warranty = wRows ? "<div class='card'><div style='font-weight:600;color:var(--green-deep);margin-bottom:6px'>Warranty &amp; purchase</div><dl>"+wRows+"</dl>"+wNote+"</div>" : "";
+    // Admin-only troubleshoot files: the invoices/screenshots used to fill it in.
+    var docs = "";
+    if (a.adminDocs !== undefined && a.adminDocs !== null){
+      var items = (a.adminDocs||[]).map(function(dc){
+        var when = dc.at ? new Date(dc.at).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) : "";
+        var thumb = dc.type==="pdf"
+          ? "<span style='font-size:1.4rem'>📄</span>"
+          : "<img src='"+esc(dc.url)+"' alt='' style='width:40px;height:40px;object-fit:cover;border-radius:5px'/>";
+        return "<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)'>"+
+          thumb+
+          "<a href='"+esc(dc.url)+"' target='_blank' rel='noopener' style='flex:1;color:var(--green-deep);font-weight:600;word-break:break-word'>"+esc(dc.name||"File")+"</a>"+
+          "<span style='font-size:.8rem;color:var(--muted)'>"+esc(when)+"</span>"+
+          "<button type='button' class='docdel' data-url='"+esc(dc.url)+"' title='Remove' style='background:transparent;border:none;color:#8a3d1c;font-size:1.1rem;cursor:pointer;padding:0 4px'>×</button>"+
+        "</div>";
+      }).join("");
+      docs = "<div class='card'>"+
+        "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px'>"+
+          "<div style='font-weight:600;color:var(--green-deep)'>Troubleshoot · source files</div>"+
+          "<label class='btn ghost' for='docAdd' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:7px 12px;border-radius:999px;font-size:.82rem;margin:0'>＋ Add files</label>"+
+        "</div>"+
+        "<div style='font-size:.82rem;color:var(--muted);margin-bottom:6px'>Admin only. Invoices and screenshots kept for reference.</div>"+
+        "<input type='file' id='docAdd' accept='image/*,application/pdf' multiple style='display:none' />"+
+        "<div id='docMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:4px'></div>"+
+        (items || "<div style='font-size:.86rem;color:var(--muted)'>No files yet.</div>")+
+      "</div>";
+    }
     var ai = a.aiReading?"<div class='card'><button type='button' class='agenttog' id='agentTog'><span id='agentIco'>＋</span> Agent reading</button><div id='agentBody' style='display:none;margin-top:8px'><div class='ainote'>"+esc(a.aiReading)+"</div></div></div>":"";
     var svcArr = a.services || [];
     var lastSvc = svcArr.reduce(function(m,s){ return (s.date && (!m || s.date>m)) ? s.date : m; }, "");
@@ -492,7 +519,7 @@
       "<button type='button' class='navside right' id='a_nextSide' aria-label='Next asset'>&rsaquo;</button>"+
       "<div class='titlerow'><h1 class='assetname'>"+esc(a.nickname || a.name)+"</h1><span class='pill "+statusClass(a.status)+"'>"+esc(a.status)+"</span></div>"+
       "<div class='sub'>"+((a.nickname && a.name && a.name!==a.nickname) ? esc(a.name) : "Ringwood asset record")+"</div>"+
-      stats+photos+identity+warranty+ai+
+      stats+photos+identity+warranty+docs+ai+
       "<h2 id='history'>History</h2>"+
       "<div class='histadd'>"+
         "<a class='hadd' href='/tickets?asset="+aid+"'>＋ Ticket</a>"+
@@ -527,6 +554,25 @@
     })();
     var agTog=document.getElementById("agentTog"); if(agTog) agTog.addEventListener("click", function(){ var b=document.getElementById("agentBody"), ico=document.getElementById("agentIco"); var open=b.style.display!=="none"; b.style.display=open?"none":"block"; if(ico) ico.textContent=open?"＋":"−"; });
     var qaf=document.getElementById("qrAssign"); if(qaf) qaf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) assignQrToAsset(f); });
+    // Troubleshoot files: add and remove.
+    var docAdd=document.getElementById("docAdd");
+    if(docAdd) docAdd.addEventListener("change", function(e){
+      var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value="";
+      fs=fs.filter(function(f){ return /pdf/i.test(f.type||"")||/^image\//.test(f.type||""); });
+      if(!fs.length) return;
+      var dm=document.getElementById("docMsg"); if(dm){ dm.style.color="var(--muted)"; dm.textContent="Saving "+fs.length+" file"+(fs.length===1?"":"s")+"…"; }
+      Promise.all(fs.map(readWarrantyFile)).then(function(parts){
+        return fetch("/api/asset/docs/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, files:parts })});
+      }).then(function(r){return r.json();}).then(function(d){
+        if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); }
+        else if(dm){ dm.style.color="#8a3d1c"; dm.textContent=(d&&d.error)||"Couldn't save."; }
+      }).catch(function(){ if(dm){ dm.style.color="#8a3d1c"; dm.textContent="Couldn't reach the server."; } });
+    });
+    Array.prototype.slice.call(document.querySelectorAll(".docdel")).forEach(function(b){ b.addEventListener("click", function(){
+      if(!confirm("Remove this file?")) return;
+      fetch("/api/asset/docs/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, url:b.getAttribute("data-url") })})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); } });
+    }); });
   }
 
   // One combined history list: this asset's tickets and service records together,
@@ -808,7 +854,7 @@
           "<label class='btn ghost' for='w_file' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem;margin:0'>📄 Read from invoice or receipt</label>"+
         "</div>"+
         "<div class='hint' style='color:var(--muted);margin-bottom:10px'>Drop a screenshot or PDF, paste it, or tap to choose. Works with a Costco order, a store receipt, or a warranty card.</div>"+
-        "<input type='file' id='w_file' accept='image/*,application/pdf' style='display:none' />"+
+        "<input type='file' id='w_file' accept='image/*,application/pdf' multiple style='display:none' />"+
         "<label id='w_drop' for='w_file' style='display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:18px;text-align:center;cursor:pointer;color:var(--green-deep);background:var(--bg);margin-bottom:10px'>"+
           "<div style='font-weight:600'>Drop a screenshot or PDF here</div>"+
           "<div style='font-size:.84rem;color:var(--muted);margin-top:3px'>or paste (Ctrl/Cmd+V), or tap to choose a file</div>"+
@@ -828,6 +874,7 @@
           "<div class='field'><label>Length</label><input id='f_extLength' type='text' value='"+esc(a.extLength||"")+"' placeholder='e.g. 3 years'/></div>"+
           "<div class='field'><label>Expires</label><input id='f_extExpires' type='date' value='"+esc(a.extExpires||"")+"'/></div>"+
         "</div>"+
+        "<div class='field'><label>Support contact <span style='font-weight:400;color:var(--muted);font-size:.85rem'>— who to call first</span></label><input id='f_supportContact' type='text' value='"+esc(a.supportContact||"")+"' placeholder='e.g. Costco Concierge 1-866-861-0450'/></div>"+
         "<div class='field'><label>Notes</label><textarea id='f_warrantyNotes' placeholder='Order number, what is covered, etc.'>"+esc(a.warrantyNotes||"")+"</textarea></div>"+
       "</div>"+
       "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>"+
@@ -873,43 +920,46 @@
   }
   function wireWarrantyScan(){
     var wf=document.getElementById("w_file"); if(!wf) return;
-    wf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) handleWarrantyFile(f); });
+    wf.addEventListener("change", function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; if(fs.length) handleWarrantyFiles(fs); });
     var dz=document.getElementById("w_drop");
     if(dz){
       var reset=function(){ dz.style.background="var(--bg)"; dz.style.borderColor="rgba(47,93,80,.45)"; };
       ["dragenter","dragover"].forEach(function(ev){ dz.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); dz.style.background="rgba(47,93,80,.08)"; dz.style.borderColor="var(--green)"; }); });
       ["dragleave","dragend"].forEach(function(ev){ dz.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); reset(); }); });
-      dz.addEventListener("drop", function(e){ e.preventDefault(); e.stopPropagation(); reset(); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleWarrantyFile(f); });
+      dz.addEventListener("drop", function(e){ e.preventDefault(); e.stopPropagation(); reset(); var fs=Array.prototype.slice.call((e.dataTransfer&&e.dataTransfer.files)||[]); if(fs.length) handleWarrantyFiles(fs); });
     }
-    // Paste a screenshot anywhere while the warranty section is on screen.
+    // Paste screenshots anywhere while the warranty section is on screen.
     if(!window.__warrantyPaste){
       window.__warrantyPaste=function(e){
         if(!document.getElementById("w_msg")) return;
-        var items=(e.clipboardData&&e.clipboardData.items)||[];
-        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f){ e.preventDefault(); handleWarrantyFile(f); return; } } }
+        var items=(e.clipboardData&&e.clipboardData.items)||[], fs=[];
+        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f) fs.push(f); } }
+        if(fs.length){ e.preventDefault(); handleWarrantyFiles(fs); }
       };
       document.addEventListener("paste", window.__warrantyPaste);
     }
   }
-  function handleWarrantyFile(file){
+  function handleWarrantyFiles(fileArr){
     var wm=document.getElementById("w_msg"); if(!wm) return;
-    var isPdf=/pdf/i.test(file.type||"");
-    if(!isPdf && !/^image\//.test(file.type||"")){ wm.style.color="#8a3d1c"; wm.textContent="Drop an image or a PDF."; return; }
-    wm.style.color="var(--muted)"; wm.textContent="Reading "+(isPdf?"the invoice":"the receipt")+"… this can take a few seconds.";
-    readWarrantyFile(file).then(function(payload){
-      return fetch("/api/asset/scan-warranty",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+    var files=fileArr.filter(function(f){ return /pdf/i.test(f.type||"") || /^image\//.test(f.type||""); });
+    if(!files.length){ wm.style.color="#8a3d1c"; wm.textContent="Drop images or PDFs."; return; }
+    wm.style.color="var(--muted)"; wm.textContent="Reading "+files.length+" file"+(files.length===1?"":"s")+"… this can take a few seconds.";
+    Promise.all(files.map(readWarrantyFile)).then(function(parts){
+      return fetch("/api/asset/scan-warranty",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, files:parts })});
     }).then(function(r){return r.json();}).then(function(d){
-      if(!d||!d.ok){ wm.style.color="#8a3d1c"; wm.textContent=(d&&d.error)||"Couldn't read that file."; return; }
+      if(!d||!d.ok){ wm.style.color="#8a3d1c"; wm.textContent=(d&&d.error)||"Couldn't read those files."; return; }
       function setIf(id,val){ var el=document.getElementById(id); if(el&&val) el.value=val; }
       setIf("f_purchasedOn",d.purchasedOn); setIf("f_purchasedFrom",d.purchasedFrom); setIf("f_purchasePrice",d.purchasePrice);
       setIf("f_warrantyProvider",d.warrantyProvider); setIf("f_warrantyLength",d.warrantyLength); setIf("f_warrantyExpires",d.warrantyExpires);
       setIf("f_extProvider",d.extProvider); setIf("f_extLength",d.extLength); setIf("f_extExpires",d.extExpires);
-      if(d.extProvider||d.extLength) document.getElementById("extWrap").style.display="block";
+      setIf("f_supportContact",d.supportContact);
       if(d.notes){ var n=document.getElementById("f_warrantyNotes"); if(n) n.value = n.value ? (n.value+"\n"+d.notes) : d.notes; }
-      var got=[d.purchasedOn,d.purchasedFrom,d.purchasePrice,d.warrantyProvider,d.warrantyLength,d.warrantyExpires,d.extProvider,d.extLength,d.extExpires].filter(Boolean).length;
+      if(d.docs && curAsset) curAsset.adminDocs = d.docs;  // shown in the read view
+      var got=[d.purchasedOn,d.purchasedFrom,d.purchasePrice,d.warrantyProvider,d.warrantyLength,d.warrantyExpires,d.extProvider,d.extLength,d.extExpires,d.supportContact].filter(Boolean).length;
+      var saved = d.docs ? (" Saved "+d.docs.length+" file"+(d.docs.length===1?"":"s")+" to the asset.") : "";
       wm.style.color="var(--green-deep)";
-      wm.textContent = got ? ("Filled in "+got+" field"+(got===1?"":"s")+" from your document. Review and Save.") : "Couldn't find clear warranty details on that file. Enter them by hand.";
-    }).catch(function(){ wm.style.color="#8a3d1c"; wm.textContent="Couldn't read that file."; });
+      wm.textContent = (got ? ("Filled in "+got+" field"+(got===1?"":"s")+" from your document. Review and Save.") : "Couldn't find clear warranty details. Enter them by hand.") + saved;
+    }).catch(function(){ wm.style.color="#8a3d1c"; wm.textContent="Couldn't read those files."; });
   }
 
   function runAgentNow(){
@@ -924,7 +974,7 @@
     var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
     function fv(id){ var el=document.getElementById(id); return el?el.value:""; }
     var payload={ id:curId, nickname:document.getElementById("f_nickname").value, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value,
-      purchasedOn:fv("f_purchasedOn"), purchasedFrom:fv("f_purchasedFrom"), purchasePrice:fv("f_purchasePrice"), warrantyProvider:fv("f_warrantyProvider"), warrantyLength:fv("f_warrantyLength"), warrantyExpires:fv("f_warrantyExpires"), extProvider:fv("f_extProvider"), extLength:fv("f_extLength"), extExpires:fv("f_extExpires"), warrantyNotes:fv("f_warrantyNotes"),
+      purchasedOn:fv("f_purchasedOn"), purchasedFrom:fv("f_purchasedFrom"), purchasePrice:fv("f_purchasePrice"), warrantyProvider:fv("f_warrantyProvider"), warrantyLength:fv("f_warrantyLength"), warrantyExpires:fv("f_warrantyExpires"), extProvider:fv("f_extProvider"), extLength:fv("f_extLength"), extExpires:fv("f_extExpires"), supportContact:fv("f_supportContact"), warrantyNotes:fv("f_warrantyNotes"),
       keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }

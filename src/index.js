@@ -58,6 +58,8 @@ export default {
     if (url.pathname === "/api/asset/analyze" && request.method === "POST") return analyzeAsset(request, env, session);
     if (url.pathname === "/api/asset/update" && request.method === "POST") return updateAsset(request, env, session);
     if (url.pathname === "/api/asset/scan-warranty" && request.method === "POST") return scanWarranty(request, env, session);
+    if (url.pathname === "/api/asset/docs/add" && request.method === "POST") return addAssetDocs(request, env, session);
+    if (url.pathname === "/api/asset/docs/delete" && request.method === "POST") return deleteAssetDoc(request, env, session);
     if (url.pathname === "/api/asset/qr/generate" && request.method === "POST") return generateAssetQr(request, env, session);
     if (url.pathname === "/api/asset/delete" && request.method === "POST") return deleteAsset(request, env, session);
     if (url.pathname === "/api/assets/review" && request.method === "GET") return assetsForReview(request, env);
@@ -1685,7 +1687,10 @@ async function getAssetFull(url, env, session) {
     extProvider: a.ext_warranty_provider || "",
     extLength: a.ext_warranty_length || "",
     extExpires: a.ext_warranty_expires || "",
+    supportContact: a.support_contact || "",
     warrantyNotes: a.warranty_notes || "",
+    // Admin-only troubleshoot files (invoices, screenshots). Withheld from clients.
+    adminDocs: scopeName(session) == null ? (Array.isArray(a.admin_docs) ? a.admin_docs : []) : undefined,
     services,
   });
 }
@@ -1820,6 +1825,7 @@ async function updateAsset(request, env, session) {
   if (c(body.extProvider)) patch.ext_warranty_provider = c(body.extProvider);
   if (c(body.extLength)) patch.ext_warranty_length = c(body.extLength);
   if (c(body.extExpires)) patch.ext_warranty_expires = c(body.extExpires);
+  if (c(body.supportContact)) patch.support_contact = c(body.supportContact);
   if (c(body.warrantyNotes)) patch.warranty_notes = c(body.warrantyNotes);
   // Rebuild the photo list when the editor sends one: keep the photos the user
   // didn't delete, then append new uploads. Clear the legacy single-slot columns
@@ -3173,9 +3179,39 @@ async function readDocFields(source, ct, section, env) {
   } catch { return null; }
 }
 
-// Read a purchase receipt, invoice, or warranty document (image OR PDF) and pull
-// out the warranty and purchase details for an asset. Returns the fields for the
-// editor to fill in for review. Does not save. Conservative: only what's shown.
+// Normalize an incoming file payload into [{base64, contentType, name}].
+function normalizeDocFiles(body) {
+  const list = [];
+  if (Array.isArray(body.files)) {
+    for (const f of body.files) { if (f && f.base64) list.push({ base64: f.base64, contentType: (f.contentType || "image/jpeg").toString(), name: (f.name || "").toString() }); }
+  } else if (body.base64) {
+    list.push({ base64: body.base64, contentType: (body.contentType || "image/jpeg").toString(), name: (body.name || "").toString() });
+  }
+  return list.slice(0, 8);
+}
+
+// Save uploaded admin/troubleshoot files (invoices, screenshots) onto an asset's
+// admin_docs and return the full list. Best-effort: a missing column or storage
+// failure leaves the read fields working. files: [{base64, contentType, name}].
+async function appendAdminDocs(env, id, files) {
+  const cur = await sbSelect(env, `assets?id=eq.${id}&select=admin_docs`);
+  let docs = cur && cur[0] && Array.isArray(cur[0].admin_docs) ? cur[0].admin_docs.slice() : [];
+  const ts = Date.now();
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    if (!f || !f.base64) continue;
+    const isPdf = (f.contentType || "").indexOf("pdf") >= 0;
+    const u = await uploadToStorage(env, `assets/${id}/docs/${ts}-${i}.${isPdf ? "pdf" : "jpg"}`, f.base64, isPdf ? "application/pdf" : (f.contentType || "image/jpeg"));
+    if (u) docs.push({ url: u, name: (f.name || (isPdf ? "Invoice.pdf" : "Screenshot")).toString().slice(0, 120), type: isPdf ? "pdf" : "image", at: new Date().toISOString() });
+  }
+  const res = await sbUpdate(env, "assets", id, { admin_docs: docs });
+  return res && res.ok ? docs : null;
+}
+
+// Read a purchase receipt, invoice, or warranty document (images and/or PDFs) and
+// pull out the warranty and purchase details for an asset. Fills the editor for
+// review (does not change the saved fields). When an asset id is given, the
+// uploaded files are also saved to the asset's admin documents. Conservative.
 async function scanWarranty(request, env, session) {
   if (!can(session, "assets", "edit")) return deny("assets");
   if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected." }, 503);
@@ -3186,12 +3222,13 @@ async function scanWarranty(request, env, session) {
     return json({ ok: false, error: "Bad request." }, 400);
   }
   const c = (v) => (v == null ? "" : v.toString().trim());
-  const base64 = c(body.base64);
-  if (!base64) return json({ ok: false, error: "No file to read." }, 400);
-  const ct = c(body.contentType) || "image/jpeg";
-  const isPdf = ct.indexOf("pdf") >= 0;
-  const source = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
-  const block = isPdf ? { type: "document", source } : { type: "image", source };
+  const files = normalizeDocFiles(body);
+  if (!files.length) return json({ ok: false, error: "No file to read." }, 400);
+  const blocks = files.map((f) => {
+    const isPdf = (f.contentType || "").indexOf("pdf") >= 0;
+    const source = { type: "base64", media_type: isPdf ? "application/pdf" : (f.contentType || "image/jpeg"), data: f.base64 };
+    return isPdf ? { type: "document", source } : { type: "image", source };
+  });
   const today = new Date().toISOString().slice(0, 10);
 
   const prompt =
@@ -3210,6 +3247,7 @@ async function scanWarranty(request, env, session) {
     "- extProvider: the EXTENDED / protection plan provider (e.g. Allstate, Asurion, Square Trade). Empty if there is no extended plan.\n" +
     "- extLength: the extended plan term in plain words (e.g. \"3 years\"). Empty if none.\n" +
     "- extExpires: the extended plan end date as YYYY-MM-DD. Extended plans usually run from the purchase date for the plan term (some begin only after the manufacturer warranty ends; use what the document states, otherwise purchase date plus the plan term). Empty if you cannot tell.\n" +
+    "- supportContact: who to call for support or a claim, with the phone number and hours if shown. IMPORTANT: when the retailer offers its own concierge/tech support, that is who to call first, not the manufacturer. For a Costco purchase the support line is Costco Concierge at 1-866-861-0450 (5 a.m. to 10 p.m., 7 days), so return something like \"Costco Concierge 1-866-861-0450 (5am-10pm, 7 days)\". Otherwise use the support number printed on the document. Empty if none.\n" +
     "- notes: a short plain summary of anything else useful (order number, which appliance the plan covers, plan price). One or two lines. Empty if nothing.\n" +
     "If there are several protection plans on one order, pick the one whose price tier matches this equipment. " +
     "Only use what the document actually shows. Do not invent prices, dates, order numbers, or coverage.";
@@ -3219,9 +3257,10 @@ async function scanWarranty(request, env, session) {
     properties: {
       purchasedOn: { type: "string" }, purchasedFrom: { type: "string" }, purchasePrice: { type: "string" },
       warrantyProvider: { type: "string" }, warrantyLength: { type: "string" }, warrantyExpires: { type: "string" },
-      extProvider: { type: "string" }, extLength: { type: "string" }, extExpires: { type: "string" }, notes: { type: "string" },
+      extProvider: { type: "string" }, extLength: { type: "string" }, extExpires: { type: "string" },
+      supportContact: { type: "string" }, notes: { type: "string" },
     },
-    required: ["purchasedOn", "purchasedFrom", "purchasePrice", "warrantyProvider", "warrantyLength", "warrantyExpires", "extProvider", "extLength", "extExpires", "notes"],
+    required: ["purchasedOn", "purchasedFrom", "purchasePrice", "warrantyProvider", "warrantyLength", "warrantyExpires", "extProvider", "extLength", "extExpires", "supportContact", "notes"],
     additionalProperties: false,
   };
 
@@ -3229,7 +3268,7 @@ async function scanWarranty(request, env, session) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 700, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 700, messages: [{ role: "user", content: blocks.concat([{ type: "text", text: prompt }]) }], output_config: { format: { type: "json_schema", schema } } }),
     });
     if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that file." }, 502);
     const data = await res.json();
@@ -3243,10 +3282,20 @@ async function scanWarranty(request, env, session) {
     }
     const okd = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? s : "");
     const price = (out.purchasePrice || "").toString().replace(/[^0-9.]/g, "");
+    const purchasedFrom = (out.purchasedFrom || "").toString().trim().slice(0, 120);
+    let supportContact = (out.supportContact || "").toString().trim().slice(0, 200);
+    // Safety net: a Costco purchase routes support to Costco Concierge, not the maker.
+    if (!supportContact && /costco/i.test(purchasedFrom)) supportContact = "Costco Concierge 1-866-861-0450 (5am-10pm, 7 days)";
+    // Save the uploaded files to the asset's troubleshoot documents (best-effort).
+    let docs = null;
+    const id = c(body.id);
+    if (id && (await ownsRecord(env, session, "assets", id))) {
+      try { docs = await appendAdminDocs(env, id, files); } catch { docs = null; }
+    }
     return json({
       ok: true,
       purchasedOn: okd(out.purchasedOn),
-      purchasedFrom: (out.purchasedFrom || "").toString().trim().slice(0, 120),
+      purchasedFrom,
       purchasePrice: price,
       warrantyProvider: (out.warrantyProvider || "").toString().trim().slice(0, 120),
       warrantyLength: (out.warrantyLength || "").toString().trim().slice(0, 120),
@@ -3254,11 +3303,47 @@ async function scanWarranty(request, env, session) {
       extProvider: (out.extProvider || "").toString().trim().slice(0, 120),
       extLength: (out.extLength || "").toString().trim().slice(0, 120),
       extExpires: okd(out.extExpires),
+      supportContact,
       notes: (out.notes || "").toString().trim().slice(0, 500),
+      docs: docs || undefined,
     });
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }
+}
+
+// Add troubleshoot files (invoices, screenshots) to an asset without reading them.
+async function addAssetDocs(request, env, session) {
+  if (!can(session, "assets", "edit")) return deny("assets");
+  if (scopeName(session) != null) return json({ ok: false, error: "Admin only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id || !(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
+  const files = normalizeDocFiles(body);
+  if (!files.length) return json({ ok: false, error: "No files." }, 400);
+  const docs = await appendAdminDocs(env, id, files);
+  if (!docs) return json({ ok: false, error: "Couldn't save. Run the asset_warranty migration first." }, 502);
+  return json({ ok: true, docs });
+}
+
+// Remove one troubleshoot file from an asset (and from storage, best-effort).
+async function deleteAssetDoc(request, env, session) {
+  if (!can(session, "assets", "edit")) return deny("assets");
+  if (scopeName(session) != null) return json({ ok: false, error: "Admin only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  const url = (body.url || "").toString().trim();
+  if (!id || !url || !(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
+  const cur = await sbSelect(env, `assets?id=eq.${id}&select=admin_docs`);
+  const docs = (cur && cur[0] && Array.isArray(cur[0].admin_docs) ? cur[0].admin_docs : []).filter((d) => d && d.url !== url);
+  const res = await sbUpdate(env, "assets", id, { admin_docs: docs });
+  if (!res.ok) return json({ ok: false, error: "Couldn't update." }, 502);
+  // Best-effort storage cleanup.
+  const m = url.match(/\/object\/public\/photos\/(.+)$/);
+  if (m) { try { await fetch(`${env.SUPABASE_URL}/storage/v1/object/photos/${m[1]}`, { method: "DELETE", headers: sbHeaders(env) }); } catch { /* ignore */ } }
+  return json({ ok: true, docs });
 }
 
 async function uploadRedbookDoc(request, env, session) {

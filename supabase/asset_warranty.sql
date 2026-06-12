@@ -14,4 +14,10 @@ alter table assets
   add column if not exists ext_warranty_provider text,
   add column if not exists ext_warranty_length text,
   add column if not exists ext_warranty_expires date,
-  add column if not exists warranty_notes text;
+  -- Who to call for support (for a Costco purchase this is Costco Concierge, not
+  -- the manufacturer).
+  add column if not exists support_contact text,
+  add column if not exists warranty_notes text,
+  -- Admin-only troubleshoot files: the invoices and screenshots used to fill the
+  -- warranty in, kept for reference. [{url, name, type, at}]
+  add column if not exists admin_docs jsonb default '[]'::jsonb;
