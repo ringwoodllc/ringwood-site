@@ -632,7 +632,10 @@
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
               "<div id='e_partsField' style='display:none;margin-bottom:12px'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
             : "") +
-            "<div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
+            // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
+            // once someone's on it; tap the arrow to open the picker and change it.
+            "<div style='margin:2px 0 12px'><a href='#' id='e_asgToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>" + (t.assignedTo ? ("Assigned to " + esc(t.assignedTo)) : "Assign to someone") + " ▾</a></div>" +
+            "<div id='e_asgField' style='display:none;margin-bottom:12px'><div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
               "<div id='e_assignedNew' style='display:none;margin-top:8px'>" +
                 "<input id='e_assignedName' type='text' placeholder='New vendor or person name' style='margin-bottom:6px' />" +
                 "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
@@ -641,7 +644,7 @@
                   "<a href='/vendors' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Manage vendors</a>" +
                 "</div>" +
               "</div>" +
-            "</div>" +
+            "</div></div>" +
             (IS_MASTER ?
               "<div style='margin-top:14px'><button type='button' class='qbtn rev' id='e_logSvc'>🧾 Log a service record</button>" +
                 "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>Creates a service record on this ticket's asset, prefilled with the tech and parts, so you can add costs and bill it later.</div></div>"
@@ -665,7 +668,14 @@
               "<div id='e_polishText' style='font-size:.95rem;white-space:pre-wrap'></div>" +
               "<div style='display:flex;gap:8px;margin-top:9px'><button type='button' class='qbtn rev' id='e_polishUse'>Use this</button><button type='button' class='qbtn' id='e_polishKeep'>Keep mine</button></div>" +
             "</div>" +
-            "<div style='display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap'><button type='button' class='btn' id='e_postnote'>Post note</button><span class='msg' id='e_notemsg' style='margin:0'></span></div>" +
+            (IS_CLIENT
+              ? "<div style='display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap'><button type='button' class='btn' id='e_postnote'>Post note</button><span class='msg' id='e_notemsg' style='margin:0'></span></div>"
+              : "<div style='display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap'>" +
+                  "<button type='button' class='btn' id='e_postnote'>Post internal note</button>" +
+                  "<button type='button' class='btn ghost' id='e_sharenote' style='border-color:var(--clay);color:var(--clay)'>Share with " + esc(t.client||"client") + "</button>" +
+                  "<span class='msg' id='e_notemsg' style='margin:0'></span>" +
+                "</div>" +
+                "<div style='font-size:.82rem;color:var(--muted);margin-top:6px'>Internal notes stay between us (hours, costs, orders). Share sends the update to the client's ticket view.</div>") +
           "</div>" +
         "</div>" +
         "<div class='row2'><button class='btn ghost' id='e_back' type='button' style='width:100%'>&larr; Back to list</button></div>" +
@@ -997,6 +1007,21 @@
       loadParts();
     }
 
+    // Assigned-to behind a one-line arrow (like Parts). The label reads who's
+    // on it; opening it shows the picker.
+    var asgT = document.getElementById("e_asgToggle");
+    function asgLabel(open){
+      if(!asgT) return;
+      var name = (asgSel && asgSel.value && asgSel.value !== "__new") ? asgSel.value : (t.assignedTo || "");
+      asgT.textContent = (name ? ("Assigned to " + name) : "Assign to someone") + (open ? " ▴" : " ▾");
+    }
+    if (asgT) asgT.addEventListener("click", function(e){
+      e.preventDefault();
+      var f = document.getElementById("e_asgField");
+      var open = f.style.display !== "none";
+      f.style.display = open ? "none" : "block";
+      asgLabel(!open);
+    });
     // Assigned-to dropdown + quick-add a new vendor without leaving the ticket.
     var asgSel = document.getElementById("e_assigned");
     if (asgSel) asgSel.addEventListener("change", function(){
@@ -1004,7 +1029,7 @@
       var nw = document.getElementById("e_assignedNew");
       if(nw) nw.style.display = isNew ? "block" : "none";
       if(isNew){ var nm = document.getElementById("e_assignedName"); if(nm) nm.focus(); }
-      else autoSaveTicket({ assignedTo: asgSel.value });
+      else { autoSaveTicket({ assignedTo: asgSel.value }); asgLabel(true); }
     });
     var asgAdd = document.getElementById("e_assignedAdd");
     if (asgAdd) asgAdd.addEventListener("click", function(){
@@ -1052,15 +1077,23 @@
             "</div>" +
           "</div>";
       }
-      // Two streams: human comments (notes), and the admin revision history
-      // (status/title/description changes + the AI agent read), kept separate.
-      var notes = rows.filter(function(c){ return (c.kind||"note") === "note"; });
+      // Two streams: human comments (notes, internal or shared), and the admin
+      // revision history (status/title/description changes + the AI agent read).
+      var notes = rows.filter(function(c){ var k = c.kind||"note"; return k === "note" || k === "internal"; });
       var events = rows.filter(function(c){ return c.kind === "event"; });
-      // A human comment: who, time, text, photos, edit/delete.
+      // A human comment: who, time, text, photos, edit/delete. Staff see a badge
+      // on every staff note: Internal (grey) or Shared (green), so it's always
+      // obvious what the client can and can't see.
       function noteCard(c){
         LOG_ROWS[c.id] = c;
         var col = c.role === "client" ? noteCol : "var(--green-deep)";
         var whoStyle = (c.role !== "client") ? "" : (" style='background:" + col + "'");
+        var vis = "";
+        if (!IS_CLIENT && c.role !== "client"){
+          vis = (c.kind === "internal")
+            ? "<span style='background:var(--line);color:var(--muted);border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700;letter-spacing:.05em'>INTERNAL</span>"
+            : "<span style='background:#cfe3d2;color:#1f5130;border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700;letter-spacing:.05em'>SHARED</span>";
+        }
         var hasPhotos = c.photos && c.photos.length;
         var bits = "";
         if (hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Add to main photos</button>";
@@ -1068,7 +1101,7 @@
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
         var photos = hasPhotos ? "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' loading='lazy' decoding='async' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
         return "<div class='lg note' data-cid='" + esc(c.id) + "'>" +
-          "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span><span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
+          "<div class='lghead'><span class='who'" + whoStyle + ">" + esc(c.author) + "</span>" + vis + "<span class='meta'>" + esc(fmtWhen(c.created)) + "</span>" + ctrls + "</div>" +
           (c.body ? "<div class='text'>" + esc(c.body) + "</div>" : "") + photos + "</div>";
       }
       // A revision entry: one tidy line, with the + for before/after detail.
@@ -1235,22 +1268,28 @@
         }).catch(function(){ db.disabled=false; db.textContent="Delete ticket"; var m=document.getElementById("e_msg"); m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; });
     });
     // The ticket fields and photos auto-save on their own. The note is the one
-    // thing you post deliberately, so it has its own button.
-    var postNoteBtn = document.getElementById("e_postnote");
-    if (postNoteBtn) postNoteBtn.addEventListener("click", function(){
+    // thing you post deliberately. Staff notes are INTERNAL unless explicitly
+    // shared, so hours/costs never leak into the client's view by accident.
+    function postNote(share, btn){
       var noteText = (document.getElementById("e_note").value || "").trim();
       var alsoTop = document.getElementById("e_notetop") ? document.getElementById("e_notetop").checked : false;
       var nm = document.getElementById("e_notemsg");
       if(!noteText && !notePhotos.length){ if(nm){ nm.style.color="var(--muted)"; nm.textContent="Type a note or add a photo first."; } return; }
+      if(share && !IS_CLIENT && !confirm("Share this update with " + (t.client||"the client") + "? They'll see it on their ticket.")) return;
       var pending = notePhotos.slice();
-      postNoteBtn.disabled = true; postNoteBtn.textContent = "Posting…"; if(nm){ nm.textContent=""; }
-      fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:noteText, photos:pending.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }), alsoTop:alsoTop }) })
+      var old = btn.textContent;
+      btn.disabled = true; btn.textContent = share ? "Sharing…" : "Posting…"; if(nm){ nm.textContent=""; }
+      fetch("/api/tickets/comment", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, body:noteText, share:!!share, photos:pending.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }), alsoTop:alsoTop }) })
         .then(function(r){return r.json();}).then(function(nd){
-          postNoteBtn.disabled=false; postNoteBtn.textContent="Post note";
-          if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); if(Array.isArray(nd.topPhotos)){ existingPhotos = nd.topPhotos.slice(); renderThumbs(); } if(nm){ nm.style.color="var(--green-deep)"; nm.textContent="Posted."; } }
+          btn.disabled=false; btn.textContent=old;
+          if(nd && nd.ok){ document.getElementById("e_note").value=""; notePhotos=[]; renderNoteThumbs(); if(document.getElementById("e_notetop")) document.getElementById("e_notetop").checked=false; loadLog(); if(Array.isArray(nd.topPhotos)){ existingPhotos = nd.topPhotos.slice(); renderThumbs(); } if(nm){ nm.style.color="var(--green-deep)"; nm.textContent= share ? "Shared with the client." : "Posted (internal)."; } }
           else if(nm){ nm.style.color="#8a3d1c"; nm.textContent=(nd&&nd.error)||"Couldn't post the note."; }
-        }).catch(function(){ postNoteBtn.disabled=false; postNoteBtn.textContent="Post note"; if(nm){ nm.style.color="#8a3d1c"; nm.textContent="Couldn't reach the server."; } });
-    });
+        }).catch(function(){ btn.disabled=false; btn.textContent=old; if(nm){ nm.style.color="#8a3d1c"; nm.textContent="Couldn't reach the server."; } });
+    }
+    var postNoteBtn = document.getElementById("e_postnote");
+    if (postNoteBtn) postNoteBtn.addEventListener("click", function(){ postNote(IS_CLIENT, postNoteBtn); });
+    var shareNoteBtn = document.getElementById("e_sharenote");
+    if (shareNoteBtn) shareNoteBtn.addEventListener("click", function(){ postNote(true, shareNoteBtn); });
   };
 
   clientSel.addEventListener("change", render);

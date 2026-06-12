@@ -2760,7 +2760,13 @@ async function addTicketComment(request, env, session) {
   if (!id || (!text && !pics.length)) return json({ ok: false, error: "Write a note or add a photo first." }, 400);
   if (!(await ownsRecord(env, session, "tickets", id))) return json({ ok: false, error: "Not found." }, 404);
   const a = authorOf(session);
-  const res = await sbInsert(env, "ticket_comments", { ticket_id: id, author: a.author, role: a.role, kind: "note", body: text.slice(0, 4000) });
+  // Staff notes default to INTERNAL (kind "internal"), which clients never see
+  // (their list filters to note/intake). The explicit "Share with client"
+  // button sends share:true, which posts a customer-visible "note". This keeps
+  // hours/costs/back-and-forth from leaking into the client's ticket view.
+  const isStaff = !(session && session.role === "client");
+  const kind = isStaff && !body.share ? "internal" : "note";
+  const res = await sbInsert(env, "ticket_comments", { ticket_id: id, author: a.author, role: a.role, kind: kind, body: text.slice(0, 4000) });
   if (!res.ok || !res.data) return json({ ok: false, error: "Could not add the note." }, 502);
   const cid = res.data.id;
 

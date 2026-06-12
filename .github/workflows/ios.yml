@@ -27,6 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check the App Store Connect secrets exist
+        env:
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY" ]; then
+            echo "::error::Missing secrets. In repo Settings -> Secrets and variables -> Actions, add APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, and APP_STORE_CONNECT_KEY (the .p8 contents). Generate the key in App Store Connect -> Users and Access -> Integrations."
+            exit 1
+          fi
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
