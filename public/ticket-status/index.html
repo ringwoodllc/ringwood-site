@@ -735,9 +735,20 @@
     // Hybrid auto-save: picking a dropdown saves it instantly (the Save button
     // stays for the title, description, notes and photos you compose and review).
     function flashSaved(){ var m=document.getElementById("e_msg"); if(!m) return; m.style.color="var(--green-deep)"; m.textContent="Saved ✓"; clearTimeout(window.__tkSaveT); window.__tkSaveT=setTimeout(function(){ if(m.textContent==="Saved ✓") m.textContent=""; },1600); }
+    // Fields that map straight onto the ticket object the list and re-open read.
+    var SYNC_KEYS={status:1,category:1,client:1,location:1,assignedTo:1,title:1,description:1};
     function autoSaveTicket(payload){
       fetch("/api/tickets/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(Object.assign({id:t.id},payload))})
-        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ flashSaved(); loadLog(); } else { var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save."; } } })
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){
+            flashSaved();
+            // Reflect the change in memory so the list, Prev/Next, and re-opening
+            // this ticket all show the saved value (the DB already has it).
+            var li=null; for(var i=0;i<ALL_TICKETS.length;i++){ if(ALL_TICKETS[i].id===t.id){ li=ALL_TICKETS[i]; break; } }
+            Object.keys(payload).forEach(function(k){ if(SYNC_KEYS[k]){ t[k]=payload[k]; if(li) li[k]=payload[k]; } });
+            loadLog();
+          } else { var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn't save."; } }
+        })
         .catch(function(){ var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; } });
     }
     [["e_status","status"],["e_cat","category"],["e_client","client"],["e_loc","location"]].forEach(function(p){
