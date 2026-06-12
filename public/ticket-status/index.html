@@ -653,6 +653,20 @@
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
               "<div id='e_partsField' style='display:none;margin-bottom:12px'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
             : "") +
+            (IS_MASTER ?
+              "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Quotes ▾</a></div>" +
+              "<div id='e_quotesField' style='display:none;margin-bottom:12px'>" +
+                "<div id='e_quotes'></div>" +
+                "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>" +
+                  "<input id='q_vendor' list='qvendlist' placeholder='Vendor' style='flex:2;min-width:120px' />" +
+                  "<datalist id='qvendlist'></datalist>" +
+                  "<input id='q_amount' type='number' step='0.01' placeholder='$' style='flex:1;min-width:80px' />" +
+                  "<input id='q_note' placeholder='Availability, scope, who you spoke to' style='flex:3;min-width:150px' />" +
+                  "<button type='button' class='qbtn' id='q_add'>Add</button>" +
+                "</div>" +
+                "<div id='q_msg' style='font-size:.82rem;color:var(--muted);margin-top:5px'></div>" +
+              "</div>"
+            : "") +
             // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
             // once someone's on it; tap the arrow to open the picker and change it.
             "<div style='margin:2px 0 12px'><a href='#' id='e_asgToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>" + (t.assignedTo ? ("Assigned to " + esc(t.assignedTo)) : "Assign to someone") + " ▾</a></div>" +
@@ -801,17 +815,109 @@
         if(!d||!d.ok){ el.innerHTML=""; return; }
         if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Service calls need the latest migration (supabase/service_invoice.sql).</div>"; return; }
         if(!d.services.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No service call yet. Setting the ticket to <b>In Progress</b> opens one on the asset automatically.</div>"; return; }
+        // Inline ledger: the service call edits right here on the ticket. The
+        // separate service-record page stays only for photos and deep history.
         el.innerHTML = d.services.map(function(s){
           var total=[s.cost,s.vendorCost,s.partsCost].map(Number).filter(function(n){return !isNaN(n)&&n>0;}).reduce(function(a,b){return a+b;},0);
           var who=[s.technician,s.tech2].filter(Boolean).join(" + ");
-          return "<a href='/a/?id="+esc(s.assetId)+"' style='display:flex;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 13px;margin-bottom:6px;text-decoration:none;color:var(--ink);font-size:.9rem'>"+
-            "<span>🧾 "+esc(s.date||"")+(s.type?(" · "+esc(s.type)):"")+(who?(" · "+esc(who)):" · unassigned")+"</span>"+
-            "<span style='font-weight:700;color:var(--green-deep)'>"+(total ? ("$"+total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})) : "—")+"</span></a>";
+          var open = !!OPEN_SVC[s.id];
+          function fld(label,k,type,val,step){
+            return "<div style='flex:1;min-width:104px'><label style='font-size:.72rem;color:var(--muted);font-weight:700;display:block;margin-bottom:3px'>"+label+"</label>"+
+              "<input class='svcf' data-sid='"+esc(s.id)+"' data-k='"+k+"' type='"+type+"'"+(step?(" step='"+step+"'"):"")+" value='"+esc(val==null?"":val)+"' style='width:100%;padding:8px 10px;font-size:.9rem' /></div>";
+          }
+          return "<div style='background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:6px'>"+
+            "<div class='svchd' data-sid='"+esc(s.id)+"' style='display:flex;justify-content:space-between;gap:10px;padding:10px 13px;cursor:pointer;font-size:.9rem'>"+
+              "<span>🧾 "+esc(s.date||"")+(who?(" · "+esc(who)):" · unassigned")+"</span>"+
+              "<span style='font-weight:700;color:var(--green-deep)'>"+(total ? ("$"+total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})) : "—")+" <span style='color:var(--muted);font-weight:400'>"+(open?"▴":"▾")+"</span></span></div>"+
+            "<div class='svcbody' data-sid='"+esc(s.id)+"' style='display:"+(open?"block":"none")+";padding:0 13px 12px'>"+
+              "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
+                fld("Date","date","date",s.date)+
+                fld("Tech 1","technician","text",s.technician)+
+                fld("Tech 2","tech2","text",s.tech2)+
+              "</div>"+
+              "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>"+
+                fld("Hours","travelHours","number",s.travelHours,"0.25")+
+                fld("Labor $","cost","number",s.cost,"0.01")+
+                fld("Vendor $","vendorCost","number",s.vendorCost,"0.01")+
+                fld("Parts $","partsCost","number",s.partsCost,"0.01")+
+              "</div>"+
+              "<div style='margin-top:9px'><a href='/a/?id="+esc(s.assetId)+"' style='font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>photos and full record</a></div>"+
+            "</div>"+
+          "</div>";
         }).join("");
+        Array.prototype.slice.call(el.querySelectorAll(".svchd")).forEach(function(h){ h.addEventListener("click", function(){
+          var sid=h.getAttribute("data-sid"); OPEN_SVC[sid]=!OPEN_SVC[sid]; loadTicketSvc();
+        }); });
+        Array.prototype.slice.call(el.querySelectorAll(".svcf")).forEach(function(inp){ inp.addEventListener("change", function(){
+          var sid=inp.getAttribute("data-sid"), k=inp.getAttribute("data-k");
+          var payload={ id:sid }; payload[k]=inp.value;
+          fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ flashSaved(); loadTicketSvc(); } else { var m=document.getElementById("e_msg"); if(m){ m.style.color="#8a3d1c"; m.textContent=(d2&&d2.error)||"Couldn\u0027t save."; } } })
+            .catch(function(){});
+        }); });
       }).catch(function(){});
     }
+    var OPEN_SVC={};
     loadTicketSvc();
     window.__loadTicketSvc = loadTicketSvc;
+    // ---- Quotes: price the job before dispatch, then accept the winner. ----
+    function loadQuotes(){
+      var el=document.getElementById("e_quotes"); if(!el) return;
+      fetch("/api/tickets/quotes?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok){ el.innerHTML=""; return; }
+        if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Run supabase/ticket_quotes.sql once, then quotes save here.</div>"; return; }
+        if(!d.quotes.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No quotes yet. Add each vendor you price below.</div>"; return; }
+        el.innerHTML = d.quotes.map(function(q){
+          var chip = q.status==="Accepted" ? "<span style='background:#cfe3d2;color:#1f5130;border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700'>ACCEPTED</span>"
+                   : q.status==="Declined" ? "<span style='background:var(--line);color:var(--muted);border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700'>DECLINED</span>"
+                   : "<button type='button' class='qbtn rev qaccept' data-id='"+esc(q.id)+"'>Accept</button>";
+          var amt = (q.amount!==""&&q.amount!=null) ? ("$"+Number(q.amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})) : "—";
+          return "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:6px;font-size:.9rem"+(q.status==="Declined"?";opacity:.6":"")+"'>"+
+            "<b style='color:var(--green-deep)'>"+esc(q.vendor)+"</b><span style='font-weight:700'>"+amt+"</span>"+
+            (q.notes?"<span style='color:var(--muted)'>"+esc(q.notes)+"</span>":"")+
+            "<span style='margin-left:auto;display:flex;gap:8px;align-items:center'>"+chip+
+            "<button type='button' class='qdel' data-id='"+esc(q.id)+"' style='background:transparent;border:none;color:#8a3d1c;font-size:1.05rem;cursor:pointer;padding:0 2px'>×</button></span>"+
+          "</div>";
+        }).join("");
+        Array.prototype.slice.call(el.querySelectorAll(".qaccept")).forEach(function(b){ b.addEventListener("click", function(){
+          if(!confirm("Accept this quote? The vendor gets assigned, the others are declined, and the cost is written to the service call.")) return;
+          b.disabled=true;
+          fetch("/api/tickets/quote/accept",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})})
+            .then(function(r){return r.json();}).then(function(d2){
+              if(d2&&d2.ok){ if(d2.vendor){ t.assignedTo=d2.vendor; var at=document.getElementById("e_asgToggle"); if(at) at.textContent="Assigned to "+d2.vendor+" ▾"; }
+                loadQuotes(); loadTicketSvc(); loadLog(); }
+              else { b.disabled=false; alert((d2&&d2.error)||"Couldn\u0027t accept."); }
+            }).catch(function(){ b.disabled=false; });
+        }); });
+        Array.prototype.slice.call(el.querySelectorAll(".qdel")).forEach(function(b){ b.addEventListener("click", function(){
+          if(!confirm("Remove this quote?")) return;
+          fetch("/api/tickets/quote/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})})
+            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok) loadQuotes(); });
+        }); });
+      }).catch(function(){});
+    }
+    var quotesT=document.getElementById("e_quotesToggle");
+    if(quotesT) quotesT.addEventListener("click", function(e){
+      e.preventDefault();
+      var qf=document.getElementById("e_quotesField"); var open=qf.style.display!=="none";
+      qf.style.display=open?"none":"block"; quotesT.textContent=open?"Quotes ▾":"Quotes ▴";
+      if(!open){ loadQuotes();
+        var dl=document.getElementById("qvendlist");
+        if(dl && !dl.children.length && typeof VENDORS!=="undefined") dl.innerHTML=(VENDORS||[]).map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
+      }
+    });
+    var qAdd=document.getElementById("q_add");
+    if(qAdd) qAdd.addEventListener("click", function(){
+      var v=document.getElementById("q_vendor"), a=document.getElementById("q_amount"), n=document.getElementById("q_note"), m=document.getElementById("q_msg");
+      if(!v.value.trim()){ v.focus(); return; }
+      qAdd.disabled=true;
+      fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:v.value.trim(), amount:a.value, notes:n.value.trim() })})
+        .then(function(r){return r.json();}).then(function(d){
+          qAdd.disabled=false;
+          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; if(m) m.textContent=""; loadQuotes(); }
+          else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t save."; }
+        }).catch(function(){ qAdd.disabled=false; });
+    });
     // Intake (description + photos) tucks away once the ticket is being worked.
     // One arrow for everything that isn't the work: intake + details.
     var intakeT=document.getElementById("e_intakeToggle");

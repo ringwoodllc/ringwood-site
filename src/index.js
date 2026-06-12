@@ -86,6 +86,10 @@ export default {
     if (url.pathname === "/api/ai/polish" && request.method === "POST") return polishNote(request, env, session);
     if (url.pathname === "/api/tickets/fold-notes" && request.method === "POST") return foldNotesIntoDescription(request, env, session);
     if (url.pathname === "/api/tickets/parts" && request.method === "GET") return listTicketParts(url, env, session);
+    if (url.pathname === "/api/tickets/quotes" && request.method === "GET") return listTicketQuotes(url, env, session);
+    if (url.pathname === "/api/tickets/quote" && request.method === "POST") return saveTicketQuote(request, env, session);
+    if (url.pathname === "/api/tickets/quote/delete" && request.method === "POST") return deleteTicketQuote(request, env, session);
+    if (url.pathname === "/api/tickets/quote/accept" && request.method === "POST") return acceptTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/part" && request.method === "POST") return saveTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
@@ -5479,6 +5483,74 @@ async function resetAssessment(request, env, session) {
 // Parts needed to complete a ticket. Admin-only (it's procurement/triage work).
 // Lives in the `ticket_parts` table; degrades gracefully until that table exists.
 const PART_STATUSES = ["Needed", "Ordered", "Received"];
+
+/* ---- Vendor quotes on a ticket (priced before dispatch). Accepting one
+   assigns the vendor, declines the rest, and writes the vendor cost onto the
+   ticket's service call. Lives in ticket_quotes (supabase/ticket_quotes.sql),
+   degrading gracefully until that table exists. ---- */
+async function listTicketQuotes(url, env, session) {
+  if (!session || session.role === "client") return json({ ok: true, quotes: [] });
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: true, quotes: [] });
+  const rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,created_at&order=created_at.asc`);
+  if (rows === null) return noStore({ ok: true, quotes: [], missing: true });
+  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending" })) });
+}
+
+async function saveTicketQuote(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const ticketId = c(body.ticketId);
+  const vendor = c(body.vendor);
+  if (!ticketId || !vendor) return json({ ok: false, error: "Enter the vendor." }, 400);
+  if (!(await ownsRecord(env, session, "tickets", ticketId))) return json({ ok: false, error: "Not found." }, 404);
+  const row = { ticket_id: ticketId, vendor: vendor, status: "Pending" };
+  const amt = Number(body.amount);
+  if (!isNaN(amt) && body.amount !== "" && body.amount != null) row.amount = amt;
+  if (c(body.notes)) row.notes = c(body.notes);
+  const res = await sbInsert(env, "ticket_quotes", row);
+  if (!res.ok) return json({ ok: false, error: "Couldn't save. Run supabase/ticket_quotes.sql once, then retry." }, 502);
+  return json({ ok: true, quote: res.data || null });
+}
+
+async function deleteTicketQuote(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/ticket_quotes?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Couldn't delete." }, 502);
+  return json({ ok: true });
+}
+
+async function acceptTicketQuote(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const rows = await sbSelect(env, `ticket_quotes?id=eq.${id}&select=id,ticket_id,vendor,amount`);
+  const q = rows && rows[0];
+  if (!q) return json({ ok: false, error: "Quote not found." }, 404);
+  const res = await sbUpdate(env, "ticket_quotes", id, { status: "Accepted" });
+  if (!res.ok) return json({ ok: false, error: "Couldn't accept." }, 502);
+  // The losers go to Declined: a record of diligence, not a second decision.
+  await fetch(`${env.SUPABASE_URL}/rest/v1/ticket_quotes?ticket_id=eq.${q.ticket_id}&id=neq.${id}`, {
+    method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ status: "Declined" }),
+  });
+  // Winning vendor becomes the assignee; the amount lands on the service call.
+  await sbUpdate(env, "tickets", q.ticket_id, { assigned_to: q.vendor });
+  try {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/service_records?ticket_id=eq.${q.ticket_id}`, {
+      method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ vendor_cost: q.amount != null ? q.amount : null }),
+    });
+  } catch { /* service call may not exist yet; assignment still stands */ }
+  await logTicketEvent(env, q.ticket_id, session, "Accepted quote: " + q.vendor, q.vendor + (q.amount != null ? (" — $" + q.amount) : "") + ". Other quotes marked Declined; vendor assigned and the cost written to the service call.");
+  return json({ ok: true, vendor: q.vendor });
+}
 
 async function listTicketParts(url, env, session) {
   if (!session || session.role !== "master") return json([]);
