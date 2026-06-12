@@ -601,6 +601,10 @@
             "</div>" +
           "</div>"
         ) +
+        // Intake is triage material. Once the ticket is accepted we're acting on
+        // it, so the description + photos tuck behind an arrow (open while Open).
+        (IS_CLIENT ? "" : "<div style='margin:2px 0 14px'><a href='#' id='e_intakeToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Intake — description &amp; photos " + (t.status==="Open" ? "▴" : "▾") + "</a></div>") +
+        "<div id='e_intakeBody'" + ((!IS_CLIENT && t.status!=="Open") ? " style='display:none'" : "") + ">" +
         "<div class='field'>" +
           (IS_CLIENT ? "<label>Description</label>" :
             "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_descEdit'>Edit</button><button type='button' class='aibtn' id='e_ai' style='display:none'>✨ Rewrite</button><button type='button' class='aibtn' id='e_fold' style='display:none'>✨ Pull updates</button></div></div>") +
@@ -623,14 +627,16 @@
           "<input type='file' id='e_file' accept='image/*' capture='environment' style='display:none' />" +
           "<input type='file' id='e_fileUp' accept='image/*' multiple style='display:none' />" +
         "</div>" +
+        "</div>" +
         // Service: what the job needs and who's doing it. Parts first (an office /
         // when-you-have-time task), then who it's assigned to.
         (IS_CLIENT ? "" :
           "<div class='svcsec'>" +
             "<div class='svchead'>Service</div>" +
             // The asset's vitals live on the ticket, so a dispatch call doesn't
-            // mean a trip back to Assets: serial, coverage, and who to call first.
-            (t.assetId ? "<div id='e_equip' style='margin:0 0 12px'></div>" : "") +
+            // mean a trip back to Assets. No asset yet: a small arrow to tag one.
+            (t.assetId ? "<div id='e_equip' style='margin:0 0 12px'></div>"
+                       : "<div style='margin:2px 0 12px'><a href='#' id='e_tagAsset' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Tag an asset ▾</a></div>") +
             "<div id='e_svclist' style='margin:0 0 12px'></div>" +
             (IS_MASTER ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
@@ -649,10 +655,6 @@
                 "</div>" +
               "</div>" +
             "</div></div>" +
-            (IS_MASTER ?
-              "<div style='margin-top:14px'><button type='button' class='qbtn' id='e_logSvc'>＋ Service call</button>" +
-                "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>One opens automatically when the ticket moves to In Progress. Use this only to add another by hand.</div></div>"
-            : "") +
           "</div>"
         ) +
         "<div class='logsec'>" +
@@ -772,20 +774,12 @@
     }
     loadTicketSvc();
     window.__loadTicketSvc = loadTicketSvc;
-    // Manual extra service call (one is opened automatically on acceptance).
-    var logSvc=document.getElementById("e_logSvc");
-    if(logSvc) logSvc.addEventListener("click", function(){
-      if(!t.assetId){ alert("Tag an asset on this ticket first (open More details and use Suggest), so the service call attaches to the right equipment."); return; }
-      var tech=document.getElementById("e_assigned"); tech=tech?tech.value:"";
-      var partsText=(typeof PARTS!=="undefined" && PARTS.length) ? PARTS.map(function(p){ return (p.quantity?(p.quantity+"x "):"")+p.item; }).join(", ") : "";
-      logSvc.disabled=true; var old=logSvc.textContent; logSvc.textContent="Creating…";
-      fetch("/api/service",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ assetId:t.assetId, technician:(tech==="__new"?"":tech), notes:"Service call for ticket "+(t.ref||"")+": "+(t.title||""), ticketId:t.id, parts:partsText, serviceDate:new Date().toISOString().slice(0,10) })})
-        .then(function(r){return r.json();}).then(function(d){
-          logSvc.disabled=false; logSvc.textContent=old;
-          if(d&&d.ok){ loadTicketSvc(); loadLog(); }
-          else alert((d&&d.error)||"Couldn't create the service call.");
-        }).catch(function(){ logSvc.disabled=false; logSvc.textContent=old; alert("Couldn't reach the server."); });
-    });
+    // Intake (description + photos) tucks away once the ticket is being worked.
+    var intakeT=document.getElementById("e_intakeToggle");
+    if(intakeT) intakeT.addEventListener("click", function(e){ e.preventDefault(); var ib=document.getElementById("e_intakeBody"); var open=ib.style.display!=="none"; ib.style.display=open?"none":"block"; intakeT.innerHTML="Intake — description &amp; photos "+(open?"▾":"▴"); });
+    // No asset on the ticket: the small arrow opens More details at the picker.
+    var tagA=document.getElementById("e_tagAsset");
+    if(tagA) tagA.addEventListener("click", function(e){ e.preventDefault(); var mm=document.getElementById("e_more"); if(mm){ mm.style.display="block"; if(moreT) moreT.textContent="Fewer details ▴"; } var sel=document.getElementById("e_asset"); if(sel){ sel.scrollIntoView({block:"center",behavior:"smooth"}); sel.focus(); } });
 
     var eClientEl = document.getElementById("e_client");
     if (eClientEl){
@@ -1154,6 +1148,10 @@
         var hasPhotos = c.photos && c.photos.length;
         var bits = "";
         if (hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Add to main photos</button>";
+        // Flip a staff note's visibility after the fact: work it out internally,
+        // then hand the finished detail to the customer with one tap.
+        if (IS_MASTER && c.role !== "client" && (c.kind === "internal" || c.kind === "note"))
+          bits += "<button type='button' class='lgbtn' data-act='vis' data-cid='" + esc(c.id) + "'>" + (c.kind === "internal" ? "Share with client" : "Make internal") + "</button>";
         if (IS_MASTER) bits += "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button><button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
         var photos = hasPhotos ? "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' loading='lazy' decoding='async' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
@@ -1234,6 +1232,15 @@
             if(d&&d.ok){ if(Array.isArray(d.topPhotos)){ existingPhotos = d.topPhotos.slice(); renderThumbs(); } var m=document.getElementById("e_msg"); if(m){ m.style.color="var(--green-deep)"; m.textContent="Added to the main photos up top."; } window.scrollTo(0,0); }
             else { alert((d&&d.error)||"Couldn't move the photos."); }
           }).catch(function(){ btn.disabled=false; btn.innerHTML="&uarr; Add to main photos"; alert("Couldn't reach the server."); });
+        return;
+      }
+      if(act === "vis"){
+        var toShare = row.kind === "internal";
+        if(toShare && !confirm("Share this note with " + (t.client||"the client") + "? They'll see it on their ticket.")) return;
+        btn.disabled = true; btn.textContent = toShare ? "Sharing…" : "Hiding…";
+        fetch("/api/tickets/comment/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ commentId:cid, share:toShare }) })
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ loadLog(); } else { btn.disabled=false; alert((d&&d.error)||"Couldn't change it."); } })
+          .catch(function(){ btn.disabled=false; alert("Couldn't reach the server."); });
         return;
       }
       if(act === "del"){

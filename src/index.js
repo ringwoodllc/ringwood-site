@@ -2841,12 +2841,19 @@ async function updateTicketComment(request, env, session) {
   }
   const cid = (body.commentId || "").trim();
   const text = (body.body || "").toString().trim();
-  if (!cid || !text) return json({ ok: false, error: "Nothing to save." }, 400);
+  const hasShare = typeof body.share === "boolean";
+  if (!cid || (!text && !hasShare)) return json({ ok: false, error: "Nothing to save." }, 400);
   const rows = await sbSelect(env, `ticket_comments?id=eq.${cid}&select=id,kind`);
   const row = rows && rows[0];
   if (!row) return json({ ok: false, error: "Not found." }, 404);
   if (row.kind === "event") return json({ ok: false, error: "Status events can't be edited." }, 400);
-  const res = await sbUpdate(env, "ticket_comments", cid, { body: text.slice(0, 4000) });
+  const patch = {};
+  if (text) patch.body = text.slice(0, 4000);
+  // Flip a staff note between internal and shared after the fact, so a detail
+  // worked out internally can be handed to the customer when it's ready.
+  if (hasShare && (row.kind === "note" || row.kind === "internal")) patch.kind = body.share ? "note" : "internal";
+  if (!Object.keys(patch).length) return json({ ok: true });
+  const res = await sbUpdate(env, "ticket_comments", cid, patch);
   if (!res.ok) return json({ ok: false, error: "Could not save the change." }, 502);
   return json({ ok: true });
 }
