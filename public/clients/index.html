@@ -144,6 +144,7 @@
     var sum=[c.status&&c.status!=="Active"?c.status:"",c.contact,c.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
     var stOpts=["Active","Archived"]; if(c.status && stOpts.indexOf(c.status)<0) stOpts.unshift(c.status);
     var statusSel="<select id='st_"+k+"'>"+stOpts.map(function(s){return "<option"+(c.status===s?" selected":"")+">"+s+"</option>";}).join("")+"</select>";
+    var demoSel="<select id='dm_"+k+"'><option value='0'"+(c.demo?"":" selected")+">Not Active</option><option value='1'"+(c.demo?" selected":"")+">Active</option></select>";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' aria-expanded='false' onclick=\"tog('"+k+"')\">"+
         "<div><span class='chip' style='background:"+(c.color||clientColor(c.name))+"'>"+esc(c.name)+"</span><div class='cs'>"+esc(sum)+"</div></div>"+
@@ -155,6 +156,8 @@
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(c.phone)+"'/></div></div>"+
         "<div class='row2'><div class='field' style='flex:0 0 auto'><label>Status</label>"+statusSel+"</div></div>"+
         "<div style='font-size:.82rem;color:var(--muted);margin:-4px 0 6px'>Archived hides this client and its tickets, assets, and service records from the admin, and blocks its logins.</div>"+
+        "<div class='row2'><div class='field' style='flex:0 0 auto'><label>RedBook Demo</label>"+demoSel+"</div></div>"+
+        "<div style='font-size:.82rem;color:var(--muted);margin:-4px 0 6px'>When Active, this client's temp logs auto-fill on the New York schedule (6/10/2/6) for investor demos. Leave Not Active for real food-safety records.</div>"+
         "<div class='field'><label>Color</label>"+swatchesHtml("c"+k, c.color, c.id)+"</div>"+
         "<div style='margin-top:6px;display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
           "<button class='btn sm' id='del_"+k+"' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Delete client</button></div>"+
@@ -169,7 +172,7 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a client name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id,name:name,address:document.getElementById("ad_"+k).value,contact:document.getElementById("ct_"+k).value,phone:document.getElementById("ph_"+k).value,status:document.getElementById("st_"+k).value,color:document.getElementById("c"+k+"_color").value})})
+      fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id,name:name,address:document.getElementById("ad_"+k).value,contact:document.getElementById("ct_"+k).value,phone:document.getElementById("ph_"+k).value,status:document.getElementById("st_"+k).value,demo:document.getElementById("dm_"+k).value==="1",color:document.getElementById("c"+k+"_color").value})})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); }
           else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })

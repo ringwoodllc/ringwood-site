@@ -539,7 +539,7 @@ const SYNTH_DOMAIN = "@id.ringwood.ai";
 // ---- master-only: client setup ----
 async function adminListClients(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "clients?select=id,name,status,address,color,primary_contact,email,phone,notes&order=name");
+  const rows = await sbSelect(env, "clients?select=id,name,status,address,color,primary_contact,email,phone,notes,auto_temps&order=name");
   return noStore({
     ok: true,
     palette: CLIENT_PALETTE,
@@ -553,6 +553,9 @@ async function adminListClients(request, env) {
       email: c.email || "",
       phone: c.phone || "",
       notes: c.notes || "",
+      // RedBook Demo: when Active, this client's logs auto-fill on the NY
+      // schedule. Off by default so real food-safety records are never written.
+      demo: !!c.auto_temps,
     })),
   });
 }
@@ -651,6 +654,7 @@ async function adminSaveClient(request, env) {
   if (!name) return json({ ok: false, error: "Enter a client name." }, 400);
   const patch = { name, address: c(body.address) || null, primary_contact: c(body.contact) || null, email: c(body.email) || null, phone: c(body.phone) || null };
   if ("status" in body) patch.status = c(body.status) || "Active";
+  if ("demo" in body) patch.auto_temps = !!body.demo;
   if ("color" in body) {
     const color = c(body.color);
     if (color) {
