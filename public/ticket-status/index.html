@@ -144,6 +144,13 @@
   .descview{white-space:pre-wrap;font-size:.98rem;line-height:1.55;color:var(--ink);margin:2px 0;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
   .descview.expanded{-webkit-line-clamp:unset;overflow:visible}
   .descmore{display:inline-block;font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay);margin:0 0 8px;cursor:pointer}
+  /* Status as a colored bubble in the top-right of the ticket header. */
+  .statushdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .statushdr h3{margin:0;flex:1}
+  .statuspill{flex:0 0 auto;width:auto;-webkit-appearance:none;appearance:none;border:1px solid transparent;border-radius:999px;padding:8px 30px 8px 15px;font:inherit;font-size:.82rem;font-weight:700;cursor:pointer;background-color:#e3efe7;color:#1f3d2b;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%231f3d2b' stroke-width='1.7'/></svg>");background-repeat:no-repeat;background-position:right 11px center}
+  /* The service group (Parts + Assigned to) sits together near the bottom. */
+  .svcsec{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+  .svchead{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:10px}
   .lblrow label{margin-bottom:0}
   .aibtn{flex:0 0 auto;background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:999px;padding:5px 12px;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
   .aibtn:hover{background:rgba(169,99,58,.08)}
@@ -564,28 +571,16 @@
         "<button type='button' class='qnavb' id='e_qnext' aria-label='Next ticket'>&rsaquo;</button>" +
       "</div>" +
       "<div class='panel'>" +
-        "<h3>" + esc(t.title) + "</h3>" +
-        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + " · " + esc(t.status) + "</div>" +
+        "<div class='statushdr'><h3>" + esc(t.title) + "</h3>" +
+          (IS_CLIENT ? "" : "<select id='e_status' class='statuspill'>" + statusOpts + "</select>") +
+        "</div>" +
+        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + (IS_CLIENT ? (" · " + esc(t.status)) : "") + "</div>" +
         // Admin controls (review, AI rewrite, status, category, client, where,
         // assigned, asset). A client gets a simple view: read the ticket, add
         // photos and notes. Status, tech, location and asset are admin-only.
         (IS_CLIENT ? "" :
-          // Slim indicator: just the Addressed chip. (AI rewrite lives with the
-          // description now, where it actually acts.)
-          // The two things you actually work day to day: where it stands and who's on it.
-          "<div class='frow'>" +
-            "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
-            "<div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
-              "<div id='e_assignedNew' style='display:none;margin-top:8px'>" +
-                "<input id='e_assignedName' type='text' placeholder='New vendor or person name' style='margin-bottom:6px' />" +
-                "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
-                  "<select id='e_assignedKind' style='flex:0 0 auto;width:auto'><option value='Vendor'>Vendor (outside)</option><option value='Internal'>Internal (Ringwood)</option></select>" +
-                  "<button type='button' class='qbtn' id='e_assignedAdd'>Add</button>" +
-                  "<a href='/vendors' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Manage vendors</a>" +
-                "</div>" +
-              "</div>" +
-            "</div>" +
-          "</div>" +
+          // Status is the pill up by the title now. Assigned-to moved down to the
+          // service area (with Parts). What's left here is advanced detail.
           // Advanced, rarely changed: the title, the client (whoever entered it),
           // the asset, and category/where. Kept out of the way so the review stays clean.
           "<div style='margin:8px 0 14px'><a href='#' id='e_moreToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>More details ▾</a></div>" +
@@ -628,12 +623,27 @@
           "<input type='file' id='e_file' accept='image/*' capture='environment' style='display:none' />" +
           "<input type='file' id='e_fileUp' accept='image/*' multiple style='display:none' />" +
         "</div>" +
-        // Parts are usually sorted at the office, not in the field. Tucked behind
-        // a toggle so they don't slow down a quick on-site update.
-        (IS_MASTER ?
-          "<div style='margin:6px 0 14px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
-          "<div id='e_partsField' style='display:none'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
-        : "") +
+        // Service: what the job needs and who's doing it. Parts first (an office /
+        // when-you-have-time task), then who it's assigned to.
+        (IS_CLIENT ? "" :
+          "<div class='svcsec'>" +
+            "<div class='svchead'>Service</div>" +
+            (IS_MASTER ?
+              "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
+              "<div id='e_partsField' style='display:none;margin-bottom:12px'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
+            : "") +
+            "<div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
+              "<div id='e_assignedNew' style='display:none;margin-top:8px'>" +
+                "<input id='e_assignedName' type='text' placeholder='New vendor or person name' style='margin-bottom:6px' />" +
+                "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
+                  "<select id='e_assignedKind' style='flex:0 0 auto;width:auto'><option value='Vendor'>Vendor (outside)</option><option value='Internal'>Internal (Ringwood)</option></select>" +
+                  "<button type='button' class='qbtn' id='e_assignedAdd'>Add</button>" +
+                  "<a href='/vendors' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Manage vendors</a>" +
+                "</div>" +
+              "</div>" +
+            "</div>" +
+          "</div>"
+        ) +
         "<div class='logsec'>" +
           "<h4>Update log</h4>" +
           "<div class='log' id='e_log'><div class='empty-log'>Loading…</div></div>" +
@@ -761,6 +771,11 @@
     [["e_status","status"],["e_cat","category"],["e_client","client"],["e_loc","location"]].forEach(function(p){
       var el=document.getElementById(p[0]); if(el) el.addEventListener("change", function(){ var v={}; v[p[1]]=el.value; autoSaveTicket(v); });
     });
+    // Color the status bubble to match the state, and repaint when it changes.
+    var STATUS_COLORS={"Open":{bg:"#e3efe7",fg:"#1f3d2b"},"Scheduled":{bg:"#dfe7ef",fg:"#2c4866"},"In Progress":{bg:"#f3e6cc",fg:"#7a5b12"},"Complete":{bg:"#cfe3d2",fg:"#1f5130"},"Archived":{bg:"#e7e2d6",fg:"#545047"}};
+    function paintStatus(){ var s=document.getElementById("e_status"); if(!s) return; var c=STATUS_COLORS[s.value]||{bg:"#e7e2d6",fg:"#545047"}; s.style.backgroundColor=c.bg; s.style.color=c.fg; }
+    var statusPill=document.getElementById("e_status");
+    if(statusPill){ statusPill.addEventListener("change", paintStatus); paintStatus(); }
     // Title and description save when you tap out of the field (change = blur for
     // a textarea). Admin only; a client's description is read-only.
     if(!IS_CLIENT){
