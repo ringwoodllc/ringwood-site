@@ -36,6 +36,14 @@ jobs:
             exit 1
           fi
 
+      - name: Select the newest stable Xcode (Apple requires the iOS 26 SDK to upload)
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          LATEST=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
