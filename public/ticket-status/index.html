@@ -178,6 +178,8 @@
   .prow .psrc{color:var(--muted);font-size:.86rem}
   .prow .pctrl{flex:0 0 auto;display:flex;align-items:center;gap:7px}
   .pstat{border:1px solid var(--line);border-radius:999px;padding:3px 11px;font:inherit;font-size:.76rem;font-weight:700;cursor:pointer;background:var(--bg-2)}
+  .icobtn{background:transparent;border:none;color:var(--muted);font-size:1.02rem;line-height:1;cursor:pointer;padding:2px 5px}
+  .icobtn:hover{color:var(--green-deep)}
   .pstat.needed{background:#f6eccf;color:#7a5a12;border-color:transparent}
   .pstat.ordered{background:#dfe9f4;color:#274a73;border-color:transparent}
   .pstat.received{background:#e3efe7;color:var(--green-deep);border-color:transparent}
@@ -709,17 +711,7 @@
             : "") +
             // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
             // once someone's on it; tap the arrow to open the picker and change it.
-            "<div style='margin:2px 0 12px'><a href='#' id='e_asgToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>" + (t.assignedTo ? ("Assigned to " + esc(t.assignedTo)) : "Assign to someone") + " ▾</a></div>" +
-            "<div id='e_asgField' style='display:none;margin-bottom:12px'><div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
-              "<div id='e_assignedNew' style='display:none;margin-top:8px'>" +
-                "<input id='e_assignedName' type='text' placeholder='New vendor or person name' style='margin-bottom:6px' />" +
-                "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
-                  "<select id='e_assignedKind' style='flex:0 0 auto;width:auto'><option value='Vendor'>Vendor (outside)</option><option value='Internal'>Internal (Ringwood)</option></select>" +
-                  "<button type='button' class='qbtn' id='e_assignedAdd'>Add</button>" +
-                  "<a href='/vendors' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Manage vendors</a>" +
-                "</div>" +
-              "</div>" +
-            "</div></div>" +
+
             (t.assetId ? "" : "<div style='margin:2px 0 12px'><a href='#' id='e_tagAsset' style='font-size:.85rem;color:var(--muted);border-bottom:1px solid var(--line)'>Equipment involved? Tag an asset ▾</a></div>") +
             "<div id='e_money'></div>" +
           "</div>"
@@ -881,7 +873,7 @@
         return "<div class='prow' data-id='"+esc(l.id)+"'>"+
           "<div class='pmain'>"+esc(l.person)+" <span class='psrc'>· "+esc(l.hours||0)+" hr"+(l.rate!==""&&l.rate!=null?(" @ $"+esc(l.rate)):"")+"</span></div>"+
           "<div class='pctrl'>"+(lc!=null?"<span style='font-weight:700;color:var(--green-deep);font-size:.86rem'>"+money(lc)+"</span>":"<span style='color:var(--muted);font-size:.82rem'>set rate</span>")+
-            "<button type='button' class='lgbtn del' data-act='ldel' title='Remove'>×</button></div>"+
+            "<button type='button' class='icobtn' data-act='ldel' title='Remove'>×</button></div>"+
         "</div>";
       }).join("");
       var ppl=(typeof VENDORS!=="undefined"?VENDORS:[]);
@@ -1398,8 +1390,8 @@
               (p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+
               (thumbs?"<div style='display:flex;gap:5px;flex-wrap:wrap;margin-top:5px'>"+thumbs+"</div>":"")+"</div>"+
             "<div class='pctrl'><button type='button' class='pstat "+esc((p.status||'Needed').toLowerCase())+"' data-act='cycle'>"+esc(p.status||"Needed")+"</button>"+
-              "<button type='button' class='lgbtn' data-act='photo' title='Attach an invoice or receipt'>📎</button>"+
-              "<button type='button' class='lgbtn del' data-act='del' title='Remove'>×</button></div>"+
+              "<button type='button' class='icobtn' data-act='photo' title='Attach an invoice or receipt'>📎</button>"+
+              "<button type='button' class='icobtn' data-act='del' title='Remove'>×</button></div>"+
           "</div>";
         }).join("");
         // Estimated total across every part (est_cost is always the line total).
