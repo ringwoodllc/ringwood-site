@@ -201,17 +201,22 @@ fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     // admin details we fill in, so hide them.
     window.__SIMPLE_CLIENT = true;
     ["category","location","asset"].forEach(function(id){ var el=document.getElementById(id); var fl=el&&el.closest?el.closest(".field"):null; if(fl) fl.style.display="none"; });
-    defaultRepair();
+    defaultWork();
     if (typeof refresh === "function") refresh();
   } else if (window.RWClientPins) {
     try { window.__cpins = RWClientPins.attach({ selectEl: clientEl, exclude: ["__add"], hide: "field" }); } catch(e){}
   }
 }).catch(function(){});
-// For the simple client form, pick "Repair" so the required category is satisfied.
-function defaultRepair(){
-  if (!window.__SIMPLE_CLIENT) return;
-  var opts = categoryEl.options;
-  for (var i = 0; i < opts.length; i++){ if (opts[i].value === "Repair"){ categoryEl.value = "Repair"; break; } }
+// "What kind of work?" is set later (or by AI) and rarely changed, so keep the
+// create form simple by hiding it for everyone. A default category is applied
+// below so the ticket still files. Prefer Other, then Repair, then the first
+// real option.
+function defaultWork(){
+  var opts = categoryEl.options, pick = "";
+  for (var i=0;i<opts.length;i++){ if(opts[i].value==="Other"){ pick="Other"; break; } }
+  if(!pick) for (var j=0;j<opts.length;j++){ if(opts[j].value==="Repair"){ pick="Repair"; break; } }
+  if(!pick) for (var k=0;k<opts.length;k++){ if(opts[k].value){ pick=opts[k].value; break; } }
+  if(pick) categoryEl.value = pick;
   if (typeof refresh === "function") refresh();
 }
 var fileInput = document.getElementById("file");
@@ -225,6 +230,11 @@ var noteEl = document.getElementById("note");
 var submitBtn = document.getElementById("submitBtn");
 var msg = document.getElementById("msg");
 var form = document.getElementById("ticketForm");
+
+// Hide "What kind of work?" on the create form for everyone (clients already
+// don't see it). The category defaults in defaultWork() so the ticket files,
+// and it can be set on the ticket later if needed.
+(function(){ var f = categoryEl && categoryEl.closest ? categoryEl.closest(".field") : null; if (f) f.style.display = "none"; })();
 
 function clientValue() {
   if (CLIENT_LOCK) return CLIENT_LOCK;
@@ -261,7 +271,7 @@ fetch("/api/categories", { cache: "no-store" }).then(function (r) { return r.jso
     o.value = item.name; o.textContent = item.name;
     categoryEl.appendChild(o);
   }
-  defaultRepair();
+  defaultWork();
 }).catch(function () {
   categoryEl.innerHTML = "<option value=''>Could not load</option>";
 });
