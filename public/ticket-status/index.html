@@ -659,7 +659,7 @@
             "<div id='e_svclist' style='margin:0 0 12px'></div>" +
             (IS_MASTER ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
-              "<div id='e_partsField' style='display:none;margin-bottom:12px'><div class='lblrow'><label>Parts &amp; materials needed</label><button type='button' class='aibtn' id='p_suggest'>✨ Suggest</button></div><div id='e_parts'></div></div>"
+              "<div id='e_partsField' style='display:none;margin-bottom:12px'><div style='display:flex;justify-content:flex-end;margin-bottom:6px'><button type='button' class='aibtn' id='p_suggest'>✨ Suggest from the ticket</button></div><div id='e_parts'></div></div>"
             : "") +
             (IS_MASTER ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Quotes ▾</a></div>" +
@@ -1251,7 +1251,9 @@
           var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
           var thumbs=(p.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='invoice photo' style='width:38px;height:38px;object-fit:cover;border-radius:5px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
           return "<div class='prow' data-id='"+esc(p.id)+"'>"+
-            "<div class='pmain'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+(p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+
+            "<div class='pmain'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+
+              ((p.estCost!=null&&p.estCost!=="")?" <span class='psrc'>· ~$"+esc(Number(p.estCost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}))+"</span>":"")+
+              (p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+
               (thumbs?"<div style='display:flex;gap:5px;flex-wrap:wrap;margin-top:5px'>"+thumbs+"</div>":"")+"</div>"+
             "<div class='pctrl'><button type='button' class='pstat "+esc((p.status||'Needed').toLowerCase())+"' data-act='cycle'>"+esc(p.status||"Needed")+"</button>"+
               "<button type='button' class='lgbtn' data-act='photo' title='Attach an invoice or receipt'>📎</button>"+
@@ -1262,8 +1264,8 @@
           (rows || "<div style='color:var(--muted);font-size:.9rem;margin-bottom:6px'>None added yet.</div>") +
           "<div class='paddrow'>"+
             "<input id='p_item' type='text' placeholder='Item (e.g. AAA batteries)' />"+
-            "<input id='p_qty' type='number' min='0' step='1' value='1' />"+
-            "<input id='p_unit' type='text' placeholder='unit' />"+
+            "<input id='p_qty' type='number' min='0' step='1' value='1' title='How many' />"+
+            "<input id='p_cost' type='number' min='0' step='0.01' placeholder='$ est.' title='Rough cost, optional' />"+
             "<button type='button' class='qbtn rev' id='p_add'>Add</button>"+
           "</div>"+
           "<div id='p_sugg' style='display:none;margin-top:8px'></div>"+
@@ -1281,7 +1283,7 @@
         addBtn.addEventListener("click", function(){
           var item=(document.getElementById("p_item").value||"").trim(); if(!item){ document.getElementById("p_item").focus(); return; }
           addBtn.disabled=true;
-          fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:item,quantity:document.getElementById("p_qty").value,unit:document.getElementById("p_unit").value})})
+          fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:item,quantity:document.getElementById("p_qty").value,estCost:document.getElementById("p_cost").value})})
             .then(function(r){return r.json();}).then(function(d){ addBtn.disabled=false; if(d&&d.ok){ loadParts(); } else { alert((d&&d.error)||"Couldn't add the part."); } })
             .catch(function(){ addBtn.disabled=false; });
         });
