@@ -158,6 +158,7 @@ export default {
     if (url.pathname === "/api/admin/client" && request.method === "POST") return adminSaveClient(request, env);
     if (url.pathname === "/api/admin/client/delete" && request.method === "POST") return deleteClient(request, env);
     if (url.pathname === "/api/vendors" && request.method === "GET") return listVendors(request, env, session);
+    if (url.pathname === "/api/vendors/scan" && request.method === "POST") return scanVendorCard(request, env, session);
     if (url.pathname === "/api/admin/vendors" && request.method === "GET") return adminListVendors(request, env);
     if (url.pathname === "/api/admin/vendor" && request.method === "POST") return adminSaveVendor(request, env);
     if (url.pathname === "/api/admin/vendor/delete" && request.method === "POST") return deleteVendor(request, env);
@@ -624,6 +625,67 @@ async function adminListVendors(request, env) {
       phone: v.phone || "", email: v.email || "", notes: v.notes || "", active: v.active !== false,
     })),
   });
+}
+
+// Read a business card, a vendor's quote sheet, or an ID photo and pull out
+// the vendor details (company, person, phone, email, trade). The source file
+// is kept in storage and its link lands in the notes, so the vendor record
+// carries its own proof. Returns fields for review; saving is a separate step.
+async function scanVendorCard(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The AI is not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const base64 = (body.base64 || "").toString();
+  if (!base64) return json({ ok: false, error: "No file to read." }, 400);
+  const ct = (body.contentType || "image/jpeg").toString();
+  const isPdf = ct.indexOf("pdf") >= 0;
+  // Keep the card/quote itself for the record (best-effort).
+  let fileUrl = null;
+  try { fileUrl = await uploadToStorage(env, `vendors/card-${Date.now()}.${isPdf ? "pdf" : "jpg"}`, base64, isPdf ? "application/pdf" : ct); } catch { /* fields still useful */ }
+  const source = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
+  const block = isPdf ? { type: "document", source } : { type: "image", source };
+  const prompt =
+    "You are reading a business card, a vendor's quote document, or a contractor's ID so the vendor can be added to a directory. Return:\n" +
+    "- company: the business name (e.g. 'Florez Tree Service'). If only a person's name is shown, use that.\n" +
+    "- person: the contact person's name, or empty.\n" +
+    "- phone: the best phone number shown, as printed, or empty.\n" +
+    "- email: the email address shown, or empty.\n" +
+    "- trade: what they do, in two or three plain words (e.g. 'tree removal', 'HVAC', 'plumbing'). Empty if unclear.\n" +
+    "- notes: one short line of anything else useful (license number, address, quoted amount if this is a quote). Empty if nothing.\n" +
+    "Only what is actually visible. Do not invent names, numbers, or emails.";
+  const schema = {
+    type: "object",
+    properties: { company: { type: "string" }, person: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, trade: { type: "string" }, notes: { type: "string" } },
+    required: ["company", "person", "phone", "email", "trade", "notes"],
+    additionalProperties: false,
+  };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 500, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that." }, 502);
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return json({ ok: false, error: "The assistant couldn't read that." }, 502);
+    let out;
+    try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "The assistant couldn't read that." }, 502); }
+    const c = (v) => (v == null ? "" : v.toString().trim());
+    return json({
+      ok: true,
+      company: c(out.company).slice(0, 120),
+      person: c(out.person).slice(0, 120),
+      phone: c(out.phone).slice(0, 40),
+      email: c(out.email).slice(0, 120),
+      trade: c(out.trade).slice(0, 80),
+      notes: c(out.notes).slice(0, 300),
+      fileUrl: fileUrl || "",
+    });
+  } catch {
+    return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
+  }
 }
 
 async function adminSaveVendor(request, env) {

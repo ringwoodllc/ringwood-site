@@ -153,6 +153,7 @@
   /* Status as a colored bubble in the top-right of the ticket header. */
   .statushdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
   .statushdr h3{margin:0;flex:1}
+  .clchip{display:inline-block;color:#f6f2e8;font-size:.78rem;font-weight:700;border-radius:999px;padding:6px 12px;white-space:nowrap}
   .statuspill{flex:0 0 auto;width:auto;-webkit-appearance:none;appearance:none;border:1px solid transparent;border-radius:999px;padding:8px 30px 8px 15px;font:inherit;font-size:.82rem;font-weight:700;cursor:pointer;background-color:#e3efe7;color:#1f3d2b;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%231f3d2b' stroke-width='1.7'/></svg>");background-repeat:no-repeat;background-position:right 11px center}
   /* The service group (Parts + Assigned to) sits together near the bottom. */
   .svcsec{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
@@ -578,9 +579,15 @@
       "</div>" +
       "<div class='panel'>" +
         "<div class='statushdr'><h3>" + esc(t.title) + "</h3>" +
-          (IS_CLIENT ? "" : "<select id='e_status' class='statuspill'>" + statusOpts + "</select>") +
+          (IS_CLIENT ? "" :
+            "<span style='display:flex;gap:8px;align-items:center;flex:0 0 auto'>" +
+              (t.client ? "<span class='clchip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "") +
+              "<select id='e_status' class='statuspill'>" + statusOpts + "</select>" +
+            "</span>") +
         "</div>" +
-        "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + (t.client?esc(t.client):"Unassigned") + (IS_CLIENT ? (" · " + esc(t.status)) : "") + "</div>" +
+        // Clients keep their reference line up top; for staff the ref is internal
+        // numbering, so it moves down into Intake and details.
+        (IS_CLIENT ? "<div class='ref'>" + (t.ref?("Ref " + esc(t.ref) + " · "):"") + esc(t.status) + "</div>" : "") +
         // Admin controls (review, AI rewrite, status, category, client, where,
         // assigned, asset). A client gets a simple view: read the ticket, add
         // photos and notes. Status, tech, location and asset are admin-only.
@@ -592,6 +599,7 @@
         // is still Open (triage), tucked once we're acting on it.
         (IS_CLIENT ? "" : "<div style='margin:8px 0 14px'><a href='#' id='e_intakeToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Intake and details " + (t.status==="Open" ? "▴" : "▾") + "</a></div>") +
         "<div id='e_intakeBody'" + ((!IS_CLIENT && t.status!=="Open") ? " style='display:none'" : "") + ">" +
+        (IS_CLIENT ? "" : "<div class='ref' style='margin:0 0 10px'>" + (t.ref?("Ref " + esc(t.ref)):"") + (t.created?(" · submitted " + esc(fmtDate(t.created))):"") + "</div>") +
         (IS_CLIENT ?
           ("<div class='field'><label>Description</label>" +
             "<div id='e_descView' class='descview'>" + (t.description ? esc(t.description) : "<span style='color:var(--muted)'>No description.</span>") + "</div>" +
@@ -614,9 +622,9 @@
                 "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' />" +
                 "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div></div>" +
             "</div>" +
-            "<div class='frow'>" +
-              "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
-              "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
+            "<div class='field'><label>Type of work</label>" +
+              "<div id='e_catChips' style='display:flex;gap:8px;flex-wrap:wrap'></div>" +
+              "<select id='e_cat' style='display:none'>" + catOpts + "</select>" +
             "</div>" +
             "<div class='field'>" +
               "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_ai'>✨ Rewrite</button><button type='button' class='aibtn' id='e_fold'>✨ Pull updates</button></div></div>" +
@@ -665,6 +673,24 @@
                   "<button type='button' class='qbtn' id='q_add'>Add</button>" +
                 "</div>" +
                 "<div id='q_msg' style='font-size:.82rem;color:var(--muted);margin-top:5px'></div>" +
+                "<div style='margin-top:9px'><a href='#' id='q_newVendor' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>＋ New vendor — scan a card or quote ▾</a></div>" +
+                "<div id='q_vendPanel' style='display:none;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px'>" +
+                  "<div style='display:flex;gap:10px;flex-wrap:wrap;align-items:center'>" +
+                    "<label class='qbtn' for='q_vfile' style='cursor:pointer'>📷 Scan card / quote / ID</label>" +
+                    "<input type='file' id='q_vfile' accept='image/*,application/pdf' style='display:none' />" +
+                    "<span id='q_vmsg' style='font-size:.82rem;color:var(--muted)'></span>" +
+                  "</div>" +
+                  "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:9px'>" +
+                    "<input id='v_name' placeholder='Company *' style='flex:2;min-width:140px' />" +
+                    "<input id='v_phone' type='tel' placeholder='Phone' style='flex:1;min-width:110px' />" +
+                    "<input id='v_email' type='email' placeholder='Email' style='flex:2;min-width:140px' />" +
+                  "</div>" +
+                  "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>" +
+                    "<input id='v_trade' placeholder='Trade (tree removal, HVAC…)' style='flex:2;min-width:140px' />" +
+                    "<input id='v_notes' placeholder='Notes' style='flex:3;min-width:160px' />" +
+                    "<button type='button' class='qbtn rev' id='v_save'>Save vendor</button>" +
+                  "</div>" +
+                "</div>" +
               "</div>"
             : "") +
             // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
@@ -753,13 +779,30 @@
     })();
     // The pencil flips the read card into the edit fields and back. Done saves
     // the description and refreshes the card (title, text, meta line).
+    // Two kinds of work for now: trouble (something is wrong) and standard
+    // maintenance (routine). Stored as the existing Repair / Maintenance
+    // categories, shown in plain words.
+    function catLabel(v){ return v==="Repair" ? "Trouble" : v==="Maintenance" ? "Standard maintenance" : v; }
     function updateTkMeta(){
       var meta=document.getElementById("e_tkMeta"); if(!meta) return;
-      var bits=[];
-      var cs=document.getElementById("e_cat"); if(cs && cs.value && cs.value.indexOf("—")<0) bits.push(cs.value);
-      var ls=document.getElementById("e_loc"); if(ls && ls.value && ls.value.indexOf("—")<0 && ls.value.indexOf("__")<0) bits.push(ls.value);
-      meta.textContent = bits.join(" · ");
+      var cs=document.getElementById("e_cat");
+      var v=cs && cs.value && cs.value.indexOf("—")<0 && cs.value!=="Select..." ? cs.value : "";
+      meta.textContent = v ? catLabel(v) : "";
     }
+    function renderCatChips(){
+      var wrap=document.getElementById("e_catChips"), cs=document.getElementById("e_cat");
+      if(!wrap||!cs) return;
+      var opts=[{v:"Repair",l:"Trouble"},{v:"Maintenance",l:"Standard maintenance"}];
+      var cur=cs.value||"";
+      if(cur && cur!=="Repair" && cur!=="Maintenance" && cur!=="Select..." && cur.indexOf("—")<0) opts.push({v:cur,l:cur});
+      wrap.innerHTML=opts.map(function(o){ return "<button type='button' class='schip"+(cur===o.v?" on":"")+"' data-v='"+esc(o.v)+"'><span class='cdot'></span>"+esc(o.l)+"</button>"; }).join("");
+      Array.prototype.slice.call(wrap.querySelectorAll("button")).forEach(function(b){ b.addEventListener("click", function(){
+        cs.value=b.getAttribute("data-v");
+        cs.dispatchEvent(new Event("change"));
+        renderCatChips();
+      }); });
+    }
+    renderCatChips();
     var pencil=document.getElementById("e_pencil");
     if(pencil) pencil.addEventListener("click", function(){
       var ef=document.getElementById("e_editFields");
@@ -905,6 +948,52 @@
         var dl=document.getElementById("qvendlist");
         if(dl && !dl.children.length && typeof VENDORS!=="undefined") dl.innerHTML=(VENDORS||[]).map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
       }
+    });
+    // New vendor straight from the quote flow: scan a card/quote/ID, the AI
+    // fills the fields, the file link rides in the notes, and saving drops the
+    // vendor into the directory + the quote box. Builds the database as you work.
+    var qnv=document.getElementById("q_newVendor");
+    if(qnv) qnv.addEventListener("click", function(e){ e.preventDefault(); var pn=document.getElementById("q_vendPanel"); var open=pn.style.display!=="none"; pn.style.display=open?"none":"block"; qnv.textContent="＋ New vendor — scan a card or quote "+(open?"▾":"▴"); });
+    var qvf=document.getElementById("q_vfile");
+    if(qvf) qvf.addEventListener("change", function(e){
+      var f=e.target.files&&e.target.files[0]; e.target.value=""; if(!f) return;
+      var vm=document.getElementById("q_vmsg"); vm.style.color="var(--muted)"; vm.textContent="Reading…";
+      var toPayload = /pdf/i.test(f.type||"")
+        ? new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res({ base64:b>=0?d.slice(b+1):d, contentType:"application/pdf" }); }; r.onerror=rej; r.readAsDataURL(f); })
+        : processPhoto(f).then(function(p){ return { base64:p.base64, contentType:p.contentType }; });
+      toPayload.then(function(payload){
+        return fetch("/api/vendors/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+      }).then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok){ vm.style.color="#8a3d1c"; vm.textContent=(d&&d.error)||"Couldn't read that."; return; }
+        if(d.company) document.getElementById("v_name").value=d.company;
+        if(d.phone) document.getElementById("v_phone").value=d.phone;
+        if(d.email) document.getElementById("v_email").value=d.email;
+        if(d.trade) document.getElementById("v_trade").value=d.trade;
+        var bits=[]; if(d.person) bits.push("Contact: "+d.person); if(d.notes) bits.push(d.notes); if(d.fileUrl) bits.push("Card: "+d.fileUrl);
+        if(bits.length){ var ne=document.getElementById("v_notes"); ne.value = ne.value ? (ne.value+" · "+bits.join(" · ")) : bits.join(" · "); }
+        vm.style.color="var(--green-deep)"; vm.textContent="Read. Check the fields and Save.";
+      }).catch(function(){ vm.style.color="#8a3d1c"; vm.textContent="Couldn't read that."; });
+    });
+    var vSave=document.getElementById("v_save");
+    if(vSave) vSave.addEventListener("click", function(){
+      var nm=document.getElementById("v_name"), vm=document.getElementById("q_vmsg");
+      if(!nm.value.trim()){ nm.focus(); return; }
+      vSave.disabled=true; vSave.textContent="Saving…";
+      fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ name:nm.value.trim(), kind:"Vendor", trade:document.getElementById("v_trade").value.trim(), phone:document.getElementById("v_phone").value.trim(), email:document.getElementById("v_email").value.trim(), notes:document.getElementById("v_notes").value.trim() })})
+        .then(function(r){return r.json();}).then(function(d){
+          vSave.disabled=false; vSave.textContent="Save vendor";
+          if(d&&d.ok){
+            var name=nm.value.trim();
+            if(typeof VENDORS!=="undefined") VENDORS.push({ name:name, kind:"Vendor", trade:document.getElementById("v_trade").value.trim() });
+            var dl=document.getElementById("qvendlist"); if(dl) dl.innerHTML=(VENDORS||[]).map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
+            document.getElementById("q_vendor").value=name;
+            ["v_name","v_phone","v_email","v_trade","v_notes"].forEach(function(id){ document.getElementById(id).value=""; });
+            document.getElementById("q_vendPanel").style.display="none";
+            if(qnv) qnv.textContent="＋ New vendor — scan a card or quote ▾";
+            vm.style.color="var(--green-deep)"; vm.textContent="";
+            var m=document.getElementById("q_msg"); if(m){ m.style.color="var(--green-deep)"; m.textContent=name+" added to the vendor directory."; }
+          } else { vm.style.color="#8a3d1c"; vm.textContent=(d&&d.error)||"Couldn't save the vendor."; }
+        }).catch(function(){ vSave.disabled=false; vSave.textContent="Save vendor"; });
     });
     var qAdd=document.getElementById("q_add");
     if(qAdd) qAdd.addEventListener("click", function(){
