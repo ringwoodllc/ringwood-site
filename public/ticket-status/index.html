@@ -264,7 +264,7 @@
     var nReview = scoped.filter(function(t){ return !t.reviewed && !isClosed(t); }).length;
     var nClosed = scoped.filter(isClosed).length;
     var chips = [{k:"open",label:"Open",n:nOpen}];
-    if(!IS_CLIENT) chips.push({k:"review",label:"Needs review",n:nReview});
+    if(!IS_CLIENT) chips.push({k:"review",label:"To address",n:nReview});
     chips.push({k:"closed",label:"Closed",n:nClosed});
     chips.push({k:"all",label:"All",n:scoped.length});
     chipsEl.innerHTML = chips.map(function(c){
@@ -473,7 +473,7 @@
         if (t.status !== "Archived") actions += qbtn("Archive", t.id, "Archived");
       }
       var clientChip = (!IS_CLIENT && t.client) ? "<span class='client-chip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "";
-      var reviewPill = (needsReview && !IS_CLIENT) ? "<span class='pill p-review'>Needs review</span>" : "";
+      var reviewPill = (needsReview && !IS_CLIENT) ? "<span class='pill p-review'>To address</span>" : "";
       return "<div class='ticket' onclick='openEdit(" + esc(JSON.stringify(t)).replace(/'/g,"&#39;") + ", true)'>" +
         "<div class='body'><div class='t-title'>" + esc(t.title) + "</div>" +
         (meta ? "<div class='t-meta'>" + meta + "</div>" : "") +
@@ -554,11 +554,7 @@
           "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
           "<div class='frow'>" +
             "<div class='field'><label>Status</label><select id='e_status'>" + statusOpts + "</select></div>" +
-            "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
-          "</div>" +
-          "<div class='frow'>" +
             "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
-            "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
           "</div>" +
           "<div class='frow'>" +
             "<div class='field'><label>Assigned to</label>" + assignedSelectHtml(t.assignedTo||"") +
@@ -574,6 +570,13 @@
             "<div class='field'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
               "<select id='e_asset'>" + assetOpts + "</select>" +
               "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' /></div>" +
+          "</div>" +
+          "<div style='margin:2px 0 14px'><a href='#' id='e_moreToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>More details ▾</a></div>" +
+          "<div id='e_more' style='display:none'>" +
+            "<div class='frow'>" +
+              "<div class='field'><label>Category</label><select id='e_cat'>" + catOpts + "</select></div>" +
+              "<div class='field'><label>Where is it?</label><select id='e_loc'>" + locOpts + "</select></div>" +
+            "</div>" +
           "</div>"
         ) +
         "<div class='field'>" +
@@ -651,21 +654,24 @@
     function renderReview(){
       var el = document.getElementById("e_review"); if(!el) return;
       var isClosed = (t.status === "Complete" || t.status === "Closed" || t.status === "Archived");
-      if (reviewed){
-        el.innerHTML = "<span class='rev-pill ok'>✓ Reviewed</span><button class='qbtn' id='e_unreview' type='button'>Undo</button>";
-        document.getElementById("e_unreview").addEventListener("click", function(){ setReviewed(false); });
-      } else if (isClosed){
-        el.innerHTML = "";  // closed tickets don't need review
-      } else {
-        el.innerHTML = "<span class='rev-pill need'>Needs review</span><button class='qbtn' id='e_doreview' type='button'>Mark reviewed</button>";
-        document.getElementById("e_doreview").addEventListener("click", function(){ setReviewed(true); });
-      }
+      if (isClosed){ el.innerHTML=""; return; }
+      // One chip: tap to mark addressed; tap again to undo. No busy "needs review" text.
+      el.innerHTML = "<button type='button' class='schip review"+(reviewed?" on":"")+"' id='e_addr'><span class='cdot'></span>"+(reviewed?"✓ Addressed":"Mark addressed")+"</button>";
+      document.getElementById("e_addr").addEventListener("click", function(){ setReviewed(!reviewed); });
     }
     function setReviewed(v){
       fetch("/api/tickets/update", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ id:t.id, reviewed:v }) })
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ reviewed=v; t.reviewed=v; renderReview(); if(typeof loadLog==="function") loadLog(); } });
     }
     renderReview();
+    // Viewing a ticket is the review. Mark it addressed on open (staff only,
+    // open tickets only), so the "To address" list clears itself as you read.
+    (function(){
+      var isClosed = (t.status === "Complete" || t.status === "Closed" || t.status === "Archived");
+      if (!IS_CLIENT && !isClosed && !reviewed) setReviewed(true);
+    })();
+    var moreT=document.getElementById("e_moreToggle");
+    if(moreT) moreT.addEventListener("click", function(e){ e.preventDefault(); var mm=document.getElementById("e_more"); var open=mm.style.display!=="none"; mm.style.display=open?"none":"block"; moreT.textContent=open?"More details ▾":"Fewer details ▴"; });
 
     var eClientEl = document.getElementById("e_client");
     if (eClientEl){

@@ -2364,7 +2364,12 @@ async function createTicket(request, env, ctx, session) {
   } catch {
     return json({ ok: false, error: "Bad request." }, 400);
   }
-  const ref = "RW-" + Math.floor(1000 + Math.random() * 9000);
+  // A fresh, sequential ticket number every time: one past the highest RW-#### so
+  // far (floor 1000), instead of a random number that could repeat.
+  let nextNum = 1000;
+  const refRows = await sbSelect(env, "tickets?select=ref&order=created_at.desc&limit=1000");
+  (refRows || []).forEach((r) => { const m = /RW-0*(\d+)/.exec((r.ref || "").toString()); if (m) { const n = parseInt(m[1], 10); if (n >= nextNum) nextNum = n + 1; } });
+  const ref = "RW-" + nextNum;
   const category = body.category || "Other";
   // A client login can only file against its own client.
   const forced = scopeName(session);
