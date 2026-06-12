@@ -433,13 +433,18 @@
     var identity = "<div class='card'><dl>"+row("Description",a.description)+row("Manufacturer",a.manufacturer)+row("Model",a.model)+row("Serial",a.serial)+row("Client",a.client)+row("Logged",added)+"</dl></div>";
     // Warranty & purchase, shown only when something has been filled in.
     var fmtD = function(d){ return d ? new Date(d+"T00:00:00").toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) : ""; };
-    var wRows = row("Purchased on",fmtD(a.purchasedOn))+row("Purchased from",a.purchasedFrom)+row("Price paid",money(a.purchasePrice))+row("Warranty",[a.warrantyProvider,a.warrantyLength].filter(Boolean).join(" · "))+row("Expires",fmtD(a.warrantyExpires))+row("Notes",a.warrantyNotes);
+    var wRows = row("Purchased on",fmtD(a.purchasedOn))+row("Purchased from",a.purchasedFrom)+row("Price paid",money(a.purchasePrice))
+      +row("Manufacturer warranty",[a.warrantyProvider,a.warrantyLength].filter(Boolean).join(" · "))+row("Manufacturer expires",fmtD(a.warrantyExpires))
+      +row("Extended warranty",[a.extProvider,a.extLength].filter(Boolean).join(" · "))+row("Extended expires",fmtD(a.extExpires))
+      +row("Notes",a.warrantyNotes);
+    // The coverage line uses the longest expiry on record (the extended plan when set).
+    var lastExp = [a.warrantyExpires,a.extExpires].filter(Boolean).sort().pop();
     var wNote="";
-    if(a.warrantyExpires){
-      var days=Math.round((new Date(a.warrantyExpires+"T00:00:00")-new Date())/86400000);
+    if(lastExp){
+      var days=Math.round((new Date(lastExp+"T00:00:00")-new Date())/86400000);
       wNote = days<0
-        ? "<div style='font-size:.84rem;color:#8a3d1c;font-weight:600;margin-top:6px'>Warranty expired "+(-days)+" day"+(-days===1?"":"s")+" ago.</div>"
-        : "<div style='font-size:.84rem;color:var(--green-deep);font-weight:600;margin-top:6px'>Under warranty — "+days+" day"+(days===1?"":"s")+" left.</div>";
+        ? "<div style='font-size:.84rem;color:#8a3d1c;font-weight:600;margin-top:6px'>Coverage ended "+(-days)+" day"+(-days===1?"":"s")+" ago.</div>"
+        : "<div style='font-size:.84rem;color:var(--green-deep);font-weight:600;margin-top:6px'>Covered — "+days+" day"+(days===1?"":"s")+" left.</div>";
     }
     var warranty = wRows ? "<div class='card'><div style='font-weight:600;color:var(--green-deep);margin-bottom:6px'>Warranty &amp; purchase</div><dl>"+wRows+"</dl>"+wNote+"</div>" : "";
     var ai = a.aiReading?"<div class='card'><button type='button' class='agenttog' id='agentTog'><span id='agentIco'>＋</span> Agent reading</button><div id='agentBody' style='display:none;margin-top:8px'><div class='ainote'>"+esc(a.aiReading)+"</div></div></div>":"";
@@ -802,15 +807,27 @@
           "<div style='font-size:1rem;font-weight:600;color:var(--green-deep)'>Warranty &amp; purchase</div>"+
           "<label class='btn ghost' for='w_file' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem;margin:0'>📄 Read from invoice or receipt</label>"+
         "</div>"+
-        "<div class='hint' style='color:var(--muted);margin-bottom:10px'>Snap the receipt or drop a PDF invoice and the assistant fills in what it can. Works with a Costco order, a store receipt, or a warranty card.</div>"+
+        "<div class='hint' style='color:var(--muted);margin-bottom:10px'>Drop a screenshot or PDF, paste it, or tap to choose. Works with a Costco order, a store receipt, or a warranty card.</div>"+
         "<input type='file' id='w_file' accept='image/*,application/pdf' style='display:none' />"+
+        "<label id='w_drop' for='w_file' style='display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:18px;text-align:center;cursor:pointer;color:var(--green-deep);background:var(--bg);margin-bottom:10px'>"+
+          "<div style='font-weight:600'>Drop a screenshot or PDF here</div>"+
+          "<div style='font-size:.84rem;color:var(--muted);margin-top:3px'>or paste (Ctrl/Cmd+V), or tap to choose a file</div>"+
+        "</label>"+
         "<div id='w_msg' style='font-size:.85rem;color:var(--muted);margin-bottom:10px'></div>"+
+        "<div style='font-weight:600;color:var(--green-deep);margin:6px 0 4px'>Purchase</div>"+
         "<div class='field'><label>Purchased on</label><input id='f_purchasedOn' type='date' value='"+esc(a.purchasedOn||"")+"'/></div>"+
         "<div class='field'><label>Purchased from</label><input id='f_purchasedFrom' type='text' value='"+esc(a.purchasedFrom||"")+"' placeholder='e.g. Costco'/></div>"+
         "<div class='field'><label>Price paid</label><input id='f_purchasePrice' type='number' step='0.01' value='"+esc(a.purchasePrice||"")+"' placeholder='e.g. 2099.00'/></div>"+
-        "<div class='field'><label>Warranty provider</label><input id='f_warrantyProvider' type='text' value='"+esc(a.warrantyProvider||"")+"' placeholder='e.g. Allstate, or the manufacturer'/></div>"+
-        "<div class='field'><label>Warranty length</label><input id='f_warrantyLength' type='text' value='"+esc(a.warrantyLength||"")+"' placeholder='e.g. 3 years'/></div>"+
-        "<div class='field'><label>Warranty expires</label><input id='f_warrantyExpires' type='date' value='"+esc(a.warrantyExpires||"")+"'/></div>"+
+        "<div style='font-weight:600;color:var(--green-deep);margin:14px 0 4px'>Manufacturer warranty</div>"+
+        "<div class='field'><label>Provider</label><input id='f_warrantyProvider' type='text' value='"+esc(a.warrantyProvider||"")+"' placeholder='e.g. LG, the manufacturer'/></div>"+
+        "<div class='field'><label>Length</label><input id='f_warrantyLength' type='text' value='"+esc(a.warrantyLength||"")+"' placeholder='e.g. 1 year'/></div>"+
+        "<div class='field'><label>Expires</label><input id='f_warrantyExpires' type='date' value='"+esc(a.warrantyExpires||"")+"'/></div>"+
+        "<div style='display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:14px 0 4px'><div style='font-weight:600;color:var(--green-deep)'>Extended warranty</div><span style='font-size:.82rem;color:var(--muted)'>kicks in after the manufacturer's</span></div>"+
+        "<div id='extWrap'>"+
+          "<div class='field'><label>Provider</label><input id='f_extProvider' type='text' value='"+esc(a.extProvider||"")+"' placeholder='e.g. Allstate'/></div>"+
+          "<div class='field'><label>Length</label><input id='f_extLength' type='text' value='"+esc(a.extLength||"")+"' placeholder='e.g. 3 years'/></div>"+
+          "<div class='field'><label>Expires</label><input id='f_extExpires' type='date' value='"+esc(a.extExpires||"")+"'/></div>"+
+        "</div>"+
         "<div class='field'><label>Notes</label><textarea id='f_warrantyNotes' placeholder='Order number, what is covered, etc.'>"+esc(a.warrantyNotes||"")+"</textarea></div>"+
       "</div>"+
       "<div class='btnrow'><button class='btn' id='saveBtn' type='button'>Save</button><button class='btn ghost' id='cancelBtn' type='button'>Cancel</button></div>"+
@@ -856,24 +873,43 @@
   }
   function wireWarrantyScan(){
     var wf=document.getElementById("w_file"); if(!wf) return;
-    wf.addEventListener("change", function(e){
-      var file=e.target.files&&e.target.files[0]; e.target.value="";
-      if(!file) return;
-      var wm=document.getElementById("w_msg");
-      wm.style.color="var(--muted)"; wm.textContent="Reading "+(/pdf/i.test(file.type||"")?"the invoice":"the receipt")+"… this can take a few seconds.";
-      readWarrantyFile(file).then(function(payload){
-        return fetch("/api/asset/scan-warranty",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
-      }).then(function(r){return r.json();}).then(function(d){
-        if(!d||!d.ok){ wm.style.color="#8a3d1c"; wm.textContent=(d&&d.error)||"Couldn't read that file."; return; }
-        function setIf(id,val){ var el=document.getElementById(id); if(el&&val) el.value=val; }
-        setIf("f_purchasedOn",d.purchasedOn); setIf("f_purchasedFrom",d.purchasedFrom); setIf("f_purchasePrice",d.purchasePrice);
-        setIf("f_warrantyProvider",d.warrantyProvider); setIf("f_warrantyLength",d.warrantyLength); setIf("f_warrantyExpires",d.warrantyExpires);
-        if(d.notes){ var n=document.getElementById("f_warrantyNotes"); if(n) n.value = n.value ? (n.value+"\n"+d.notes) : d.notes; }
-        var got=[d.purchasedOn,d.purchasedFrom,d.purchasePrice,d.warrantyProvider,d.warrantyLength,d.warrantyExpires].filter(Boolean).length;
-        wm.style.color="var(--green-deep)";
-        wm.textContent = got ? ("Filled in "+got+" field"+(got===1?"":"s")+" from your document. Review and Save.") : "Couldn't find clear warranty details on that file. Enter them by hand.";
-      }).catch(function(){ wm.style.color="#8a3d1c"; wm.textContent="Couldn't read that file."; });
-    });
+    wf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; if(f) handleWarrantyFile(f); });
+    var dz=document.getElementById("w_drop");
+    if(dz){
+      var reset=function(){ dz.style.background="var(--bg)"; dz.style.borderColor="rgba(47,93,80,.45)"; };
+      ["dragenter","dragover"].forEach(function(ev){ dz.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); dz.style.background="rgba(47,93,80,.08)"; dz.style.borderColor="var(--green)"; }); });
+      ["dragleave","dragend"].forEach(function(ev){ dz.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); reset(); }); });
+      dz.addEventListener("drop", function(e){ e.preventDefault(); e.stopPropagation(); reset(); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleWarrantyFile(f); });
+    }
+    // Paste a screenshot anywhere while the warranty section is on screen.
+    if(!window.__warrantyPaste){
+      window.__warrantyPaste=function(e){
+        if(!document.getElementById("w_msg")) return;
+        var items=(e.clipboardData&&e.clipboardData.items)||[];
+        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f){ e.preventDefault(); handleWarrantyFile(f); return; } } }
+      };
+      document.addEventListener("paste", window.__warrantyPaste);
+    }
+  }
+  function handleWarrantyFile(file){
+    var wm=document.getElementById("w_msg"); if(!wm) return;
+    var isPdf=/pdf/i.test(file.type||"");
+    if(!isPdf && !/^image\//.test(file.type||"")){ wm.style.color="#8a3d1c"; wm.textContent="Drop an image or a PDF."; return; }
+    wm.style.color="var(--muted)"; wm.textContent="Reading "+(isPdf?"the invoice":"the receipt")+"… this can take a few seconds.";
+    readWarrantyFile(file).then(function(payload){
+      return fetch("/api/asset/scan-warranty",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+    }).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ wm.style.color="#8a3d1c"; wm.textContent=(d&&d.error)||"Couldn't read that file."; return; }
+      function setIf(id,val){ var el=document.getElementById(id); if(el&&val) el.value=val; }
+      setIf("f_purchasedOn",d.purchasedOn); setIf("f_purchasedFrom",d.purchasedFrom); setIf("f_purchasePrice",d.purchasePrice);
+      setIf("f_warrantyProvider",d.warrantyProvider); setIf("f_warrantyLength",d.warrantyLength); setIf("f_warrantyExpires",d.warrantyExpires);
+      setIf("f_extProvider",d.extProvider); setIf("f_extLength",d.extLength); setIf("f_extExpires",d.extExpires);
+      if(d.extProvider||d.extLength) document.getElementById("extWrap").style.display="block";
+      if(d.notes){ var n=document.getElementById("f_warrantyNotes"); if(n) n.value = n.value ? (n.value+"\n"+d.notes) : d.notes; }
+      var got=[d.purchasedOn,d.purchasedFrom,d.purchasePrice,d.warrantyProvider,d.warrantyLength,d.warrantyExpires,d.extProvider,d.extLength,d.extExpires].filter(Boolean).length;
+      wm.style.color="var(--green-deep)";
+      wm.textContent = got ? ("Filled in "+got+" field"+(got===1?"":"s")+" from your document. Review and Save.") : "Couldn't find clear warranty details on that file. Enter them by hand.";
+    }).catch(function(){ wm.style.color="#8a3d1c"; wm.textContent="Couldn't read that file."; });
   }
 
   function runAgentNow(){
@@ -888,7 +924,7 @@
     var b=document.getElementById("saveBtn"); b.disabled=true; b.textContent="Saving…"; setMsg("");
     function fv(id){ var el=document.getElementById(id); return el?el.value:""; }
     var payload={ id:curId, nickname:document.getElementById("f_nickname").value, name:document.getElementById("f_name").value, description:document.getElementById("f_desc").value, manufacturer:document.getElementById("f_make").value, model:document.getElementById("f_model").value, serial:document.getElementById("f_serial").value, equipmentType:comboValue("f_type"), client:comboValue("f_client"), location:comboValue("f_location"), qrTag:document.getElementById("f_qr").value,
-      purchasedOn:fv("f_purchasedOn"), purchasedFrom:fv("f_purchasedFrom"), purchasePrice:fv("f_purchasePrice"), warrantyProvider:fv("f_warrantyProvider"), warrantyLength:fv("f_warrantyLength"), warrantyExpires:fv("f_warrantyExpires"), warrantyNotes:fv("f_warrantyNotes"),
+      purchasedOn:fv("f_purchasedOn"), purchasedFrom:fv("f_purchasedFrom"), purchasePrice:fv("f_purchasePrice"), warrantyProvider:fv("f_warrantyProvider"), warrantyLength:fv("f_warrantyLength"), warrantyExpires:fv("f_warrantyExpires"), extProvider:fv("f_extProvider"), extLength:fv("f_extLength"), extExpires:fv("f_extExpires"), warrantyNotes:fv("f_warrantyNotes"),
       keepPhotos:editKeep, addPhotos:editNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/asset/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; setMsg((d&&d.error)||"Save failed."); }

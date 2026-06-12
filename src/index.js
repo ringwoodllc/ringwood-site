@@ -1681,6 +1681,10 @@ async function getAssetFull(url, env, session) {
     warrantyProvider: a.warranty_provider || "",
     warrantyLength: a.warranty_length || "",
     warrantyExpires: a.warranty_expires || "",
+    // Extended / 2nd warranty (a protection plan that runs after the manufacturer's).
+    extProvider: a.ext_warranty_provider || "",
+    extLength: a.ext_warranty_length || "",
+    extExpires: a.ext_warranty_expires || "",
     warrantyNotes: a.warranty_notes || "",
     services,
   });
@@ -1813,6 +1817,9 @@ async function updateAsset(request, env, session) {
   if (c(body.warrantyProvider)) patch.warranty_provider = c(body.warrantyProvider);
   if (c(body.warrantyLength)) patch.warranty_length = c(body.warrantyLength);
   if (c(body.warrantyExpires)) patch.warranty_expires = c(body.warrantyExpires);
+  if (c(body.extProvider)) patch.ext_warranty_provider = c(body.extProvider);
+  if (c(body.extLength)) patch.ext_warranty_length = c(body.extLength);
+  if (c(body.extExpires)) patch.ext_warranty_expires = c(body.extExpires);
   if (c(body.warrantyNotes)) patch.warranty_notes = c(body.warrantyNotes);
   // Rebuild the photo list when the editor sends one: keep the photos the user
   // didn't delete, then append new uploads. Clear the legacy single-slot columns
@@ -3190,24 +3197,31 @@ async function scanWarranty(request, env, session) {
   const prompt =
     "You are reading a purchase receipt, invoice, order confirmation, or warranty document for a piece of equipment " +
     "(for example a Costco order, a Home Depot receipt, or a manufacturer warranty card). Today is " + today + ". " +
-    "Pull out the purchase and warranty details. Return:\n" +
+    "Equipment often has TWO layers of coverage: the manufacturer's warranty (included, usually 1 year), and a separate " +
+    "extended protection plan bought on top (for example an Allstate, Asurion, or Square Trade plan) that takes over after " +
+    "the manufacturer's warranty ends. Capture both when present. Return:\n" +
     "- purchasedOn: the order or purchase date as YYYY-MM-DD, or empty.\n" +
     "- purchasedFrom: the store or retailer it was bought from (e.g. Costco, Home Depot, Amazon, Best Buy), or empty.\n" +
     "- purchasePrice: the price paid for the main equipment item as a plain number, no currency symbol. If there are several " +
-    "line items, use the main appliance or equipment, not add-ons like protection plans or delivery. Empty if unclear.\n" +
-    "- warrantyProvider: who backs the warranty or protection plan (e.g. the manufacturer's name, Allstate, Asurion, Square Trade). Empty if none shown.\n" +
-    "- warrantyLength: the warranty or plan term in plain words (e.g. \"3 years\", \"1 year manufacturer\"). Empty if none shown.\n" +
-    "- warrantyExpires: the warranty end date as YYYY-MM-DD. If it is not printed but you have a purchase date and a length in years, add them to get the end date. Empty if you cannot tell.\n" +
-    "- notes: a short plain summary of anything else useful (order number, what is covered, protection plan names, item count). Keep it to one or two lines. Empty if nothing.\n" +
+    "line items, use the main appliance or equipment, not the protection plans or delivery. Empty if unclear.\n" +
+    "- warrantyProvider: the MANUFACTURER's warranty backer (the brand, e.g. LG, GE). Empty if not shown.\n" +
+    "- warrantyLength: the manufacturer warranty term in plain words (e.g. \"1 year\"). Empty if not shown.\n" +
+    "- warrantyExpires: the manufacturer warranty end date as YYYY-MM-DD. If not printed but you have the purchase date and a length in years, add them. Empty if you cannot tell.\n" +
+    "- extProvider: the EXTENDED / protection plan provider (e.g. Allstate, Asurion, Square Trade). Empty if there is no extended plan.\n" +
+    "- extLength: the extended plan term in plain words (e.g. \"3 years\"). Empty if none.\n" +
+    "- extExpires: the extended plan end date as YYYY-MM-DD. Extended plans usually run from the purchase date for the plan term (some begin only after the manufacturer warranty ends; use what the document states, otherwise purchase date plus the plan term). Empty if you cannot tell.\n" +
+    "- notes: a short plain summary of anything else useful (order number, which appliance the plan covers, plan price). One or two lines. Empty if nothing.\n" +
+    "If there are several protection plans on one order, pick the one whose price tier matches this equipment. " +
     "Only use what the document actually shows. Do not invent prices, dates, order numbers, or coverage.";
 
   const schema = {
     type: "object",
     properties: {
       purchasedOn: { type: "string" }, purchasedFrom: { type: "string" }, purchasePrice: { type: "string" },
-      warrantyProvider: { type: "string" }, warrantyLength: { type: "string" }, warrantyExpires: { type: "string" }, notes: { type: "string" },
+      warrantyProvider: { type: "string" }, warrantyLength: { type: "string" }, warrantyExpires: { type: "string" },
+      extProvider: { type: "string" }, extLength: { type: "string" }, extExpires: { type: "string" }, notes: { type: "string" },
     },
-    required: ["purchasedOn", "purchasedFrom", "purchasePrice", "warrantyProvider", "warrantyLength", "warrantyExpires", "notes"],
+    required: ["purchasedOn", "purchasedFrom", "purchasePrice", "warrantyProvider", "warrantyLength", "warrantyExpires", "extProvider", "extLength", "extExpires", "notes"],
     additionalProperties: false,
   };
 
@@ -3237,6 +3251,9 @@ async function scanWarranty(request, env, session) {
       warrantyProvider: (out.warrantyProvider || "").toString().trim().slice(0, 120),
       warrantyLength: (out.warrantyLength || "").toString().trim().slice(0, 120),
       warrantyExpires: okd(out.warrantyExpires),
+      extProvider: (out.extProvider || "").toString().trim().slice(0, 120),
+      extLength: (out.extLength || "").toString().trim().slice(0, 120),
+      extExpires: okd(out.extExpires),
       notes: (out.notes || "").toString().trim().slice(0, 500),
     });
   } catch {

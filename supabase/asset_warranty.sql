@@ -9,4 +9,9 @@ alter table assets
   add column if not exists warranty_provider text,
   add column if not exists warranty_length text,
   add column if not exists warranty_expires date,
+  -- Extended / 2nd warranty (a protection plan, e.g. Allstate) that runs after
+  -- the manufacturer's warranty ends.
+  add column if not exists ext_warranty_provider text,
+  add column if not exists ext_warranty_length text,
+  add column if not exists ext_warranty_expires date,
   add column if not exists warranty_notes text;
