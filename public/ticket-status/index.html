@@ -305,7 +305,7 @@
   var ALL_TICKETS = [];
   var CUR_TID = "", lastNavIndex = 0;  // for Next/Prev within the filtered view
 
-  var STATUSES = ["Open","Scheduled","In Progress","Complete","Archived"];
+  var STATUSES = ["Open","In Progress","Complete","Archived"];
   function statusTok(s){ return ({"Open":"open","Scheduled":"sched","In Progress":"prog","Complete":"done","Closed":"done","Archived":"arch"})[s] || "open"; }
 
   function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
@@ -651,7 +651,7 @@
             "</div></div>" +
             (IS_MASTER ?
               "<div style='margin-top:14px'><button type='button' class='qbtn' id='e_logSvc'>＋ Service call</button>" +
-                "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>One opens automatically when the ticket is accepted (status Scheduled). Use this only to add another by hand.</div></div>"
+                "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>One opens automatically when the ticket moves to In Progress. Use this only to add another by hand.</div></div>"
             : "") +
           "</div>"
         ) +
@@ -760,7 +760,7 @@
       fetch("/api/tickets/services?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
         if(!d||!d.ok){ el.innerHTML=""; return; }
         if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Service calls need the latest migration (supabase/service_invoice.sql).</div>"; return; }
-        if(!d.services.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No service call yet. Setting the ticket to <b>Scheduled</b> opens one on the asset automatically.</div>"; return; }
+        if(!d.services.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No service call yet. Setting the ticket to <b>In Progress</b> opens one on the asset automatically.</div>"; return; }
         el.innerHTML = d.services.map(function(s){
           var total=[s.cost,s.vendorCost,s.partsCost].map(Number).filter(function(n){return !isNaN(n)&&n>0;}).reduce(function(a,b){return a+b;},0);
           var who=[s.technician,s.tech2].filter(Boolean).join(" + ");
