@@ -3092,19 +3092,30 @@ async function updateTicket(request, env, session) {
       try {
         const tr2 = await sbSelect(env, `tickets?id=eq.${id}&select=asset_id,client_id,ref,title,assigned_to`);
         const tk = tr2 && tr2[0];
-        if (tk && tk.asset_id) {
+        if (tk) {
           const existing = await sbSelect(env, `service_records?ticket_id=eq.${id}&select=id&limit=1`);
           // existing === null means the ticket_id column isn't there yet (run
           // supabase/service_invoice.sql); skip rather than create unlinked rows.
           if (existing !== null && !existing.length) {
-            const row = { asset_id: tk.asset_id, ticket_id: id, service_date: new Date().toISOString().slice(0, 10), notes: "Service call for ticket " + (tk.ref || "") + ": " + (tk.title || "") };
+            // The job's ledger exists as soon as work starts — an asset is not
+            // required; tagging one later backfills onto the call.
+            const row = { ticket_id: id, service_date: new Date().toISOString().slice(0, 10), notes: "Service call for ticket " + (tk.ref || "") + ": " + (tk.title || "") };
+            if (tk.asset_id) row.asset_id = tk.asset_id;
             if (tk.client_id) row.client_id = tk.client_id;
             if (tk.assigned_to) row.technician = tk.assigned_to;
             const made = await sbInsert(env, "service_records", row);
-            if (made.ok) await logTicketEvent(env, id, session, "Service call opened", "A service record was created on the asset for this job.");
+            if (made.ok) await logTicketEvent(env, id, session, "Service call opened", "Hours and costs for this job track on its service call.");
           }
         }
       } catch { /* best-effort; never block the status change */ }
+    }
+    // Tagging an asset later backfills it onto the job's service call.
+    if (patch.asset_id) {
+      try {
+        await fetch(`${env.SUPABASE_URL}/rest/v1/service_records?ticket_id=eq.${id}&asset_id=is.null`, {
+          method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ asset_id: patch.asset_id }),
+        });
+      } catch { /* best-effort */ }
     }
   }
   if (photoPatch) {
@@ -5554,9 +5565,10 @@ async function listTicketQuotes(url, env, session) {
   if (!session || session.role === "client") return json({ ok: true, quotes: [] });
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: true, quotes: [] });
-  const rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,created_at&order=created_at.asc`);
+  let rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,created_at&order=created_at.asc`);
+  if (rows === null) rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,created_at&order=created_at.asc`);
   if (rows === null) return noStore({ ok: true, quotes: [], missing: true });
-  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending" })) });
+  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending", photos: q.photo_urls || [] })) });
 }
 
 async function saveTicketQuote(request, env, session) {
@@ -5564,6 +5576,23 @@ async function saveTicketQuote(request, env, session) {
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const c = (v) => (v == null ? "" : v.toString().trim());
+  const qid = c(body.id);
+  // Attach photos (the quote sheet itself) to an existing quote.
+  if (qid) {
+    const cur = await sbSelect(env, `ticket_quotes?id=eq.${qid}&select=id,ticket_id,photo_urls`);
+    const row0 = cur && cur[0];
+    if (!row0) return json({ ok: false, error: "Quote not found." }, 404);
+    const adds = Array.isArray(body.addPhotos) ? body.addPhotos : [];
+    if (!adds.length) return json({ ok: true });
+    const urls = (row0.photo_urls || []).slice();
+    for (let i = 0; i < adds.length; i++) {
+      const u = await uploadToStorage(env, `tickets/${row0.ticket_id}/quotes/${qid}-${Date.now()}-${i}.jpg`, adds[i] && adds[i].base64, adds[i] && adds[i].contentType);
+      if (u) urls.push(u);
+    }
+    const res0 = await sbUpdate(env, "ticket_quotes", qid, { photo_urls: urls });
+    if (!res0.ok) return json({ ok: false, error: "Couldn't attach. Run supabase/ticket_attachments.sql once, then retry." }, 502);
+    return json({ ok: true, photos: urls });
+  }
   const ticketId = c(body.ticketId);
   const vendor = c(body.vendor);
   if (!ticketId || !vendor) return json({ ok: false, error: "Enter the vendor." }, 400);
@@ -5574,6 +5603,16 @@ async function saveTicketQuote(request, env, session) {
   if (c(body.notes)) row.notes = c(body.notes);
   const res = await sbInsert(env, "ticket_quotes", row);
   if (!res.ok) return json({ ok: false, error: "Couldn't save. Run supabase/ticket_quotes.sql once, then retry." }, 502);
+  // Photos sent with a new quote (e.g. the emailed quote sheet) ride along.
+  const pics = Array.isArray(body.photos) ? body.photos : [];
+  if (res.data && pics.length) {
+    const urls = [];
+    for (let i = 0; i < pics.length; i++) {
+      const u = await uploadToStorage(env, `tickets/${ticketId}/quotes/${res.data.id}-${i}.jpg`, pics[i] && pics[i].base64, pics[i] && pics[i].contentType);
+      if (u) urls.push(u);
+    }
+    if (urls.length) { try { await sbUpdate(env, "ticket_quotes", res.data.id, { photo_urls: urls }); } catch { /* needs migration */ } }
+  }
   return json({ ok: true, quote: res.data || null });
 }
 
@@ -5618,9 +5657,10 @@ async function listTicketParts(url, env, session) {
   if (!session || session.role !== "master") return json([]);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json([]);
-  const rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,created_at&order=created_at.asc`);
+  let rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,photo_urls,created_at&order=created_at.asc`);
+  if (rows === null) rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,created_at&order=created_at.asc`);
   if (rows === null) return json([]); // table not added yet
-  return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "" })));
+  return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "", photos: r.photo_urls || [] })));
 }
 
 async function saveTicketPart(request, env, session) {
@@ -5640,6 +5680,19 @@ async function saveTicketPart(request, env, session) {
   if ("estCost" in body) { const ec = Number(body.estCost); patch.est_cost = isNaN(ec) ? null : ec; }
   let res;
   if (id) {
+    // A photographed invoice attaches to the part for future pricing.
+    if (Array.isArray(body.addPhotos) && body.addPhotos.length) {
+      const cur = await sbSelect(env, `ticket_parts?id=eq.${id}&select=ticket_id,photo_urls`);
+      const row0 = cur && cur[0];
+      if (row0) {
+        const urls = (row0.photo_urls || []).slice();
+        for (let i = 0; i < body.addPhotos.length; i++) {
+          const u = await uploadToStorage(env, `tickets/${row0.ticket_id}/parts/${id}-${Date.now()}-${i}.jpg`, body.addPhotos[i] && body.addPhotos[i].base64, body.addPhotos[i] && body.addPhotos[i].contentType);
+          if (u) urls.push(u);
+        }
+        patch.photo_urls = urls;
+      }
+    }
     res = await sbUpdate(env, "ticket_parts", id, patch);
   } else {
     const ticketId = c(body.ticketId);

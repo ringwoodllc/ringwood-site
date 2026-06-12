@@ -670,8 +670,11 @@
                   "<datalist id='qvendlist'></datalist>" +
                   "<input id='q_amount' type='number' step='0.01' placeholder='$' style='flex:1;min-width:80px' />" +
                   "<input id='q_note' placeholder='Availability, scope, who you spoke to' style='flex:3;min-width:150px' />" +
+                  "<label class='qbtn' for='q_newPhotos' style='cursor:pointer' title='Attach the quote sheet'>📎<span id='q_pendCount'></span></label>" +
+                  "<input type='file' id='q_newPhotos' accept='image/*' multiple style='display:none' />" +
                   "<button type='button' class='qbtn' id='q_add'>Add</button>" +
                 "</div>" +
+                "<input type='file' id='q_attachInput' accept='image/*' multiple style='display:none' />" +
                 "<div id='q_msg' style='font-size:.82rem;color:var(--muted);margin-top:5px'></div>" +
                 "<div style='margin-top:9px'><a href='#' id='q_newVendor' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>＋ New vendor — scan a card or quote ▾</a></div>" +
                 "<div id='q_vendPanel' style='display:none;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px'>" +
@@ -857,7 +860,7 @@
       fetch("/api/tickets/services?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
         if(!d||!d.ok){ el.innerHTML=""; return; }
         if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Service calls need the latest migration (supabase/service_invoice.sql).</div>"; return; }
-        if(!d.services.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No service call yet. Setting the ticket to <b>In Progress</b> opens one on the asset automatically.</div>"; return; }
+        if(!d.services.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>Hours and costs land here when work starts (set the status to <b>In Progress</b>).</div>"; return; }
         // Inline ledger: the service call edits right here on the ticket. The
         // separate service-record page stays only for photos and deep history.
         el.innerHTML = d.services.map(function(s){
@@ -915,13 +918,22 @@
                    : q.status==="Declined" ? "<span style='background:var(--line);color:var(--muted);border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700'>DECLINED</span>"
                    : "<button type='button' class='qbtn rev qaccept' data-id='"+esc(q.id)+"'>Accept</button>";
           var amt = (q.amount!==""&&q.amount!=null) ? ("$"+Number(q.amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})) : "—";
-          return "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:6px;font-size:.9rem"+(q.status==="Declined"?";opacity:.6":"")+"'>"+
+          var thumbs = (q.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='quote photo' style='width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
+          return "<div style='background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:6px;font-size:.9rem"+(q.status==="Declined"?";opacity:.6":"")+"'>"+
+            "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap'>"+
             "<b style='color:var(--green-deep)'>"+esc(q.vendor)+"</b><span style='font-weight:700'>"+amt+"</span>"+
             (q.notes?"<span style='color:var(--muted)'>"+esc(q.notes)+"</span>":"")+
             "<span style='margin-left:auto;display:flex;gap:8px;align-items:center'>"+chip+
+            "<button type='button' class='qattach' data-id='"+esc(q.id)+"' title='Attach the quote sheet or a photo' style='background:transparent;border:none;font-size:1rem;cursor:pointer;padding:0 2px'>📎</button>"+
             "<button type='button' class='qdel' data-id='"+esc(q.id)+"' style='background:transparent;border:none;color:#8a3d1c;font-size:1.05rem;cursor:pointer;padding:0 2px'>×</button></span>"+
+            "</div>"+
+            (thumbs?"<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:7px'>"+thumbs+"</div>":"")+
           "</div>";
         }).join("");
+        Array.prototype.slice.call(el.querySelectorAll(".qattach")).forEach(function(b){ b.addEventListener("click", function(){
+          Q_ATTACH_ID=b.getAttribute("data-id");
+          var fi=document.getElementById("q_attachInput"); if(fi) fi.click();
+        }); });
         Array.prototype.slice.call(el.querySelectorAll(".qaccept")).forEach(function(b){ b.addEventListener("click", function(){
           if(!confirm("Accept this quote? The vendor gets assigned, the others are declined, and the cost is written to the service call.")) return;
           b.disabled=true;
@@ -995,15 +1007,37 @@
           } else { vm.style.color="#8a3d1c"; vm.textContent=(d&&d.error)||"Couldn't save the vendor."; }
         }).catch(function(){ vSave.disabled=false; vSave.textContent="Save vendor"; });
     });
+    // Photos pending on a NEW quote (attached before Add), and the picker used
+    // by each row's paperclip. Both upload compressed like every other photo.
+    var Q_PENDING=[], Q_ATTACH_ID=null;
+    var qNewPh=document.getElementById("q_newPhotos");
+    if(qNewPh) qNewPh.addEventListener("change", function(e){
+      var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value="";
+      Promise.all(fs.map(processPhoto)).then(function(arr){ arr.forEach(function(p){ Q_PENDING.push(p); });
+        var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=Q_PENDING.length?(" "+Q_PENDING.length):"";
+      }).catch(function(){});
+    });
+    var qAttachIn=document.getElementById("q_attachInput");
+    if(qAttachIn) qAttachIn.addEventListener("change", function(e){
+      var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value="";
+      if(!fs.length || !Q_ATTACH_ID) return;
+      var m=document.getElementById("q_msg"); if(m){ m.style.color="var(--muted)"; m.textContent="Attaching…"; }
+      Promise.all(fs.map(processPhoto)).then(function(arr){
+        return fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:Q_ATTACH_ID, addPhotos:arr.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) })});
+      }).then(function(r){return r.json();}).then(function(d){
+        if(m) m.textContent="";
+        if(d&&d.ok) loadQuotes(); else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t attach."; }
+      }).catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn\u0027t attach."; } });
+    });
     var qAdd=document.getElementById("q_add");
     if(qAdd) qAdd.addEventListener("click", function(){
       var v=document.getElementById("q_vendor"), a=document.getElementById("q_amount"), n=document.getElementById("q_note"), m=document.getElementById("q_msg");
       if(!v.value.trim()){ v.focus(); return; }
       qAdd.disabled=true;
-      fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:v.value.trim(), amount:a.value, notes:n.value.trim() })})
+      fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:v.value.trim(), amount:a.value, notes:n.value.trim(), photos:Q_PENDING.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) })})
         .then(function(r){return r.json();}).then(function(d){
           qAdd.disabled=false;
-          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; if(m) m.textContent=""; loadQuotes(); }
+          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; Q_PENDING=[]; var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=""; if(m) m.textContent=""; loadQuotes(); }
           else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t save."; }
         }).catch(function(){ qAdd.disabled=false; });
     });
@@ -1215,9 +1249,12 @@
       function renderParts(){
         var rows = PARTS.map(function(p){
           var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
+          var thumbs=(p.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='invoice photo' style='width:38px;height:38px;object-fit:cover;border-radius:5px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
           return "<div class='prow' data-id='"+esc(p.id)+"'>"+
-            "<div class='pmain'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+(p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+"</div>"+
+            "<div class='pmain'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+(p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+
+              (thumbs?"<div style='display:flex;gap:5px;flex-wrap:wrap;margin-top:5px'>"+thumbs+"</div>":"")+"</div>"+
             "<div class='pctrl'><button type='button' class='pstat "+esc((p.status||'Needed').toLowerCase())+"' data-act='cycle'>"+esc(p.status||"Needed")+"</button>"+
+              "<button type='button' class='lgbtn' data-act='photo' title='Attach an invoice or receipt'>📎</button>"+
               "<button type='button' class='lgbtn del' data-act='del' title='Remove'>×</button></div>"+
           "</div>";
         }).join("");
@@ -1229,7 +1266,17 @@
             "<input id='p_unit' type='text' placeholder='unit' />"+
             "<button type='button' class='qbtn rev' id='p_add'>Add</button>"+
           "</div>"+
-          "<div id='p_sugg' style='display:none;margin-top:8px'></div>";
+          "<div id='p_sugg' style='display:none;margin-top:8px'></div>"+
+          "<input type='file' id='p_attachInput' accept='image/*' multiple style='display:none' />";
+        var pAttachIn=document.getElementById("p_attachInput");
+        if(pAttachIn) pAttachIn.addEventListener("change", function(e){
+          var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value="";
+          if(!fs.length || !P_ATTACH_ID) return;
+          Promise.all(fs.map(processPhoto)).then(function(arr){
+            return fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:P_ATTACH_ID, addPhotos:arr.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) })});
+          }).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); else alert((d&&d.error)||"Couldn\u0027t attach. Run supabase/ticket_attachments.sql once."); })
+            .catch(function(){});
+        });
         var addBtn=document.getElementById("p_add");
         addBtn.addEventListener("click", function(){
           var item=(document.getElementById("p_item").value||"").trim(); if(!item){ document.getElementById("p_item").focus(); return; }
@@ -1246,10 +1293,14 @@
         if(act==="cycle"){
           var order=["Needed","Ordered","Received"], next=order[(order.indexOf(p.status||"Needed")+1)%3];
           fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,status:next})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); });
+        } else if(act==="photo"){
+          P_ATTACH_ID=id;
+          var fi=document.getElementById("p_attachInput"); if(fi) fi.click();
         } else if(act==="del"){
           fetch("/api/tickets/part/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); });
         }
       });
+      var P_ATTACH_ID=null;
       function suggestParts(){
         var sg=document.getElementById("p_suggest"), wrap=document.getElementById("p_sugg");
         sg.disabled=true; sg.textContent="Thinking…";
