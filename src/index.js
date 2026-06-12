@@ -2123,6 +2123,7 @@ async function createService(request, env, ctx, session) {
   const technician = clean(body.technician);
   const notes = clean(body.notes);
   const cost = body.cost === "" || body.cost == null ? null : Number(body.cost);
+  const num = (v) => (v === "" || v == null ? null : (isNaN(Number(v)) ? null : Number(v)));
 
   const refs = await getRefs(env);
   const row = { asset_id: assetId };
@@ -2132,6 +2133,13 @@ async function createService(request, env, ctx, session) {
   if (technician) row.technician = technician;
   if (notes) row.notes = notes;
   if (cost != null && !isNaN(cost)) row.cost = cost;
+  // Invoice detail (only set when provided, so it works before the migration).
+  if (clean(body.tech2)) row.tech2 = clean(body.tech2);
+  if (num(body.travelHours) != null) row.travel_hours = num(body.travelHours);
+  if (num(body.vendorCost) != null) row.vendor_cost = num(body.vendorCost);
+  if (clean(body.parts)) row.parts = clean(body.parts);
+  if (num(body.partsCost) != null) row.parts_cost = num(body.partsCost);
+  if (clean(body.ticketId)) row.ticket_id = clean(body.ticketId);
   // Carry the asset's client onto the service record.
   const arows = await sbSelect(env, `assets?id=eq.${assetId}&select=client_id`);
   if (arows && arows[0] && arows[0].client_id) row.client_id = arows[0].client_id;
@@ -2162,7 +2170,7 @@ async function getService(url, env, session) {
   if (!can(session, "service", "view")) return json({ ok: false }, 403);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json({ ok: false }, 400);
-  const rows = await sbSelect(env, `service_records?id=eq.${id}&select=service_date,technician,notes,cost,photo_urls,service_type:service_types(name)`);
+  const rows = await sbSelect(env, `service_records?id=eq.${id}&select=*,service_type:service_types(name)`);
   const f = rows && rows[0];
   if (!f) return json({ ok: false }, 404);
   return json({
@@ -2173,6 +2181,11 @@ async function getService(url, env, session) {
     technician: f.technician || "",
     notes: f.notes || "",
     cost: f.cost != null ? f.cost : "",
+    tech2: f.tech2 || "",
+    travelHours: f.travel_hours != null ? f.travel_hours : "",
+    vendorCost: f.vendor_cost != null ? f.vendor_cost : "",
+    parts: f.parts || "",
+    partsCost: f.parts_cost != null ? f.parts_cost : "",
     photos: f.photo_urls || [],
   });
 }
@@ -2200,6 +2213,13 @@ async function updateService(request, env, session) {
     const n = body.cost === "" || body.cost == null ? null : Number(body.cost);
     patch.cost = n != null && !isNaN(n) ? n : null;
   }
+  // Invoice detail. Only touched when sent, so it works before the migration.
+  const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? null : Number(v));
+  if (c(body.tech2)) patch.tech2 = c(body.tech2);
+  if (num(body.travelHours) != null) patch.travel_hours = num(body.travelHours);
+  if (num(body.vendorCost) != null) patch.vendor_cost = num(body.vendorCost);
+  if (c(body.parts)) patch.parts = c(body.parts);
+  if (num(body.partsCost) != null) patch.parts_cost = num(body.partsCost);
   // Rebuild photos only when they actually changed (keep + new uploads).
   const hasKeep = Array.isArray(body.keepPhotos);
   const hasAdd = Array.isArray(body.addPhotos) && body.addPhotos.length;

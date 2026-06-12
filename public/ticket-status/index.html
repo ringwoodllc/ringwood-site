@@ -642,6 +642,10 @@
                 "</div>" +
               "</div>" +
             "</div>" +
+            (IS_MASTER ?
+              "<div style='margin-top:14px'><button type='button' class='qbtn rev' id='e_logSvc'>🧾 Log a service record</button>" +
+                "<div style='font-size:.82rem;color:var(--muted);margin-top:5px'>Creates a service record on this ticket's asset, prefilled with the tech and parts, so you can add costs and bill it later.</div></div>"
+            : "") +
           "</div>"
         ) +
         "<div class='logsec'>" +
@@ -710,6 +714,21 @@
     if(moreT) moreT.addEventListener("click", function(e){ e.preventDefault(); var mm=document.getElementById("e_more"); var open=mm.style.display!=="none"; mm.style.display=open?"none":"block"; moreT.textContent=open?"More details ▾":"Fewer details ▴"; });
     var partsT=document.getElementById("e_partsToggle");
     if(partsT) partsT.addEventListener("click", function(e){ e.preventDefault(); var pf=document.getElementById("e_partsField"); var open=pf.style.display!=="none"; pf.style.display=open?"none":"block"; partsT.textContent=open?"Parts & materials ▾":"Parts & materials ▴"; });
+    // Turn the ticket into a service record on its asset (tech + parts prefilled),
+    // so the job can be costed and invoiced from the asset's service history.
+    var logSvc=document.getElementById("e_logSvc");
+    if(logSvc) logSvc.addEventListener("click", function(){
+      if(!t.assetId){ alert("Tag an asset on this ticket first (open More details and use Suggest), so the service record attaches to the right equipment."); return; }
+      var tech=document.getElementById("e_assigned"); tech=tech?tech.value:"";
+      var partsText=(typeof PARTS!=="undefined" && PARTS.length) ? PARTS.map(function(p){ return (p.quantity?(p.quantity+"x "):"")+p.item; }).join(", ") : "";
+      logSvc.disabled=true; var old=logSvc.textContent; logSvc.textContent="Creating…";
+      fetch("/api/service",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ assetId:t.assetId, technician:(tech==="__new"?"":tech), notes:"From ticket "+(t.ref||"")+": "+(t.title||""), ticketId:t.id, parts:partsText, serviceDate:new Date().toISOString().slice(0,10) })})
+        .then(function(r){return r.json();}).then(function(d){
+          logSvc.disabled=false; logSvc.textContent=old;
+          if(d&&d.ok){ if(confirm("Service record created on the asset. Open it now to add cost, travel time, and parts for invoicing?")) location.href="/a/?id="+encodeURIComponent(t.assetId); }
+          else alert((d&&d.error)||"Couldn't create the service record.");
+        }).catch(function(){ logSvc.disabled=false; logSvc.textContent=old; alert("Couldn't reach the server."); });
+    });
 
     var eClientEl = document.getElementById("e_client");
     if (eClientEl){
@@ -742,7 +761,11 @@
           } else if(d.newAssetName){
             for(var j=0;j<assetSelEl.options.length;j++){ if(assetSelEl.options[j].value==="__new"){ assetSelEl.selectedIndex=j; break; } }
             newAssetEl.style.display="block"; newAssetEl.value=d.newAssetName;
-            if(note){ note.style.color="var(--green-deep)"; note.textContent="No match on file. Suggested new asset \""+d.newAssetName+"\". "+(d.reason||"")+" Tap out of the box to add it."; }
+            if(note){ note.style.color="var(--green-deep)";
+              note.innerHTML="No match on file. Suggested new asset <b>"+esc(d.newAssetName)+"</b>. "+esc(d.reason||"")+"<div style='margin-top:8px'><button type='button' class='qbtn rev' id='e_assetAdd'>+ Add &amp; tag this asset</button></div>";
+              var addB=document.getElementById("e_assetAdd");
+              if(addB) addB.addEventListener("click", function(){ var nn=(newAssetEl.value||d.newAssetName).trim(); if(!nn) return; addB.disabled=true; addB.textContent="Adding…"; autoSaveTicket({ newAssetName: nn }); note.innerHTML="✓ Added <b>"+esc(nn)+"</b> and tagged it to this ticket."; });
+            }
           } else {
             if(note){ note.style.color="var(--muted)"; note.textContent=d.reason||"No clear equipment match. Pick one above if you know it."; }
           }

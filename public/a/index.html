@@ -995,10 +995,16 @@
         "<div id='svcmsg' class='err' style='margin-bottom:10px'></div>"+
         "<div class='field'><label>Date</label><input id='s_date' type='date' value='"+esc(s.date)+"'/></div>"+
         "<div class='field'><label>Type</label><select id='s_type'><option value=''>Select…</option>"+typeOpts+"</select></div>"+
-        "<div class='field'><label>Technician</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
+        "<div class='field'><label>Technician 1</label><input id='s_tech' type='text' value='"+esc(s.technician)+"'/></div>"+
+        "<div class='field'><label>Technician 2</label><input id='s_tech2' type='text' value='"+esc(s.tech2||"")+"' placeholder='Second tech, if any'/></div>"+
+        "<div class='field'><label>Travel time (hrs)</label><input id='s_travel' type='number' step='0.25' value='"+esc(s.travelHours)+"' placeholder='e.g. 1.5'/></div>"+
         "<div class='field'><label>Notes</label><textarea id='s_notes'>"+esc(s.notes)+"</textarea></div>"+
-        "<div class='field'><label>Cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"'/></div>"+
-        "<div class='field'><label>Photos</label><div id='svcthumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px'></div>"+
+        "<div style='font-weight:600;color:var(--green-deep);margin:8px 0 4px'>Billing</div>"+
+        "<div class='field'><label>Labor / service cost</label><input id='s_cost' type='number' step='0.01' value='"+esc(s.cost)+"' placeholder='e.g. 250.00'/></div>"+
+        "<div class='field'><label>Vendor cost</label><input id='s_vendor' type='number' step='0.01' value='"+esc(s.vendorCost)+"' placeholder='what an outside vendor charged'/></div>"+
+        "<div class='field'><label>Parts purchased</label><textarea id='s_parts' placeholder='List the parts used for the job'>"+esc(s.parts||"")+"</textarea></div>"+
+        "<div class='field'><label>Parts cost</label><input id='s_partscost' type='number' step='0.01' value='"+esc(s.partsCost)+"' placeholder='cost of those parts'/></div>"+
+        "<div class='field'><label>Photos <span style='font-weight:400;color:var(--muted);font-size:.85rem'>— receipts, invoices, the work</span></label><div id='svcthumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px'></div>"+
           "<input type='file' id='svcfile' accept='image/*' multiple /></div>"+
         "<div class='btnrow'><button class='btn' id='svcSave' type='button'>Save</button><button class='btn ghost' id='svcBack' type='button'>Back</button></div>";
       document.getElementById("svcBack").addEventListener("click", function(){ renderRead(curAsset); });
@@ -1027,7 +1033,8 @@
   window.__svcRmNew=function(i){ svcNew.splice(i,1); renderSvcThumbs(); };
   function saveService(sid){
     var b=document.getElementById("svcSave"); b.disabled=true; b.textContent="Saving…";
-    var payload={ id:sid, date:document.getElementById("s_date").value, type:document.getElementById("s_type").value, technician:document.getElementById("s_tech").value, notes:document.getElementById("s_notes").value, cost:document.getElementById("s_cost").value, keepPhotos:svcKeep, addPhotos:svcNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
+    function fv(id){ var el=document.getElementById(id); return el?el.value:""; }
+    var payload={ id:sid, date:fv("s_date"), type:fv("s_type"), technician:fv("s_tech"), tech2:fv("s_tech2"), travelHours:fv("s_travel"), notes:fv("s_notes"), cost:fv("s_cost"), vendorCost:fv("s_vendor"), parts:fv("s_parts"), partsCost:fv("s_partscost"), keepPhotos:svcKeep, addPhotos:svcNew.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) };
     fetch("/api/service/update",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){
       if(d&&d.ok){ load(curId); } else { b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent=(d&&d.error)||"Save failed."; }
     }).catch(function(){ b.disabled=false; b.textContent="Save"; document.getElementById("svcmsg").textContent="Couldn't reach the server."; });
