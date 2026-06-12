@@ -1644,10 +1644,18 @@ async function getAssetFull(url, env, session) {
   // No QR auto-generation: an asset has no code until one is scanned/assigned or
   // generated on demand from the asset page.
 
-  const sr = await sbSelect(
+  // ticket_id ties a record back to the ticket it came from, so the history
+  // can show them as one job. Fall back without it until the migration runs.
+  let sr = await sbSelect(
     env,
-    `service_records?asset_id=eq.${id}&select=id,service_date,technician,notes,cost,service_type:service_types(name)&order=service_date.desc`
+    `service_records?asset_id=eq.${id}&select=id,service_date,technician,notes,cost,ticket_id,service_type:service_types(name)&order=service_date.desc`
   );
+  if (sr === null) {
+    sr = await sbSelect(
+      env,
+      `service_records?asset_id=eq.${id}&select=id,service_date,technician,notes,cost,service_type:service_types(name)&order=service_date.desc`
+    );
+  }
   const services = (sr || []).map((s) => ({
     id: s.id,
     date: s.service_date || "",
@@ -1655,6 +1663,7 @@ async function getAssetFull(url, env, session) {
     technician: s.technician || "",
     notes: s.notes || "",
     cost: s.cost != null ? s.cost : "",
+    ticketId: s.ticket_id || "",
   }));
 
   return json({

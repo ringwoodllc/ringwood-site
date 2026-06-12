@@ -599,8 +599,13 @@
     function paint(tickets){
       var tc=document.getElementById("tkCount"); if(tc){ tc.textContent=tickets.length; var chip=document.getElementById("stat_tk"); if(chip && !tickets.length) chip.classList.add("zero"); }
       var items=[];
-      tickets.forEach(function(t){ items.push({ kind:"ticket", id:t.id, title:t.title||"Ticket", date:t.created||"", meta:[t.ref].filter(Boolean), right:t.status||"" }); });
-      services.forEach(function(s){ items.push({ kind:"service", id:s.id, title:s.type||"Service", date:s.date||"", meta:[s.technician, s.notes].filter(Boolean), right:(s.cost!=null&&s.cost!=="")?money(s.cost):"" }); });
+      // A service call spawned from a ticket is the same job: fold it into the
+      // ticket's row instead of listing two issues.
+      var byTicket={};
+      services.forEach(function(s){ if(s.ticketId) (byTicket[s.ticketId]=byTicket[s.ticketId]||[]).push(s); });
+      var ticketIds={}; tickets.forEach(function(t){ ticketIds[t.id]=1; });
+      tickets.forEach(function(t){ items.push({ kind:"ticket", id:t.id, title:t.title||"Ticket", date:t.created||"", meta:[t.ref].filter(Boolean), right:t.status||"", svcs: byTicket[t.id]||[] }); });
+      services.forEach(function(s){ if(s.ticketId && ticketIds[s.ticketId]) return; items.push({ kind:"service", id:s.id, title:s.type||"Service", date:s.date||"", meta:[s.technician, s.notes].filter(Boolean), right:(s.cost!=null&&s.cost!=="")?money(s.cost):"", svcs:[] }); });
       items.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
       var el=document.getElementById("assetHistory"); if(!el) return;
       if(!items.length){ el.innerHTML="<div class='empty'>No tickets or service records yet.</div>"; return; }
@@ -609,8 +614,12 @@
         var tag = it.kind==="ticket" ? "<span class='htag t'>Ticket</span>" : "<span class='htag s'>Service</span>";
         var onclick = it.kind==="ticket" ? ("location.href='/status?id="+esc(it.id)+"'") : ("editService('"+esc(it.id)+"')");
         var meta = [d].concat(it.meta).filter(Boolean).map(esc).join(" · ");
+        var svcLines = (it.svcs||[]).map(function(sv){
+          var bits=[sv.date?new Date(sv.date+"T00:00:00").toLocaleDateString():"", sv.technician, (sv.cost!=null&&sv.cost!=="")?money(sv.cost):""].filter(Boolean).map(esc).join(" · ");
+          return "<div class='hmeta' style='cursor:pointer;color:var(--green-deep);font-weight:600' onclick=\"event.stopPropagation();editService('"+esc(sv.id)+"')\">🔧 Service call"+(bits?" · "+bits:"")+" ›</div>";
+        }).join("");
         return "<div class='hrow' onclick=\""+onclick+"\">"+
-          "<div class='hbd'>"+tag+"<span class='htitle'>"+esc(it.title)+"</span>"+(meta?"<div class='hmeta'>"+meta+"</div>":"")+"</div>"+
+          "<div class='hbd'>"+tag+"<span class='htitle'>"+esc(it.title)+"</span>"+(meta?"<div class='hmeta'>"+meta+"</div>":"")+svcLines+"</div>"+
           "<div class='hright'>"+(it.right?esc(it.right):"")+"<span class='hchev'>&rsaquo;</span></div>"+
         "</div>";
       }).join("");
