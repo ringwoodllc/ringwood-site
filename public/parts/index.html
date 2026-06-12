@@ -90,7 +90,7 @@
     fetch("/api/parts/list",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       var note=document.getElementById("note");
-      if(d.missing){ note.style.display="block"; note.textContent="The parts table isn't set up yet. Add it in Supabase (one-time), then this list fills in."; }
+      if(d.missing){ note.style.display="block"; note.textContent="Couldn't read the ticket_parts table. Run supabase/ticket_parts.sql in the SAME Supabase project as the app (zgxayeuipupdeydbpcul), then refresh."; }
       else note.style.display="none";
       ALL=d.parts||[]; render();
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });

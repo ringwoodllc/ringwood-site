@@ -5577,15 +5577,28 @@ async function suggestTicketParts(request, env, session) {
 async function listAllParts(url, env, session) {
   if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
   if (!sbReady(env)) return json({ ok: true, parts: [] });
-  const rows = await sbSelect(env, "ticket_parts?select=id,item,quantity,unit,status,est_cost,source,ticket:tickets(id,ref,title,status,client:clients(name))&order=created_at.desc");
+  // Join to tickets manually. The embedded ticket:tickets(...) form depends on
+  // PostgREST's schema cache knowing the FK, which is often stale right after
+  // the table is created — and that failure used to masquerade as "table not
+  // set up." A plain select only fails if the table truly doesn't exist.
+  const rows = await sbSelect(env, "ticket_parts?select=id,item,quantity,unit,status,est_cost,source,ticket_id&order=created_at.desc");
   if (rows === null) return noStore({ ok: true, parts: [], missing: true });
+  const ids = Array.from(new Set((rows || []).map((r) => r.ticket_id).filter(Boolean)));
+  const tmap = {};
+  if (ids.length) {
+    const trows = await sbSelect(env, `tickets?id=in.(${ids.join(",")})&select=id,ref,title,status,client:clients(name)`);
+    (trows || []).forEach((t) => { tmap[t.id] = t; });
+  }
   return noStore({
     ok: true,
-    parts: (rows || []).map((r) => ({
-      id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "",
-      ticketId: (r.ticket && r.ticket.id) || "", ref: (r.ticket && r.ticket.ref) || "", ticketTitle: (r.ticket && r.ticket.title) || "",
-      ticketStatus: (r.ticket && r.ticket.status) || "", client: (r.ticket && r.ticket.client && r.ticket.client.name) || "",
-    })),
+    parts: (rows || []).map((r) => {
+      const t = tmap[r.ticket_id] || {};
+      return {
+        id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "",
+        ticketId: t.id || "", ref: t.ref || "", ticketTitle: t.title || "",
+        ticketStatus: t.status || "", client: (t.client && t.client.name) || "",
+      };
+    }),
   });
 }
 
