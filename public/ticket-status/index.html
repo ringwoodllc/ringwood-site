@@ -327,7 +327,7 @@
   var STATUSES = ["Open","In Progress","Complete","Archived"];
   function statusTok(s){ return ({"Open":"open","Scheduled":"sched","In Progress":"prog","Complete":"done","Closed":"done","Archived":"arch"})[s] || "open"; }
 
-  function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(); }catch(e){ return ""; } }
 
   /* Read a chosen file, downscale it, and hand back base64 + content type. */
