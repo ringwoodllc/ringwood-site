@@ -94,6 +94,8 @@ export default {
     if (url.pathname === "/api/tickets/quote/delete" && request.method === "POST") return deleteTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/quote/accept" && request.method === "POST") return acceptTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/quote/select" && request.method === "POST") return selectTicketQuote(request, env, session);
+    if (url.pathname === "/api/tickets/pricing" && request.method === "GET") return getTicketPricing(url, env, session);
+    if (url.pathname === "/api/tickets/pricing/save" && request.method === "POST") return saveTicketPricing(request, env, session);
     if (url.pathname === "/api/tickets/part" && request.method === "POST") return saveTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
@@ -557,7 +559,8 @@ const SYNTH_DOMAIN = "@id.ringwood.ai";
 // ---- master-only: client setup ----
 async function adminListClients(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const rows = await sbSelect(env, "clients?select=id,name,status,address,color,primary_contact,email,phone,notes,auto_temps&order=name");
+  let rows = await sbSelect(env, "clients?select=id,name,status,address,color,primary_contact,email,phone,notes,auto_temps,markup_pct,service_fee&order=name");
+  if (rows === null) rows = await sbSelect(env, "clients?select=id,name,status,address,color,primary_contact,email,phone,notes,auto_temps&order=name");
   return noStore({
     ok: true,
     palette: CLIENT_PALETTE,
@@ -571,6 +574,8 @@ async function adminListClients(request, env) {
       email: c.email || "",
       phone: c.phone || "",
       notes: c.notes || "",
+      markupPct: c.markup_pct != null ? c.markup_pct : "",
+      serviceFee: c.service_fee != null ? c.service_fee : "",
       // RedBook Demo: when Active, this client's logs auto-fill on the NY
       // schedule. Off by default so real food-safety records are never written.
       demo: !!c.auto_temps,
@@ -746,9 +751,19 @@ async function adminSaveClient(request, env) {
     }
     patch.color = color || null;
   }
+  // Default pricing for this client's jobs. New columns, so degrade gracefully:
+  // if the migration hasn't run, retry the save without them.
+  const extra = {};
+  if ("markupPct" in body) { const n = Number(body.markupPct); extra.markup_pct = body.markupPct === "" || isNaN(n) ? null : n; }
+  if ("serviceFee" in body) { const n = Number(body.serviceFee); extra.service_fee = body.serviceFee === "" || isNaN(n) ? null : n; }
   let res;
-  if (id) res = await sbUpdate(env, "clients", id, patch);
-  else res = await sbInsert(env, "clients", Object.assign({ status: "Active" }, patch));
+  const full = Object.assign({}, patch, extra);
+  if (id) res = await sbUpdate(env, "clients", id, full);
+  else res = await sbInsert(env, "clients", Object.assign({ status: "Active" }, full));
+  if (!res.ok && Object.keys(extra).length) {
+    if (id) res = await sbUpdate(env, "clients", id, patch);
+    else res = await sbInsert(env, "clients", Object.assign({ status: "Active" }, patch));
+  }
   if (!res.ok) return json({ ok: false, error: "Could not save. The name may already be in use." }, 502);
   clearRefsCache();
   return json({ ok: true });
@@ -5710,6 +5725,52 @@ async function selectTicketQuote(request, env, session) {
     if (!res.ok) return json({ ok: false, error: "Couldn't clear." }, 502);
   }
   return json({ ok: true });
+}
+
+// Pricing for the money block: the ticket's own markup / service fee / charge,
+// plus the client's defaults so the ticket can fall back to them. Isolated from
+// updateTicket so the (newer) markup/fee columns can't break core ticket saves.
+async function getTicketPricing(url, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false }, 403);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: true });
+  let ticketCols = true;
+  let tr = await sbSelect(env, `tickets?id=eq.${id}&select=client_price,markup_pct,service_fee,client_id`);
+  if (tr === null) { ticketCols = false; tr = await sbSelect(env, `tickets?id=eq.${id}&select=client_price,client_id`); }
+  const trow = tr && tr[0];
+  let clientMarkup = null, clientFee = null;
+  if (trow && trow.client_id) {
+    const cr = await sbSelect(env, `clients?id=eq.${trow.client_id}&select=markup_pct,service_fee`);
+    const crow = cr && cr[0];
+    if (crow) { clientMarkup = crow.markup_pct != null ? crow.markup_pct : null; clientFee = crow.service_fee != null ? crow.service_fee : null; }
+  }
+  return noStore({
+    ok: true,
+    clientPrice: trow && trow.client_price != null ? trow.client_price : "",
+    markupPct: trow && trow.markup_pct != null ? trow.markup_pct : null,
+    serviceFee: trow && trow.service_fee != null ? trow.service_fee : null,
+    clientMarkupPct: clientMarkup,
+    clientServiceFee: clientFee,
+    missing: !ticketCols,
+  });
+}
+
+async function saveTicketPricing(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No ticket." }, 400);
+  const base = {};
+  if ("clientPrice" in body) { const n = Number(body.clientPrice); base.client_price = body.clientPrice === "" || isNaN(n) ? null : n; }
+  const extra = {};
+  if ("markupPct" in body) { const n = Number(body.markupPct); extra.markup_pct = body.markupPct === "" || isNaN(n) ? null : n; }
+  if ("serviceFee" in body) { const n = Number(body.serviceFee); extra.service_fee = body.serviceFee === "" || isNaN(n) ? null : n; }
+  let res = await sbUpdate(env, "tickets", id, Object.assign({}, base, extra));
+  let colsMissing = false;
+  if (!res.ok && Object.keys(extra).length) { colsMissing = true; res = await sbUpdate(env, "tickets", id, base); }
+  if (!res.ok) return json({ ok: false, error: "Couldn't save pricing." }, 502);
+  return json({ ok: true, colsMissing });
 }
 
 async function listTicketParts(url, env, session) {

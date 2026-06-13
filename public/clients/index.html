@@ -81,6 +81,10 @@
       <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
     </div>
     <div class="row2">
+      <div class="field"><label>Default markup <span style="font-weight:400;color:var(--muted)">— % on job cost</span></label><input id="n_markup" type="number" min="0" step="1" autocomplete="off" placeholder="e.g. 35" /></div>
+      <div class="field"><label>Default service fee <span style="font-weight:400;color:var(--muted)">— flat $</span></label><input id="n_fee" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 150" /></div>
+    </div>
+    <div class="row2">
       <div class="field" style="flex:0 0 auto"><label>Status</label><select id="n_status"><option>Active</option><option>Archived</option></select></div>
     </div>
     <div class="field"><label>Color <span style="font-weight:400;color:var(--muted)">— each color is used by one client</span></label><div id="n_sw"></div></div>
@@ -154,6 +158,9 @@
         "<div class='field'><label>Address</label><input id='ad_"+k+"' value='"+esc(c.address)+"'/></div>"+
         "<div class='row2'><div class='field'><label>Contact</label><input id='ct_"+k+"' value='"+esc(c.contact)+"'/></div>"+
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(c.phone)+"'/></div></div>"+
+        "<div class='row2'><div class='field'><label>Default markup (% on job cost)</label><input id='mk_"+k+"' type='number' min='0' step='1' value='"+esc(c.markupPct)+"' placeholder='e.g. 35'/></div>"+
+        "<div class='field'><label>Default service fee ($)</label><input id='fe_"+k+"' type='number' min='0' step='0.01' value='"+esc(c.serviceFee)+"' placeholder='e.g. 150'/></div></div>"+
+        "<div style='font-size:.82rem;color:var(--muted);margin:-4px 0 6px'>Defaults for this client's jobs: markup is one % on the whole job cost; the service fee is a flat add. You can override either on an individual ticket.</div>"+
         "<div class='row2'><div class='field' style='flex:0 0 auto'><label>Status</label>"+statusSel+"</div></div>"+
         "<div style='font-size:.82rem;color:var(--muted);margin:-4px 0 6px'>Archived hides this client and its tickets, assets, and service records from the admin, and blocks its logins.</div>"+
         "<div class='row2'><div class='field' style='flex:0 0 auto'><label>RedBook Demo</label>"+demoSel+"</div></div>"+
@@ -172,7 +179,7 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a client name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id,name:name,address:document.getElementById("ad_"+k).value,contact:document.getElementById("ct_"+k).value,phone:document.getElementById("ph_"+k).value,status:document.getElementById("st_"+k).value,demo:document.getElementById("dm_"+k).value==="1",color:document.getElementById("c"+k+"_color").value})})
+      fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:c.id,name:name,address:document.getElementById("ad_"+k).value,contact:document.getElementById("ct_"+k).value,phone:document.getElementById("ph_"+k).value,status:document.getElementById("st_"+k).value,demo:document.getElementById("dm_"+k).value==="1",color:document.getElementById("c"+k+"_color").value,markupPct:document.getElementById("mk_"+k).value,serviceFee:document.getElementById("fe_"+k).value})})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); }
           else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
@@ -194,9 +201,9 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a client name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name,address:document.getElementById("n_address").value,contact:document.getElementById("n_contact").value,phone:document.getElementById("n_phone").value,status:document.getElementById("n_status").value,color:document.getElementById("n_color").value})})
+    fetch("/api/admin/client",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:name,address:document.getElementById("n_address").value,contact:document.getElementById("n_contact").value,phone:document.getElementById("n_phone").value,status:document.getElementById("n_status").value,color:document.getElementById("n_color").value,markupPct:document.getElementById("n_markup").value,serviceFee:document.getElementById("n_fee").value})})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add client";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Client added."; ["n_name","n_address","n_contact","n_phone"].forEach(function(i){document.getElementById(i).value="";}); document.getElementById("n_status").value="Active"; load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Client added."; ["n_name","n_address","n_contact","n_phone","n_markup","n_fee"].forEach(function(i){document.getElementById(i).value="";}); document.getElementById("n_status").value="Active"; load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add client"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }

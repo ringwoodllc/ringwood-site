@@ -840,63 +840,96 @@
     });
     updateTkMeta();
     var partsT=document.getElementById("e_partsToggle");
-    if(partsT) partsT.addEventListener("click", function(e){ e.preventDefault(); var pf=document.getElementById("e_partsField"); var open=pf.style.display!=="none"; pf.style.display=open?"none":"block"; partsT.textContent=open?"Parts & materials ▾":"Parts & materials ▴"; });
+    if(partsT) partsT.addEventListener("click", function(e){ e.preventDefault(); var pf=document.getElementById("e_partsField"); var open=pf.style.display!=="none"; pf.style.display=open?"none":"block"; updateSectionTotals(); });
     // ---- Money model: job cost (labor + parts + accepted vendor quote) vs the
     // price we bill the client. The difference is the margin. ----
     var LABOR=[], ACCEPTED_AMT=0;
     function laborCost(){ return LABOR.reduce(function(a,l){ var h=Number(l.hours), r=Number(l.rate); return a+((isNaN(h)||isNaN(r))?0:h*r); },0); }
     function partsCost(){ return (typeof PARTS!=="undefined"?PARTS:[]).reduce(function(a,x){ if(x.covered) return a; var n=Number(x.estCost); return a+(isNaN(n)?0:n); },0); }
     function money(n){ return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
-    // A standing service / PM fee you bill even when the parts are warranty
-    // covered. The default is remembered per client in this browser, so the next
-    // job for the same customer starts from the same number.
-    function pmFeeDefault(){ var c=t.client||""; var v=null; try{ v=localStorage.getItem("rw_pmfee:"+c); if(v==null) v=localStorage.getItem("rw_pmfee:"); }catch(e){} var n=Number(v); return (v!=null&&!isNaN(n)&&n>0)?n:150; }
-    function setPmFeeDefault(n){ try{ localStorage.setItem("rw_pmfee:"+(t.client||""), String(n)); }catch(e){} }
-    // Markup is one percentage on the whole job cost (labor + parts + vendor).
-    // Remembered per client, like the fee. Charge = cost x (1 + markup).
-    function markupDefault(){ var c=t.client||""; var v=null; try{ v=localStorage.getItem("rw_markup:"+c); if(v==null) v=localStorage.getItem("rw_markup:"); }catch(e){} var n=Number(v); return (v!=null&&!isNaN(n)&&n>=0)?n:35; }
-    function setMarkupDefault(n){ try{ localStorage.setItem("rw_markup:"+(t.client||""), String(n)); }catch(e){} }
+    function amt0(n){ return "$"+Math.round(Number(n)||0).toLocaleString(); }
+    function jobCost(){ return laborCost()+partsCost()+ACCEPTED_AMT; }
+    // ---- Pricing: markup % and a flat service fee build the charge on top of
+    // the job cost. Defaults come from the client (set in client setup); either
+    // can be overridden on the ticket. Saved via the isolated /pricing route. ----
+    var MK_PCT=null, SVC_FEE=null, CLIENT_MK=null, CLIENT_FEE=null, MONEY_OPEN=false, PRICING_LOADED=false, PRICING_COLS_MISSING=false, LAST_CHARGE=null;
+    function markupVal(){ if(MK_PCT!=null&&MK_PCT!=="") return Number(MK_PCT); if(CLIENT_MK!=null&&CLIENT_MK!=="") return Number(CLIENT_MK); return 0; }
+    function feeAmount(){ if(SVC_FEE!=null&&SVC_FEE!==""&&Number(SVC_FEE)>0) return Number(SVC_FEE); if(CLIENT_FEE!=null&&CLIENT_FEE!=="") return Number(CLIENT_FEE); return 150; }
+    function feeOn(){ if(SVC_FEE!=null&&SVC_FEE!=="") return Number(SVC_FEE)>0; return (CLIENT_FEE!=null&&CLIENT_FEE!=="")?Number(CLIENT_FEE)>0:false; }
+    function appliedFee(){ return feeOn()?feeAmount():0; }
+    function currentTotal(){ var c=jobCost(); var mAmt=Math.round(c*markupVal()/100*100)/100; return Math.round((c+mAmt+appliedFee())*100)/100; }
+    function loadPricing(){
+      fetch("/api/tickets/pricing?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+        if(d&&d.ok){
+          MK_PCT=(d.markupPct!=null)?d.markupPct:null;
+          SVC_FEE=(d.serviceFee!=null)?d.serviceFee:null;
+          CLIENT_MK=(d.clientMarkupPct!=null)?d.clientMarkupPct:null;
+          CLIENT_FEE=(d.clientServiceFee!=null)?d.clientServiceFee:null;
+          PRICING_COLS_MISSING=!!d.missing;
+          if(d.clientPrice!==""&&d.clientPrice!=null){ t.clientPrice=d.clientPrice; LAST_CHARGE=Number(d.clientPrice); }
+        }
+        PRICING_LOADED=true; renderMoney();
+      }).catch(function(){ PRICING_LOADED=true; renderMoney(); });
+    }
+    function savePricing(extra, silent){
+      fetch("/api/tickets/pricing/save",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(Object.assign({id:t.id},extra))})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ if(!silent) flashSaved(); if(d.colsMissing) PRICING_COLS_MISSING=true; } }).catch(function(){});
+    }
+    // The charge follows the formula. Persist it quietly whenever it shifts (cost,
+    // markup or fee changed) so the list and any invoice carry the real number.
+    function persistCharge(){ if(!PRICING_LOADED) return; var tot=currentTotal(); t.clientPrice=tot; if(tot!==LAST_CHARGE){ LAST_CHARGE=tot; savePricing({ clientPrice: tot }, true); } }
     function renderMoney(){
       var el=document.getElementById("e_money"); if(!el) return;
-      var cost=laborCost()+partsCost()+ACCEPTED_AMT;
-      var priceVal = (t.clientPrice!==""&&t.clientPrice!=null) ? t.clientPrice : "";
-      var charge = (priceVal!=="") ? Number(priceVal) : null;
-      var margin = (charge!=null) ? (charge-cost) : null;
-      var marginPct = (charge!=null&&charge>0) ? Math.round((margin/charge)*100) : null;
-      var mk=markupDefault();
-      var suggest = Math.round(cost*(1+mk/100)*100)/100;
+      var cost=jobCost();
+      var mk=markupVal();
+      var markupAmt=Math.round(cost*mk/100*100)/100;
+      var fee=appliedFee();
+      var total=Math.round((cost+markupAmt+fee)*100)/100;
+      t.clientPrice=total;
+      var margin=total-cost;
+      var marginPct= total>0?Math.round(margin/total*100):0;
+      var open=MONEY_OPEN;
       el.innerHTML =
         "<div style='border-top:1px solid var(--line);margin-top:6px;padding-top:10px'>"+
-          "<div style='display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)'><span>Job cost</span><span>"+money(cost)+"</span></div>"+
-          "<div style='font-size:.74rem;color:var(--muted);margin:2px 0 8px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
-          "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px'>"+
-            "<label style='font-size:.84rem;color:var(--muted)'>Markup</label>"+
-            "<span style='display:flex;align-items:center;gap:2px'><input id='e_markup' type='number' min='0' step='1' value='"+esc(mk)+"' style='width:58px;text-align:right' />%</span>"+
-            "<span style='font-size:.82rem;color:var(--muted)'>→ "+money(suggest)+"</span>"+
-            "<button type='button' class='qbtn' id='e_markupApply'>Apply</button>"+
+          "<a href='#' id='e_jobToggle' style='display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--green-deep);font-weight:600'><span>Job cost "+(open?"▴":"▾")+"</span><span>"+amt0(cost)+"</span></a>"+
+          "<div id='e_jobBody' style='display:"+(open?"block":"none")+";margin-top:8px'>"+
+            "<div style='font-size:.74rem;color:var(--muted);margin:0 0 10px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px'>"+
+              "<span style='display:flex;align-items:center;gap:6px'><label style='font-size:.92rem'>Markup</label><span style='display:flex;align-items:center;gap:2px'><input id='e_markup' type='number' min='0' step='1' value='"+esc(mk)+"' style='width:54px;text-align:right' />%</span></span>"+
+              "<span style='font-weight:600;color:var(--green-deep)'>+ "+money(markupAmt)+"</span>"+
+            "</div>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px'>"+
+              "<label class='chk' style='display:flex;align-items:center;gap:7px;font-weight:400;font-size:.92rem;margin:0'><input type='checkbox' id='e_feeOn' "+(feeOn()?"checked":"")+" /> Service fee <a href='#' id='e_feeEdit' style='font-size:.8rem;color:var(--muted);border-bottom:1px solid var(--line)'>("+amt0(feeAmount())+")</a></label>"+
+              "<span style='font-weight:600;color:"+(fee?"var(--green-deep)":"var(--muted)")+"'>"+(fee?("+ "+money(fee)):"—")+"</span>"+
+            "</div>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:700'><span>Total</span><span>"+money(total)+"</span></div>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:8px;padding:8px 11px;border-radius:7px;background:"+(margin<0?"#f6e2d8":"#dff0e2")+";color:"+(margin<0?"#8a3d1c":"#1f5130")+"'><span>Margin</span><span>"+money(margin)+" · "+marginPct+"%</span></div>"+
+            "<div style='font-size:.78rem;color:var(--muted);margin-top:8px'>Default markup and fee come from <a href='/clients' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>client setup</a>. Changes here apply to this ticket."+(PRICING_COLS_MISSING?" <b style='color:#8a3d1c'>Run supabase/client_pricing.sql once to save overrides.</b>":"")+"</div>"+
           "</div>"+
-          "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px'><label style='font-weight:600'>Charge client</label>"+
-            "<span style='display:flex;align-items:center;gap:4px'>$<input id='e_clientPrice' type='number' step='0.01' value='"+esc(priceVal)+"' placeholder='"+(cost?cost.toFixed(2):"0.00")+"' style='width:120px;text-align:right' /></span></div>"+
-          "<div style='display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap'>"+
-            "<button type='button' class='qbtn rev' id='e_pmFee'>+ Add "+money(pmFeeDefault())+" service fee</button>"+
-            "<a href='#' id='e_pmFeeEdit' style='font-size:.8rem;color:var(--muted);border-bottom:1px solid var(--line)'>change fee</a>"+
-          "</div>"+
-          (margin!=null ? "<div style='display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:10px;padding:8px 11px;border-radius:7px;background:"+(margin<0?"#f6e2d8":"#dff0e2")+";color:"+(margin<0?"#8a3d1c":"#1f5130")+"'><span>Margin</span><span>"+money(margin)+(marginPct!=null?(" · "+marginPct+"%"):"")+"</span></div>" : "")+
         "</div>";
-      var cp=document.getElementById("e_clientPrice");
-      if(cp) cp.addEventListener("change", function(){ t.clientPrice=cp.value; autoSaveTicket({ clientPrice: cp.value }); renderMoney(); });
-      // Markup: typing a new % updates the suggestion (and remembers it for this
-      // client); Apply writes the marked-up number into the charge.
+      var jt=document.getElementById("e_jobToggle");
+      if(jt) jt.addEventListener("click", function(e){ e.preventDefault(); MONEY_OPEN=!MONEY_OPEN; renderMoney(); });
       var mkIn=document.getElementById("e_markup");
-      if(mkIn) mkIn.addEventListener("change", function(){ var n=Number(mkIn.value); if(isNaN(n)||n<0) n=0; setMarkupDefault(n); renderMoney(); });
-      var mkApply=document.getElementById("e_markupApply");
-      if(mkApply) mkApply.addEventListener("click", function(){ var n=Number((document.getElementById("e_markup")||{}).value); if(isNaN(n)||n<0) n=0; setMarkupDefault(n); var nv=Math.round(cost*(1+n/100)*100)/100; t.clientPrice=nv; autoSaveTicket({ clientPrice: nv }); renderMoney(); });
-      // One tap adds the service / PM fee onto whatever's already charged. On a
-      // warranty call the parts are $0, so this is the whole charge.
-      var pmBtn=document.getElementById("e_pmFee");
-      if(pmBtn) pmBtn.addEventListener("click", function(){ var fee=pmFeeDefault(); var cur=Number(t.clientPrice); if(isNaN(cur)) cur=0; var nv=Math.round((cur+fee)*100)/100; t.clientPrice=nv; autoSaveTicket({ clientPrice: nv }); renderMoney(); });
-      var pmEdit=document.getElementById("e_pmFeeEdit");
-      if(pmEdit) pmEdit.addEventListener("click", function(e){ e.preventDefault(); var cur=pmFeeDefault(); var v=prompt("Default service / PM fee for "+(t.client||"this client")+":", cur); if(v==null) return; var n=Number(v); if(isNaN(n)||n<0){ return; } setPmFeeDefault(n); renderMoney(); });
+      if(mkIn) mkIn.addEventListener("change", function(){ var n=Number(mkIn.value); if(isNaN(n)||n<0) n=0; MK_PCT=n; var tot=currentTotal(); LAST_CHARGE=tot; t.clientPrice=tot; savePricing({ markupPct:n, clientPrice:tot }); renderMoney(); });
+      var feeOnEl=document.getElementById("e_feeOn");
+      if(feeOnEl) feeOnEl.addEventListener("change", function(){ SVC_FEE = feeOnEl.checked ? feeAmount() : 0; var tot=currentTotal(); LAST_CHARGE=tot; t.clientPrice=tot; savePricing({ serviceFee:SVC_FEE, clientPrice:tot }); renderMoney(); });
+      var feeEdit=document.getElementById("e_feeEdit");
+      if(feeEdit) feeEdit.addEventListener("click", function(e){ e.preventDefault(); var v=prompt("Service fee for this ticket ($):", feeAmount()); if(v==null) return; var n=Number(v); if(isNaN(n)||n<0) return; SVC_FEE=n; var tot=currentTotal(); LAST_CHARGE=tot; t.clientPrice=tot; savePricing({ serviceFee:n, clientPrice:tot }); renderMoney(); });
+      updateSectionTotals();
+      persistCharge();
+    }
+    // Show each service section's running total on its collapsed header, so you
+    // see Parts / Labor / Quotes amounts without opening them.
+    function setSecLabel(toggleId, fieldId, base, amount){
+      var tg=document.getElementById(toggleId), f=document.getElementById(fieldId);
+      if(!tg) return;
+      var open = f && f.style.display!=="none";
+      tg.textContent = base + (amount? (" · "+amt0(amount)) : "") + " " + (open?"▴":"▾");
+    }
+    function updateSectionTotals(){
+      setSecLabel("e_partsToggle","e_partsField","Parts & materials", partsCost());
+      setSecLabel("e_laborToggle","e_laborField","Labor", laborCost());
+      setSecLabel("e_quotesToggle","e_quotesField","Quotes", ACCEPTED_AMT);
     }
     // ---- Labor lines: person (rate auto-fills from the directory) x hours. ----
     function loadLabor(){
@@ -962,8 +995,11 @@
       }); });
     }
     var laborT=document.getElementById("e_laborToggle");
-    if(laborT) laborT.addEventListener("click", function(e){ e.preventDefault(); var lf=document.getElementById("e_laborField"); var open=lf.style.display!=="none"; lf.style.display=open?"none":"block"; laborT.textContent=open?"Labor ▾":"Labor ▴"; if(!open) loadLabor(); });
-    try{ loadLabor(); renderMoney(); }catch(_le){ if(window.console) console.error("labor/money:",_le); }
+    if(laborT) laborT.addEventListener("click", function(e){ e.preventDefault(); var lf=document.getElementById("e_laborField"); var open=lf.style.display!=="none"; lf.style.display=open?"none":"block"; updateSectionTotals(); if(!open) loadLabor(); });
+    try{ loadLabor(); loadPricing(); renderMoney(); }catch(_le){ if(window.console) console.error("labor/money:",_le); }
+    // Load quotes once on open (even while collapsed) so the Quotes header shows
+    // its selected amount and the job cost includes the chosen vendor.
+    try{ loadQuotes(); }catch(_qe2){}
     // Equipment at hand: pull the asset's vitals onto the ticket so a dispatch
     // call (serial, coverage, who to call first) never needs the Assets page.
     (function(){
@@ -1135,7 +1171,7 @@
     if(quotesT) quotesT.addEventListener("click", function(e){
       e.preventDefault();
       var qf=document.getElementById("e_quotesField"); var open=qf.style.display!=="none";
-      qf.style.display=open?"none":"block"; quotesT.textContent=open?"Quotes ▾":"Quotes ▴";
+      qf.style.display=open?"none":"block"; updateSectionTotals();
       if(!open){ loadQuotes();
         var dl=document.getElementById("qvendlist");
         if(dl && !dl.children.length) dl.innerHTML=outsideVendors().map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
