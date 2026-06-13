@@ -111,7 +111,7 @@
       decodeQRFromImage(file).then(function(val){
         m.textContent="Looking up the asset…";
         fetch("/api/asset/resolve?code="+encodeURIComponent(val)).then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ m.textContent=""; location.href="/service?asset="+encodeURIComponent(d.id); }
+          if(d&&d.ok){ m.textContent=""; location.href="/a/?id="+encodeURIComponent(d.id); }
           else { m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"No asset matches that code."; }
         }).catch(function(){ m.style.color="#8a3d1c"; m.textContent="Couldn't reach the server."; });
       }).catch(function(err){ m.style.color="#8a3d1c"; m.textContent=(err&&err.message)||"Couldn't read a QR code. Try a flat, close shot."; });
