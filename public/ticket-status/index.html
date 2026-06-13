@@ -838,8 +838,13 @@
     // price we bill the client. The difference is the margin. ----
     var LABOR=[], ACCEPTED_AMT=0;
     function laborCost(){ return LABOR.reduce(function(a,l){ var h=Number(l.hours), r=Number(l.rate); return a+((isNaN(h)||isNaN(r))?0:h*r); },0); }
-    function partsCost(){ return (typeof PARTS!=="undefined"?PARTS:[]).reduce(function(a,x){ var n=Number(x.estCost); return a+(isNaN(n)?0:n); },0); }
+    function partsCost(){ return (typeof PARTS!=="undefined"?PARTS:[]).reduce(function(a,x){ if(x.covered) return a; var n=Number(x.estCost); return a+(isNaN(n)?0:n); },0); }
     function money(n){ return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+    // A standing service / PM fee you bill even when the parts are warranty
+    // covered. The default is remembered per client in this browser, so the next
+    // job for the same customer starts from the same number.
+    function pmFeeDefault(){ var c=t.client||""; var v=null; try{ v=localStorage.getItem("rw_pmfee:"+c); if(v==null) v=localStorage.getItem("rw_pmfee:"); }catch(e){} var n=Number(v); return (v!=null&&!isNaN(n)&&n>0)?n:150; }
+    function setPmFeeDefault(n){ try{ localStorage.setItem("rw_pmfee:"+(t.client||""), String(n)); }catch(e){} }
     function renderMoney(){
       var el=document.getElementById("e_money"); if(!el) return;
       var cost=laborCost()+partsCost()+ACCEPTED_AMT;
@@ -851,10 +856,20 @@
           "<div style='font-size:.74rem;color:var(--muted);margin:2px 0 8px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
           "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px'><label style='font-weight:600'>Charge client</label>"+
             "<span style='display:flex;align-items:center;gap:4px'>$<input id='e_clientPrice' type='number' step='0.01' value='"+esc(priceVal)+"' placeholder='"+(cost?cost.toFixed(2):"0.00")+"' style='width:120px;text-align:right' /></span></div>"+
+          "<div style='display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap'>"+
+            "<button type='button' class='qbtn rev' id='e_pmFee'>+ Add "+money(pmFeeDefault())+" service fee</button>"+
+            "<a href='#' id='e_pmFeeEdit' style='font-size:.8rem;color:var(--muted);border-bottom:1px solid var(--line)'>change fee</a>"+
+          "</div>"+
           (margin!=null ? "<div style='display:flex;justify-content:space-between;font-weight:700;margin-top:8px;color:"+(margin<0?"#8a3d1c":"var(--green-deep)")+"'><span>Margin</span><span>"+money(margin)+"</span></div>" : "")+
         "</div>";
       var cp=document.getElementById("e_clientPrice");
       if(cp) cp.addEventListener("change", function(){ t.clientPrice=cp.value; autoSaveTicket({ clientPrice: cp.value }); renderMoney(); });
+      // One tap adds the service / PM fee onto whatever's already charged. On a
+      // warranty call the parts are $0, so this is the whole charge.
+      var pmBtn=document.getElementById("e_pmFee");
+      if(pmBtn) pmBtn.addEventListener("click", function(){ var fee=pmFeeDefault(); var cur=Number(t.clientPrice); if(isNaN(cur)) cur=0; var nv=Math.round((cur+fee)*100)/100; t.clientPrice=nv; autoSaveTicket({ clientPrice: nv }); renderMoney(); });
+      var pmEdit=document.getElementById("e_pmFeeEdit");
+      if(pmEdit) pmEdit.addEventListener("click", function(e){ e.preventDefault(); var cur=pmFeeDefault(); var v=prompt("Default service / PM fee for "+(t.client||"this client")+":", cur); if(v==null) return; var n=Number(v); if(isNaN(n)||n<0){ return; } setPmFeeDefault(n); renderMoney(); });
     }
     // ---- Labor lines: person (rate auto-fills from the directory) x hours. ----
     function loadLabor(){
@@ -1009,6 +1024,9 @@
         if(line){ var qid=line.getAttribute("data-id"); Q_OPEN[qid]=!Q_OPEN[qid]; paintQuotes(); return; }
       });
       box.addEventListener("change", function(e){
+        var cov=e.target.closest ? e.target.closest(".qcov") : null;
+        if(cov){ fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:cov.getAttribute("data-id"), covered:cov.checked })})
+            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ flashSaved(); loadQuotes(); } else { alert((d2&&d2.error)||"Couldn't update. Run supabase/warranty_covered.sql once."); loadQuotes(); } }).catch(function(){}); return; }
         var inp=e.target.closest ? e.target.closest(".qedit") : null; if(!inp) return;
         var payload={ id:inp.getAttribute("data-id") }; payload[inp.getAttribute("data-k")]=inp.value;
         fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
@@ -1027,7 +1045,8 @@
         if(!d||!d.ok){ el.innerHTML=""; return; }
         if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Run supabase/ticket_quotes.sql once, then quotes save here.</div>"; return; }
         var acc=(d.quotes||[]).filter(function(q){return q.status==="Accepted";})[0];
-        ACCEPTED_AMT = acc && acc.amount!==""&&acc.amount!=null ? Number(acc.amount) : 0; if(typeof renderMoney==="function") renderMoney();
+        // A warranty-covered accepted quote costs us nothing (the vendor/maker pays).
+        ACCEPTED_AMT = (acc && !acc.covered && acc.amount!==""&&acc.amount!=null) ? Number(acc.amount) : 0; if(typeof renderMoney==="function") renderMoney();
         if(!d.quotes.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No quotes yet. Add each vendor you price below.</div>"; return; }
         // One numbered line per quote ("1. Florez Landscaping & Tr… $5,000 ▾"),
         // expanding into editable fields, photos, and the quote's own dialog —
@@ -1037,9 +1056,10 @@
           var amt = (q.amount!==""&&q.amount!=null) ? ("$"+Number(q.amount).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})) : "—";
           var chip = q.status==="Accepted" ? "<span style='background:#cfe3d2;color:#1f5130;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700'>ACCEPTED</span>"
                    : q.status==="Declined" ? "<span style='background:var(--line);color:var(--muted);border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700'>DECLINED</span>" : "";
+          var wchip = q.covered ? "<span style='background:#e7eef7;color:#2c4866;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700'>WARRANTY</span>" : "";
           var head = "<div class='qline' data-id='"+esc(q.id)+"'>"+
-            "<span class='qname'"+(q.status==="Declined"?" style='opacity:.55'":"")+">"+(ix+1)+". "+esc(q.vendor)+"</span>"+chip+
-            "<span class='qamt'>"+amt+"</span><span style='color:var(--muted)'>"+(open?"▴":"▾")+"</span></div>";
+            "<span class='qname'"+(q.status==="Declined"?" style='opacity:.55'":"")+">"+(ix+1)+". "+esc(q.vendor)+"</span>"+chip+wchip+
+            "<span class='qamt'>"+(q.covered?"<s style='color:var(--muted)'>"+amt+"</s>":amt)+"</span><span style='color:var(--muted)'>"+(open?"▴":"▾")+"</span></div>";
           if(!open) return "<div class='qrow'>"+head+"</div>";
           var thumbs = (q.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='quote photo' style='width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
           var cmts = (q.comments||[]).map(function(cm){ return "<div class='qcmt'><b>"+esc(cm.by||"Ringwood")+"</b> "+esc(cm.text||"")+"</div>"; }).join("");
@@ -1055,6 +1075,7 @@
               "<input class='qcin' data-id='"+esc(q.id)+"' placeholder='Add to the conversation (called back, countered at…)' style='flex:1' />"+
               "<button type='button' class='qbtn qcadd' data-id='"+esc(q.id)+"'>Add</button>"+
             "</div>"+
+            "<label class='chk' style='font-weight:400;font-size:.84rem;display:flex;align-items:center;gap:6px;margin:10px 0 0'><input type='checkbox' class='qcov' data-id='"+esc(q.id)+"'"+(q.covered?" checked":"")+" /> Covered by warranty (no cost to us)</label>"+
             "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px'>"+
               (q.status==="Pending"?"<button type='button' class='qbtn rev qaccept' data-id='"+esc(q.id)+"'>Accept</button>":"")+
               "<button type='button' class='qbtn qattach' data-id='"+esc(q.id)+"'>📎 Attach</button>"+
@@ -1406,18 +1427,24 @@
           }
           var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
           var thumbs=(p.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='invoice photo' style='width:38px;height:38px;object-fit:cover;border-radius:5px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
+          var wbadge = p.covered ? " <span style='background:#e7eef7;color:#2c4866;border-radius:999px;padding:1px 7px;font-size:.64rem;font-weight:700;vertical-align:middle'>WARRANTY</span>" : "";
+          var costBit = (p.estCost!=null&&p.estCost!=="")
+            ? (p.covered ? " <span class='psrc'>· covered</span>" : " <span class='psrc'>· ~$"+esc(Number(p.estCost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}))+"</span>")
+            : "";
           return "<div class='prow' data-id='"+esc(p.id)+"'>"+
-            "<div class='pmain' data-act='edit' title='Tap to edit' style='cursor:pointer'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+
-              ((p.estCost!=null&&p.estCost!=="")?" <span class='psrc'>· ~$"+esc(Number(p.estCost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}))+"</span>":"")+
+            "<div class='pmain' data-act='edit' title='Tap to edit' style='cursor:pointer'><span class='pqty'>"+esc(q)+"</span> "+esc(p.item)+wbadge+
+              costBit+
               (p.source?" <span class='psrc'>· "+esc(p.source)+"</span>":"")+
               (thumbs?"<div style='display:flex;gap:5px;flex-wrap:wrap;margin-top:5px'>"+thumbs+"</div>":"")+"</div>"+
             "<div class='pctrl'><button type='button' class='pstat "+esc((p.status||'Needed').toLowerCase())+"' data-act='cycle'>"+esc(p.status||"Needed")+"</button>"+
+              "<button type='button' class='icobtn' data-act='warranty' title='"+(p.covered?"Covered by warranty (no cost) — tap to clear":"Mark covered by warranty (no cost)")+"'"+(p.covered?" style='background:#e7eef7;border-color:#2c4866'":"")+">🛡</button>"+
               "<button type='button' class='icobtn' data-act='photo' title='Attach an invoice or receipt'>📎</button>"+
               "<button type='button' class='icobtn' data-act='del' title='Remove'>×</button></div>"+
           "</div>";
         }).join("");
-        // Estimated total across every part (est_cost is always the line total).
-        var pTotal = PARTS.reduce(function(a,x){ var n=Number(x.estCost); return a+(isNaN(n)?0:n); },0);
+        // Estimated total across every part you actually pay for (warranty-covered
+        // lines are $0 to us, so they don't count toward the job cost).
+        var pTotal = PARTS.reduce(function(a,x){ if(x.covered) return a; var n=Number(x.estCost); return a+(isNaN(n)?0:n); },0);
         partsEl.innerHTML =
           (rows || "<div style='color:var(--muted);font-size:.9rem;margin-bottom:6px'>None added yet.</div>") +
           (pTotal ? "<div style='text-align:right;font-size:.88rem;font-weight:700;color:var(--green-deep);padding:7px 2px'>Est. total: $"+pTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+"</div>" : "") +
@@ -1476,6 +1503,10 @@
           EDIT_PART_ID=null;
           fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
             .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); else { alert((d&&d.error)||"Couldn\u0027t save."); loadParts(); } }).catch(function(){ loadParts(); });
+          return;
+        }
+        if(act==="warranty"){
+          fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id,covered:!p.covered})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); else alert((d&&d.error)||"Couldn't update. Run supabase/warranty_covered.sql once."); }).catch(function(){});
           return;
         }
         if(act==="cycle"){

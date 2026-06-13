@@ -5575,11 +5575,12 @@ async function listTicketQuotes(url, env, session) {
   if (!id || !sbReady(env)) return json({ ok: true, quotes: [] });
   // Newest schema first, then older shapes, so the page keeps working while
   // migrations catch up. Timestamps on dialog entries are stored but not shown.
-  let rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,comments,created_at&order=created_at.asc`);
+  let rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,comments,warranty_covered,created_at&order=created_at.asc`);
+  if (rows === null) rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,comments,created_at&order=created_at.asc`);
   if (rows === null) rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,photo_urls,created_at&order=created_at.asc`);
   if (rows === null) rows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=id,vendor,amount,notes,status,created_at&order=created_at.asc`);
   if (rows === null) return noStore({ ok: true, quotes: [], missing: true });
-  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending", photos: q.photo_urls || [], comments: Array.isArray(q.comments) ? q.comments.map((c) => ({ by: c.by || "", text: c.text || "" })) : [] })) });
+  return noStore({ ok: true, quotes: (rows || []).map((q) => ({ id: q.id, vendor: q.vendor || "", amount: q.amount != null ? q.amount : "", notes: q.notes || "", status: q.status || "Pending", covered: !!q.warranty_covered, photos: q.photo_urls || [], comments: Array.isArray(q.comments) ? q.comments.map((c) => ({ by: c.by || "", text: c.text || "" })) : [] })) });
 }
 
 async function saveTicketQuote(request, env, session) {
@@ -5599,6 +5600,7 @@ async function saveTicketQuote(request, env, session) {
     if (c(body.vendor)) patch.vendor = c(body.vendor);
     if ("notes" in body) patch.notes = c(body.notes) || null;
     if ("amount" in body) { const n = Number(body.amount); patch.amount = body.amount === "" || isNaN(n) ? null : n; }
+    if ("covered" in body) patch.warranty_covered = !!body.covered;
     const adds = Array.isArray(body.addPhotos) ? body.addPhotos : [];
     if (adds.length) {
       const urls = (row0.photo_urls || []).slice();
@@ -5685,13 +5687,14 @@ async function listTicketParts(url, env, session) {
   if (!session || session.role !== "master") return json([]);
   const id = url.searchParams.get("id") || "";
   if (!id || !sbReady(env)) return json([]);
-  let rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,photo_urls,created_at&order=created_at.asc`);
+  let rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,photo_urls,warranty_covered,created_at&order=created_at.asc`);
+  if (rows === null) rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,photo_urls,created_at&order=created_at.asc`);
   if (rows === null) rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,created_at&order=created_at.asc`);
   // Table not added yet: say so explicitly (like labor and quotes do) so the
   // page can prompt to run the migration instead of showing a silent empty box
   // that also can't save.
   if (rows === null) return noStore({ missing: true, parts: [] });
-  return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "", photos: r.photo_urls || [] })));
+  return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "", photos: r.photo_urls || [], covered: !!r.warranty_covered })));
 }
 
 // Labor lines on a ticket: internal Ringwood hours, costed at the person's
@@ -5755,6 +5758,7 @@ async function saveTicketPart(request, env, session) {
   if ("quantity" in body) { const q = Number(body.quantity); patch.quantity = isNaN(q) || q < 0 ? 1 : q; }
   if ("status" in body) { const s = c(body.status); patch.status = PART_STATUSES.indexOf(s) >= 0 ? s : "Needed"; }
   if ("estCost" in body) { const ec = Number(body.estCost); patch.est_cost = isNaN(ec) ? null : ec; }
+  if ("covered" in body) patch.warranty_covered = !!body.covered;
   let res;
   if (id) {
     // A photographed invoice attaches to the part for future pricing.
