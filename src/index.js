@@ -176,6 +176,9 @@ export default {
     if (url.pathname === "/api/google/callback" && request.method === "GET") return googleCallback(request, env);
     if (url.pathname === "/api/google/disconnect" && request.method === "POST") return googleDisconnect(request, env);
     if (url.pathname === "/api/gmail/draft" && request.method === "POST") return gmailCreateDraft(request, env);
+    if (url.pathname === "/api/employees" && request.method === "GET") return listEmployees(url, env, session);
+    if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
+    if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -745,6 +748,63 @@ async function deleteVendor(request, env) {
   const id = (body.id || "").toString().trim();
   if (!id) return json({ ok: false, error: "No vendor id." }, 400);
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/vendors?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+/* ===================== Employees (food-service crew) ===================== */
+// The roster behind the schedule and payroll tools. Admin-only, per client.
+async function listEmployees(url, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  const clientId = url.searchParams.get("clientId") || "";
+  if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
+  const rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
+  if (rows === null) return noStore({ ok: true, employees: [], missing: true });
+  return noStore({
+    ok: true,
+    employees: (rows || []).map((e) => ({
+      id: e.id, name: e.name || "", phone: e.phone || "", posKey: e.pos_key || "", payrollName: e.payroll_name || "",
+      role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
+    })),
+  });
+}
+
+async function saveEmployee(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const id = c(body.id);
+  const patch = {};
+  if ("name" in body) patch.name = c(body.name);
+  if ("phone" in body) patch.phone = c(body.phone) || null;
+  if ("posKey" in body) patch.pos_key = c(body.posKey) || null;
+  if ("payrollName" in body) patch.payroll_name = c(body.payrollName) || null;
+  if ("role" in body) patch.role = c(body.role) || null;
+  if ("crewNo" in body) patch.crew_no = c(body.crewNo) || null;
+  if ("rate" in body) { const n = Number(body.rate); patch.rate = body.rate === "" || isNaN(n) ? null : n; }
+  if ("otRate" in body) { const n = Number(body.otRate); patch.ot_rate = body.otRate === "" || isNaN(n) ? null : n; }
+  if ("active" in body) patch.active = body.active !== false;
+  let res;
+  if (id) {
+    res = await sbUpdate(env, "employees", id, patch);
+  } else {
+    const clientId = c(body.clientId);
+    if (!clientId) return json({ ok: false, error: "Pick a client." }, 400);
+    if (!patch.name) return json({ ok: false, error: "Enter a name." }, 400);
+    res = await sbInsert(env, "employees", Object.assign({ client_id: clientId, active: true }, patch));
+  }
+  if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "Run supabase/employees.sql once.")).slice(0, 200) }, 502);
+  return json({ ok: true });
+}
+
+async function deleteEmployee(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/employees?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
 }

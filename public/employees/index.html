@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<title>Ringwood · Employee setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh;padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  .wrap{max-width:680px;margin:0 auto;padding:0 22px calc(56px + env(safe-area-inset-bottom))}
+  header{padding:22px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  .intro{margin:14px 0 18px}
+  .eyebrow{font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(1.9rem,7vw,2.5rem);color:var(--green-deep);line-height:1.1}
+  .lead{color:var(--muted);font-size:1rem;margin:8px 0 0}
+  h2{font-family:"Spectral",serif;font-weight:500;font-size:1.2rem;color:var(--green-deep);margin:22px 0 10px}
+  label{display:block;font-weight:600;font-size:.84rem;color:var(--green-deep);margin-bottom:5px}
+  .field{margin-bottom:12px}
+  input,select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  input:focus,select:focus{outline:none;border-color:var(--green)}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px}
+  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.96rem;padding:12px 16px;border-radius:6px}
+  .btn:hover{background:var(--green-deep)}
+  .btn.sm{padding:8px 13px;font-size:.86rem;border-radius:999px}
+  .btn:disabled{opacity:.6;cursor:default}
+  .row2{display:flex;gap:10px;flex-wrap:wrap}.row2 .field{flex:1;min-width:130px}
+  .citem{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden}
+  .csum{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;padding:13px 15px}
+  .csum:hover{background:rgba(33,68,58,.04)}
+  .nm{font-weight:600;color:var(--green-deep)}
+  .cs{color:var(--muted);font-size:.84rem;margin-top:2px}
+  .key{font-family:ui-monospace,monospace;background:#e3efe7;color:var(--green-deep);border-radius:5px;padding:2px 8px;font-size:.82rem;font-weight:700}
+  .caret{color:var(--muted);font-size:1.1rem;transition:transform .15s}
+  .citem.open .caret{transform:rotate(90deg)}
+  .cbody{padding:14px 15px 16px;border-top:1px solid var(--line);display:none}
+  .msg{font-size:.86rem;margin-top:8px;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
+  .empty{color:var(--muted)}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/admin">Admin</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro">
+    <div class="eyebrow">Food service · Admin</div>
+    <h1>Employee setup</h1>
+    <div class="lead">The crew roster behind the schedule and payroll tools: name, phone, POS login key, payroll name, role, and pay rate. Pick the location, then build the list.</div>
+  </div>
+
+  <div class="field"><label>Location (client)</label><select id="clientPick"><option value="">Choose a location…</option></select></div>
+
+  <div id="setupNote" class="note" style="display:none"></div>
+
+  <div id="body" style="display:none">
+    <h2>Add an employee</h2>
+    <div class="panel">
+      <div class="row2">
+        <div class="field"><label>Name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Sheuli" /></div>
+        <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>POS login key</label><input id="n_pos" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 8000" /></div>
+        <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
+      </div>
+      <div class="field"><label>Payroll name <span style="font-weight:400;color:var(--muted)">— as it reads in payroll</span></label><input id="n_payroll" type="text" autocomplete="off" placeholder="e.g. Akhter, Sheuli" /></div>
+      <div class="field"><label>Role / privilege</label><input id="n_role" type="text" autocomplete="off" placeholder="e.g. Crew Plus / DD Shift" /></div>
+      <div class="row2">
+        <div class="field"><label>Rate ($/hr)</label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 16.00" /></div>
+        <div class="field"><label>OT rate ($/hr)</label><input id="n_ot" type="number" min="0" step="0.01" autocomplete="off" placeholder="optional" /></div>
+      </div>
+      <button class="btn" id="n_add" type="button">Add employee</button>
+      <div class="msg" id="n_msg"></div>
+    </div>
+
+    <h2 id="rosterHead">Roster</h2>
+    <div id="list"><div class="lead">Loading…</div></div>
+  </div>
+</main>
+<script>
+  function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function ukey(id){ return (id||"").toString().replace(/[^a-zA-Z0-9]/g,""); }
+  function fmtPhone(v){ var d=(v||"").replace(/\D/g,""); if(d.length>10&&d[0]==="1")d=d.slice(1); d=d.slice(0,10); if(d.length>6)return "("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6); if(d.length>3)return "("+d.slice(0,3)+") "+d.slice(3); if(d.length>0)return "("+d.slice(0,3); return v||""; }
+  function phoneInput(el){ if(el) el.addEventListener("input",function(){ el.value=fmtPhone(el.value); }); }
+
+  var CLIENT_ID="", EMP=[];
+  var CKEY="rw_emp_client";
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/employees"); return; }
+    if(d.role!=="master"){ location.replace("/app"); return; }
+    phoneInput(document.getElementById("n_phone"));
+    document.getElementById("n_add").addEventListener("click", addEmployee);
+    loadClients();
+  }).catch(function(){});
+
+  function loadClients(){
+    fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok) return;
+      var sel=document.getElementById("clientPick");
+      (d.clients||[]).forEach(function(c){ var o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+      var saved=""; try{ saved=localStorage.getItem(CKEY)||""; }catch(e){}
+      if(saved){ sel.value=saved; if(sel.value===saved){ CLIENT_ID=saved; document.getElementById("body").style.display="block"; load(); } }
+      sel.addEventListener("change", function(){ CLIENT_ID=sel.value; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} if(CLIENT_ID){ document.getElementById("body").style.display="block"; load(); } else { document.getElementById("body").style.display="none"; } });
+    }).catch(function(){});
+  }
+
+  function load(){
+    fetch("/api/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      var note=document.getElementById("setupNote");
+      if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      if(d.missing){ note.style.display="block"; note.textContent="The employees table isn't set up yet. Run supabase/employees.sql once in Supabase, then reload."; }
+      else note.style.display="none";
+      EMP=d.employees||[]; render();
+    }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function render(){
+    document.getElementById("rosterHead").textContent="Roster ("+EMP.length+")";
+    var el=document.getElementById("list");
+    if(!EMP.length){ el.innerHTML="<div class='empty'>No employees yet. Add the first above.</div>"; return; }
+    el.innerHTML=EMP.map(renderItem).join("");
+    EMP.forEach(wire);
+  }
+  function renderItem(e){
+    var k=ukey(e.id);
+    var sub=[e.crewNo,e.role,e.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
+    return "<div class='citem' id='it_"+k+"'>"+
+      "<div class='csum' onclick=\"tog('"+k+"')\">"+
+        "<div>"+(e.posKey?("<span class='key'>"+esc(e.posKey)+"</span> "):"")+"<span class='nm'>"+esc(e.name)+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
+        "<span class='caret'>›</span></div>"+
+      "<div class='cbody' id='b_"+k+"'>"+
+        "<div class='row2'><div class='field'><label>Name</label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
+        "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(e.phone)+"'/></div></div>"+
+        "<div class='row2'><div class='field'><label>POS login key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
+        "<div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div></div>"+
+        "<div class='field'><label>Payroll name</label><input id='py_"+k+"' value='"+esc(e.payrollName)+"'/></div>"+
+        "<div class='field'><label>Role / privilege</label><input id='rl_"+k+"' value='"+esc(e.role)+"'/></div>"+
+        "<div class='row2'><div class='field'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
+        "<div class='field'><label>OT rate ($/hr)</label><input id='ot_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.otRate)+"'/></div></div>"+
+        "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
+        "<div style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
+          "<button class='btn sm' id='del_"+k+"' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Delete</button></div>"+
+        "<div class='msg' id='m_"+k+"'></div></div></div>";
+  }
+  window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
+
+  function wire(e){
+    var k=ukey(e.id);
+    phoneInput(document.getElementById("ph_"+k));
+    document.getElementById("sv_"+k).addEventListener("click", function(){
+      var b=this, m=document.getElementById("m_"+k); m.className="msg";
+      var name=document.getElementById("nm_"+k).value.trim();
+      if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
+      b.disabled=true; b.textContent="Saving…";
+      var payload={ id:e.id, name:name, phone:document.getElementById("ph_"+k).value, posKey:document.getElementById("ps_"+k).value, crewNo:document.getElementById("cr_"+k).value, payrollName:document.getElementById("py_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, otRate:document.getElementById("ot_"+k).value, active:document.getElementById("ac_"+k).checked };
+      fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+        .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
+          if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
+        .catch(function(){ b.disabled=false; b.textContent="Save"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+    });
+    document.getElementById("del_"+k).addEventListener("click", function(){
+      var m=document.getElementById("m_"+k); if(!confirm("Delete "+e.name+"?")) return;
+      var b=this; b.disabled=true; b.textContent="Deleting…";
+      fetch("/api/employees/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:e.id})})
+        .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ load(); } else { b.disabled=false; b.textContent="Delete"; m.className="msg err"; m.textContent=(d&&d.error)||"Could not delete."; } })
+        .catch(function(){ b.disabled=false; b.textContent="Delete"; });
+    });
+  }
+
+  function addEmployee(){
+    var b=document.getElementById("n_add"), m=document.getElementById("n_msg"); m.className="msg";
+    if(!CLIENT_ID){ m.className="msg err"; m.textContent="Pick a location first."; return; }
+    var name=document.getElementById("n_name").value.trim();
+    if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
+    b.disabled=true; b.textContent="Adding…";
+    var payload={ clientId:CLIENT_ID, name:name, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, crewNo:document.getElementById("n_crew").value, payrollName:document.getElementById("n_payroll").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value, otRate:document.getElementById("n_ot").value };
+    fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add employee";
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_phone","n_pos","n_crew","n_payroll","n_role","n_rate","n_ot"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
+      .catch(function(){ b.disabled=false; b.textContent="Add employee"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
