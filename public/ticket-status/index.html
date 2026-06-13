@@ -1507,15 +1507,16 @@
       function addSugg(p, cb){ fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:p.item,quantity:p.quantity,unit:p.unit})}).then(function(r){return r.json();}).then(function(d){ if(cb) cb(d); }).catch(function(){ if(cb) cb({}); }); }
       var EDIT_PART_ID=null;
       function loadParts(){
+        var dg=document.getElementById("e_svcdiag");
         fetch("/api/tickets/parts?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){
-          var dg=document.getElementById("e_svcdiag");
-          if(!r.ok){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts API "+r.status+" — the server didn't accept the request (likely a deploy still landing). Try again in a minute.</span>"; PARTS=[]; renderParts(); return null; }
+          if(!r.ok){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts API "+r.status+".</span>"; PARTS=[]; safeRenderParts(); return null; }
           return r.json().then(function(rows){
             PARTS=Array.isArray(rows)?rows:[];
-            if(dg){ if(rows && rows.offline) dg.innerHTML="<span style='color:#8a3d1c'>offline — couldn\u0027t reach the server.</span>"; else dg.textContent="parts ok ("+PARTS.length+")"; }
-            renderParts(); if(typeof renderMoney==="function") renderMoney();
+            if(dg){ if(rows && rows.offline) dg.innerHTML="<span style='color:#8a3d1c'>offline.</span>"; else dg.textContent="parts ok ("+PARTS.length+")"; }
+            safeRenderParts(); if(typeof renderMoney==="function"){ try{ renderMoney(); }catch(e){ if(dg) dg.innerHTML="<span style=\'color:#8a3d1c\'>money render error: "+esc((e&&e.message)||(""+e))+"</span>"; } }
           });
-        }).catch(function(){ var dg=document.getElementById("e_svcdiag"); if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts request failed (network).</span>"; PARTS=[]; renderParts(); }); }
+        }).catch(function(err){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>network: "+esc((err&&err.message)||(""+err))+"</span>"; PARTS=[]; safeRenderParts(); }); }
+      function safeRenderParts(){ try{ renderParts(); }catch(e){ var dg=document.getElementById("e_svcdiag"); if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts render error: "+esc((e&&e.message)||(""+e))+"</span>"; } }
       var sgBtn=document.getElementById("p_suggest"); if(sgBtn) sgBtn.addEventListener("click", suggestParts);
       loadParts();
     }
