@@ -789,7 +789,7 @@
     // Two kinds of work for now: trouble (something is wrong) and standard
     // maintenance (routine). Stored as the existing Repair / Maintenance
     // categories, shown in plain words.
-    function catLabel(v){ return v==="Repair" ? "Trouble" : v==="Maintenance" ? "Maintenance" : (v==="Buildout / Project"||v==="Project") ? "Project" : v; }
+    function catLabel(v){ return v==="Repair" ? "Service call" : v==="Maintenance" ? "Maintenance" : (v==="Buildout / Project"||v==="Project") ? "Project" : v; }
     function updateTkMeta(){
       var meta=document.getElementById("e_tkMeta"); if(!meta) return;
       var cs=document.getElementById("e_cat");
@@ -799,7 +799,7 @@
     function renderCatChips(){
       var wrap=document.getElementById("e_catChips"), cs=document.getElementById("e_cat");
       if(!wrap||!cs) return;
-      var opts=[{v:"Repair",l:"Trouble"},{v:"Maintenance",l:"Maintenance"},{v:"Buildout / Project",l:"Project"}];
+      var opts=[{v:"Maintenance",l:"Maintenance"},{v:"Repair",l:"Service call"},{v:"Buildout / Project",l:"Project"}];
       var known=["Repair","Maintenance","Buildout / Project"];
       var cur=cs.value||"";
       if(cur && known.indexOf(cur)<0 && cur!=="Select..." && cur.indexOf("—")<0) opts.push({v:cur,l:cur});
