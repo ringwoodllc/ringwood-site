@@ -689,8 +689,11 @@
             (!IS_CLIENT ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Vendor quotes ▾</a></div>" +
               "<div id='e_quotesField' style='display:none;margin-bottom:12px'>" +
+                "<div style='display:flex;justify-content:flex-end;margin-bottom:8px'><button type='button' class='aibtn' id='q_scan'>📷 Scan card / quote</button></div>" +
+                "<input type='file' id='q_scanFile' accept='image/*,application/pdf' style='display:none' />" +
+                "<div id='q_scanMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:6px'></div>" +
                 "<div id='e_quotes'></div>" +
-                "<div style='margin-top:8px'><button type='button' class='qbtn rev' id='q_addToggle'>+ Add quote</button></div>" +
+                "<div style='margin-top:8px'><button type='button' class='qbtn rev' id='q_addToggle'>+ Add quote manually</button></div>" +
                 "<div id='q_addWrap' style='display:none;margin-top:8px'>" +
                 "<div style='display:flex;gap:8px;flex-wrap:wrap'>" +
                   "<input id='q_vendor' list='qvendlist' placeholder='Vendor' style='flex:2;min-width:120px' />" +
@@ -1206,9 +1209,55 @@
     if(qAddT) qAddT.addEventListener("click", function(){
       var w=document.getElementById("q_addWrap"); if(!w) return;
       var open=w.style.display!=="none"; w.style.display=open?"none":"block";
-      qAddT.textContent=open?"+ Add quote":"Close";
+      qAddT.textContent=open?"+ Add quote manually":"Close";
       if(!open){ var v=document.getElementById("q_vendor"); if(v) v.focus(); }
     });
+    // Preferred way to add a vendor quote: photograph or paste a card/quote and
+    // the AI logs the vendor + amount as a quote (with the doc attached), and
+    // files the vendor in the directory. Mirrors Parts' "Scan invoice".
+    function scanQuoteToTicket(file){
+      if(!file) return;
+      var msg=document.getElementById("q_scanMsg"); if(msg){ msg.style.color="var(--muted)"; msg.textContent="Reading…"; }
+      var btn=document.getElementById("q_scan"); if(btn) btn.disabled=true;
+      var isPdf=/pdf/i.test(file.type||"");
+      var origP = isPdf
+        ? new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res({base64:b>=0?d.slice(b+1):d, contentType:"application/pdf"}); }; r.onerror=rej; r.readAsDataURL(file); })
+        : processPhoto(file).then(function(p){ return {base64:p.base64, contentType:p.contentType}; });
+      var ORIG=null, SCAN=null;
+      origP.then(function(orig){ ORIG=orig; return fetch("/api/vendors/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(orig)}); })
+        .then(function(r){return r.json();}).then(function(d){
+          if(!d||!d.ok) throw new Error((d&&d.error)||"Couldn't read that.");
+          SCAN=d;
+          var vendor=d.company||d.person||"Vendor";
+          var noteBits=[]; if(d.person && d.company) noteBits.push("Contact: "+d.person); if(d.notes) noteBits.push(d.notes);
+          // Create the quote on the ticket, with the scanned document attached.
+          return fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:vendor, amount:(SCAN.amount||""), notes:noteBits.join(" · "), photos:[{base64:ORIG.base64, contentType:ORIG.contentType}] })});
+        }).then(function(r){return r.json();}).then(function(qres){
+          if(btn) btn.disabled=false;
+          if(!qres||!qres.ok) throw new Error((qres&&qres.error)||"Couldn't add the quote.");
+          // File the vendor in the directory too (best effort, with cropped card).
+          var afterCard = (!isPdf && SCAN.crop) ? cropCardImage(file, SCAN.crop) : Promise.resolve(null);
+          afterCard.then(function(durl){
+            var cardB64 = durl ? (durl.split(",")[1]||"") : "";
+            fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ name:(SCAN.company||SCAN.person||"Vendor"), kind:"Vendor", phone:SCAN.phone||"", email:SCAN.email||"", trade:SCAN.trade||"", notes:SCAN.notes||"", cardBase64:cardB64 })}).then(function(){ if(typeof loadVendors==="function") loadVendors(); }).catch(function(){});
+          });
+          if(msg){ msg.style.color="var(--green-deep)"; msg.textContent="Added quote from "+esc(SCAN.company||"the document")+(SCAN.amount?(" — $"+SCAN.amount):" (no price found — add it below)")+"."; }
+          loadQuotes();
+        }).catch(function(err){ if(btn) btn.disabled=false; if(msg){ msg.style.color="#8a3d1c"; msg.textContent=(err&&err.message)||"Couldn't read that."; } });
+    }
+    window.__curQuoteScan = scanQuoteToTicket;
+    var qScanBtn=document.getElementById("q_scan"); if(qScanBtn) qScanBtn.addEventListener("click", function(){ var fi=document.getElementById("q_scanFile"); if(fi) fi.click(); });
+    var qScanFile=document.getElementById("q_scanFile"); if(qScanFile) qScanFile.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanQuoteToTicket(f); });
+    // Paste a screenshot of a card/quote while the Vendor quotes section is open.
+    if(!window.__quoteScanPaste){
+      window.__quoteScanPaste=function(e){
+        var qf=document.getElementById("e_quotesField"); if(!qf || qf.style.display==="none") return;
+        var pn=document.getElementById("q_vendPanel"); if(pn && pn.style.display!=="none") return; // the manual panel handles its own paste
+        var items=(e.clipboardData&&e.clipboardData.items)||[];
+        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f && window.__curQuoteScan){ e.preventDefault(); window.__curQuoteScan(f); return; } } }
+      };
+      document.addEventListener("paste", window.__quoteScanPaste);
+    }
     // New vendor straight from the quote flow: scan a card/quote/ID, the AI
     var qnv=document.getElementById("q_newVendor");
     if(qnv) qnv.addEventListener("click", function(e){ e.preventDefault(); var pn=document.getElementById("q_vendPanel"); var open=pn.style.display!=="none"; pn.style.display=open?"none":"block"; qnv.textContent="＋ New vendor — scan a card or quote "+(open?"▾":"▴"); });
@@ -1350,7 +1399,7 @@
       fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:v.value.trim(), amount:a.value, notes:n.value.trim(), photos:Q_PENDING.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) })})
         .then(function(r){return r.json();}).then(function(d){
           qSaving=false; if(qAddB) qAddB.disabled=false;
-          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; Q_PENDING=[]; var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=""; if(m) m.textContent=""; var aw=document.getElementById("q_addWrap"); if(aw) aw.style.display="none"; var at=document.getElementById("q_addToggle"); if(at) at.textContent="+ Add quote"; loadQuotes(); }
+          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; Q_PENDING=[]; var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=""; if(m) m.textContent=""; var aw=document.getElementById("q_addWrap"); if(aw) aw.style.display="none"; var at=document.getElementById("q_addToggle"); if(at) at.textContent="+ Add quote manually"; loadQuotes(); }
           else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t save."; }
         }).catch(function(){ qSaving=false; if(qAddB) qAddB.disabled=false; });
     }

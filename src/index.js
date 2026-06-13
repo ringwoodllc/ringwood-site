@@ -667,14 +667,15 @@ async function scanVendorCard(request, env, session) {
     "- phone: the best phone number shown, as printed, or empty.\n" +
     "- email: the email address shown, or empty.\n" +
     "- trade: what they do, in two or three plain words (e.g. 'tree removal', 'HVAC', 'plumbing'). Empty if unclear.\n" +
-    "- notes: one short line of anything else useful (license number, address, quoted amount if this is a quote). Empty if nothing.\n" +
+    "- notes: one short line of anything else useful (license number, address, scope). Empty if nothing.\n" +
+    "- amount: if this is a price quote, estimate, or invoice, the TOTAL quoted dollar amount as a number. If it's just a business card with no price, use 0.\n" +
     "- crop: the tight bounding box of just the card or document within the photo, as fractions of the image from 0 to 1: x (left edge), y (top edge), w (width), h (height). If it already fills the frame, use {x:0,y:0,w:1,h:1}.\n" +
     "Only what is actually visible. Do not invent names, numbers, or emails.";
   const schema = {
     type: "object",
-    properties: { company: { type: "string" }, person: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, trade: { type: "string" }, notes: { type: "string" },
+    properties: { company: { type: "string" }, person: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, trade: { type: "string" }, notes: { type: "string" }, amount: { type: "number" },
       crop: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"], additionalProperties: false } },
-    required: ["company", "person", "phone", "email", "trade", "notes", "crop"],
+    required: ["company", "person", "phone", "email", "trade", "notes", "amount", "crop"],
     additionalProperties: false,
   };
   try {
@@ -698,6 +699,7 @@ async function scanVendorCard(request, env, session) {
       email: c(out.email).slice(0, 120),
       trade: c(out.trade).slice(0, 80),
       notes: c(out.notes).slice(0, 300),
+      amount: (out.amount != null && !isNaN(Number(out.amount)) && Number(out.amount) > 0) ? Number(out.amount) : "",
       fileUrl: fileUrl || "",
       crop: (out.crop && typeof out.crop === "object" && !isPdf) ? { x: +out.crop.x || 0, y: +out.crop.y || 0, w: +out.crop.w || 1, h: +out.crop.h || 1 } : null,
     });
