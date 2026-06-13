@@ -180,6 +180,9 @@ export default {
     if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
     if (url.pathname === "/api/employees/scan" && request.method === "POST") return scanEmployees(request, env, session);
+    if (url.pathname === "/api/employees/roles" && request.method === "GET") return listEmployeeRoles(url, env, session);
+    if (url.pathname === "/api/employees/role" && request.method === "POST") return addEmployeeRole(request, env, session);
+    if (url.pathname === "/api/employees/role/delete" && request.method === "POST") return deleteEmployeeRole(request, env, session);
     if (url.pathname === "/api/schedule" && request.method === "GET") return getSchedule(url, env, session);
     if (url.pathname === "/api/schedule/shift" && request.method === "POST") return saveScheduleShift(request, env, session);
     if (url.pathname === "/api/schedule/copy" && request.method === "POST") return copyScheduleWeek(request, env, session);
@@ -888,6 +891,46 @@ async function scanEmployees(request, env, session) {
   }
   if (!added) return json({ ok: false, error: list.length ? "Couldn't save. Run supabase/employees.sql once." : "No employees found in that photo." }, list.length ? 502 : 200);
   return json({ ok: true, added });
+}
+
+// Role / privilege list for a location, shared across devices.
+async function listEmployeeRoles(url, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  const clientId = url.searchParams.get("clientId") || "";
+  if (!clientId || !sbReady(env)) return json({ ok: true, roles: [] });
+  const rows = await sbSelect(env, `employee_roles?client_id=eq.${clientId}&select=id,name&order=sort.asc,name.asc`);
+  if (rows === null) return noStore({ ok: true, roles: [], missing: true });
+  return noStore({ ok: true, roles: (rows || []).map((r) => ({ id: r.id, name: r.name || "" })) });
+}
+
+async function addEmployeeRole(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const name = (body.name || "").toString().trim().slice(0, 120);
+  if (!clientId || !name) return json({ ok: false, error: "Missing role." }, 400);
+  const ex = await sbSelect(env, `employee_roles?client_id=eq.${clientId}&name=eq.${encodeURIComponent(name)}&select=id`);
+  if (ex && ex[0]) return json({ ok: true });
+  const res = await sbInsert(env, "employee_roles", { client_id: clientId, name });
+  if (!res.ok) {
+    // Likely a duplicate (unique constraint); treat as success.
+    const again = await sbSelect(env, `employee_roles?client_id=eq.${clientId}&name=eq.${encodeURIComponent(name)}&select=id`);
+    if (again && again[0]) return json({ ok: true });
+    return json({ ok: false, error: "Couldn't add. Run supabase/employee_roles.sql once." }, 502);
+  }
+  return json({ ok: true });
+}
+
+async function deleteEmployeeRole(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/employee_roles?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  if (!r.ok) return json({ ok: false, error: "Couldn't delete." }, 502);
+  return json({ ok: true });
 }
 
 /* ===================== Weekly schedule ===================== */

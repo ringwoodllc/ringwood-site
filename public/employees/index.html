@@ -93,6 +93,8 @@
       <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
       <div class="field"><label>Payroll name <span style="font-weight:400;color:var(--muted)">— first &amp; last</span></label><input id="n_payroll" type="text" autocomplete="off" placeholder="e.g. Sheuli Akhter" /></div>
       <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
+      <div style="margin:-4px 0 12px"><a href="#" id="manageRolesLink" style="font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage roles</a></div>
+      <div id="rolePanel" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:12px"></div>
       <div class="row2">
         <div class="field"><label>Rate ($/hr)</label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 16.00" /></div>
         <div class="field"><label>OT rate ($/hr)</label><input id="n_ot" type="number" min="0" step="0.01" autocomplete="off" placeholder="optional" /></div>
@@ -118,20 +120,30 @@
   // color so it's easy to spot. If the prefix isn't there, the whole number is accent.
   var POS_STD="362538";
   function posChip(num){ num=(num||"").toString(); if(!num) return ""; var html; if(num.indexOf(POS_STD)===0 && num.length>POS_STD.length){ html="<span style='color:var(--muted);font-weight:600'>"+esc(POS_STD)+"</span><span style='color:var(--green-deep);font-weight:800'>"+esc(num.slice(POS_STD.length))+"</span>"; } else { html="<span style='color:var(--green-deep);font-weight:800'>"+esc(num)+"</span>"; } return "<span class='key'>"+html+"</span> "; }
-  // Roles: a small managed list per location (kept in this browser), merged with
-  // whatever roles are already in use. Typically just a few.
-  function roleKey(){ return "rw_roles:"+CLIENT_ID; }
-  function clientRoles(){ var set={}; try{ (JSON.parse(localStorage.getItem(roleKey())||"[]")||[]).forEach(function(r){ if(r) set[r]=1; }); }catch(e){} EMP.forEach(function(e){ if(e.role) set[e.role]=1; }); return Object.keys(set).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}); }
-  function saveRole(name){ name=(name||"").trim(); if(!name) return; var arr=clientRoles(); if(arr.indexOf(name)<0) arr.push(name); try{ localStorage.setItem(roleKey(), JSON.stringify(arr)); }catch(e){} }
-  function removeRole(name){ var arr=clientRoles().filter(function(r){return r!==name;}); try{ localStorage.setItem(roleKey(), JSON.stringify(arr)); }catch(e){} }
+  // Roles: a managed list per location, stored in the DB so it syncs across
+  // devices. Merged with whatever roles are already in use. Typically just a few.
+  var ROLES=[]; // [{id,name}]
+  function loadRoles(){ if(!CLIENT_ID) return; fetch("/api/employees/roles?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){ ROLES=(d&&d.ok&&d.roles)||[]; renderRoleControls(); var nr=document.getElementById("n_role"); if(nr) fillRoleSelect(nr, nr.value); }).catch(function(){}); }
+  function clientRoles(){ var set={}; ROLES.forEach(function(r){ if(r.name) set[r.name]=1; }); EMP.forEach(function(e){ if(e.role) set[e.role]=1; }); return Object.keys(set).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}); }
+  function addRoleDb(name, cb){ name=(name||"").trim(); if(!name||!CLIENT_ID){ if(cb)cb(); return; } fetch("/api/employees/role",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID,name:name})}).then(function(r){return r.json();}).then(function(d){ loadRoles(); if(cb)cb(d); }).catch(function(){ if(cb)cb(); }); }
+  function delRoleDb(id){ fetch("/api/employees/role/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ loadRoles(); }).catch(function(){}); }
   function fillRoleSelect(sel, selected){
     if(!sel) return;
     var roles=clientRoles();
-    var opts="<option value=''>— none —</option>"+roles.map(function(r){ return "<option"+(r===selected?" selected":"")+">"+esc(r)+"</option>"; }).join("");
-    if(selected && roles.indexOf(selected)<0) opts="<option value=''>— none —</option><option selected>"+esc(selected)+"</option>"+roles.map(function(r){ return "<option>"+esc(r)+"</option>"; }).join("");
+    var opts="<option value=''>— none —</option>";
+    if(selected && roles.indexOf(selected)<0) opts+="<option selected>"+esc(selected)+"</option>";
+    opts+=roles.map(function(r){ return "<option"+(r===selected?" selected":"")+">"+esc(r)+"</option>"; }).join("");
     opts+="<option value='__new'>+ New role…</option>";
     sel.innerHTML=opts;
-    sel.onchange=function(){ if(sel.value==="__new"){ var nm=(prompt("New role / privilege (e.g. Crew Plus / DD Shift):")||"").trim(); if(nm){ saveRole(nm); fillRoleSelect(sel, nm); } else { sel.value=selected||""; } } };
+    sel.onchange=function(){ if(sel.value==="__new"){ var nm=(prompt("New role / privilege (e.g. Crew Plus / DD Shift):")||"").trim(); if(nm){ addRoleDb(nm); fillRoleSelect(sel, nm); } else { sel.value=selected||""; } } };
+  }
+  function renderRoleControls(){
+    var p=document.getElementById("rolePanel"); if(!p) return;
+    var html=ROLES.length ? ROLES.map(function(r){ return "<div style='display:flex;justify-content:space-between;align-items:center;padding:5px 0'><span>"+esc(r.name)+"</span><button type='button' class='delrole' data-id='"+esc(r.id)+"' style='background:transparent;border:none;color:#8a3d1c;cursor:pointer;font-size:1.05rem'>×</button></div>"; }).join("") : "<div style='color:var(--muted);font-size:.86rem'>No saved roles yet.</div>";
+    html+="<div style='display:flex;gap:8px;margin-top:8px'><input id='newRoleInput' placeholder='Add a role' style='flex:1' /><button type='button' class='btn sm' id='addRoleBtn'>Add</button></div>";
+    p.innerHTML=html;
+    Array.prototype.forEach.call(p.querySelectorAll(".delrole"),function(b){ b.addEventListener("click",function(){ if(confirm("Remove this role from the list? Employees keep it until you change them.")) delRoleDb(b.getAttribute("data-id")); }); });
+    var ab=document.getElementById("addRoleBtn"); if(ab) ab.addEventListener("click",function(){ var inp=document.getElementById("newRoleInput"); var nm=(inp.value||"").trim(); if(nm){ addRoleDb(nm); inp.value=""; } });
   }
   function lastName(e){ var src=((e.payrollName||"").trim())||(e.name||""); var p=src.split(/\s+/); return p[p.length-1]||""; }
 
@@ -148,6 +160,7 @@
     var sf=document.getElementById("scanFile"); if(sf) sf.addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanRoster(f); });
     document.getElementById("sortBy").addEventListener("change",function(){ SORT=this.value; render(); });
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
+    var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
     loadClients();
   }).catch(function(){});
 
@@ -184,6 +197,7 @@
   }
 
   function load(){
+    loadRoles();
     fetch("/api/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var note=document.getElementById("setupNote");
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
