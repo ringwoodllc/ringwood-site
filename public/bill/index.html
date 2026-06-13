@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#1f3d2b" />
+<title>Ringwood · Bill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.16)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:0 20px 60px}
+  .bar{display:flex;align-items:center;justify-content:space-between;padding:18px 0;gap:10px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-family:"Spectral",serif;font-size:1.2rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.9rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay)}
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--bg-2)}
+  .seg button{border:none;background:transparent;font:600 .9rem "Hanken Grotesk",sans-serif;padding:9px 16px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:var(--green);color:#f6f2e8}
+  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.92rem;padding:10px 16px;border-radius:8px}
+  .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
+  .chk{display:flex;align-items:center;gap:7px;font-size:.9rem;color:var(--muted)}
+  .doc{background:#fbf8f1;border:1px solid var(--line);border-radius:12px;padding:30px 28px;box-shadow:0 6px 28px rgba(33,68,58,.07)}
+  .doc h1{font-family:"Spectral",serif;font-weight:500;font-size:1.9rem;color:var(--green-deep);line-height:1.1}
+  .doc .sub{color:var(--muted);font-size:.92rem;margin-top:4px}
+  .meta{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:18px 0 22px;font-size:.92rem}
+  .meta .lbl{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:3px}
+  table{width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:.92rem}
+  th{text-align:left;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:6px 0;border-bottom:1px solid var(--line)}
+  td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  td.r,th.r{text-align:right;white-space:nowrap}
+  .sec-title{font-family:"Spectral",serif;font-size:1.15rem;color:var(--green-deep);margin:22px 0 2px}
+  .sub-tot{display:flex;justify-content:space-between;font-weight:700;padding:8px 0;color:var(--green-deep)}
+  .line{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:.95rem}
+  .line.big{font-weight:700;font-size:1.1rem;border-top:2px solid var(--green-deep);margin-top:6px;padding-top:12px;color:var(--green-deep)}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;background:#e7eef7;color:#2c4866;border-radius:999px;padding:1px 8px;font-size:.66rem;font-weight:700;vertical-align:middle}
+  .margin{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:14px;padding:10px 13px;border-radius:8px}
+  .desc{white-space:pre-wrap;font-size:.96rem;line-height:1.6;margin:6px 0 18px}
+  .foot{margin-top:22px;font-size:.86rem;color:var(--muted);line-height:1.6}
+  .empty{color:var(--muted);font-size:.9rem;padding:6px 0}
+  @media print{
+    body{background:#fff}
+    .bar,.controls{display:none}
+    .doc{border:none;box-shadow:none;border-radius:0;padding:0}
+    .wrap{max-width:none;padding:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" id="backLink" href="/status">&larr; Back to ticket</a>
+  </div>
+
+  <div class="controls">
+    <div class="seg">
+      <button id="seg_internal" class="on" type="button">Internal cost</button>
+      <button id="seg_client" type="button">Client estimate</button>
+    </div>
+    <span id="clientOpts" style="display:none;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="seg"><button id="dt_estimate" class="on" type="button">Estimate</button><button id="dt_invoice" type="button">Invoice</button></span>
+      <label class="chk"><input type="checkbox" id="showItems" /> Show breakdown</label>
+    </span>
+    <button class="btn ghost" id="printBtn" type="button">Print / Save PDF</button>
+  </div>
+
+  <div class="doc" id="doc"><div class="empty">Loading…</div></div>
+</div>
+<script>
+  function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function money(n){ return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function fmtDate(s){ if(!s) return ""; try{ var d=new Date(s); return d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}); }catch(e){ return s; } }
+  function qs(k){ return new URLSearchParams(location.search).get(k)||""; }
+
+  var ID=qs("id"), MODE="internal", DOCTYPE="Estimate", SHOW_ITEMS=false, BILL=null;
+  document.getElementById("backLink").href = ID ? ("/status?id="+encodeURIComponent(ID)) : "/status";
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if(!w||!w.ok){ location.replace("/login?next="+encodeURIComponent(location.pathname+location.search)); return; }
+    if(w.role!=="master"){ location.replace("/app"); return; }
+    load();
+  }).catch(function(){ load(); });
+
+  function load(){
+    if(!ID){ document.getElementById("doc").innerHTML="<div class='empty'>No ticket.</div>"; return; }
+    fetch("/api/tickets/bill?id="+encodeURIComponent(ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ document.getElementById("doc").innerHTML="<div class='empty'>"+esc((d&&d.error)||"Couldn't load this bill.")+"</div>"; return; }
+      BILL=d; render();
+    }).catch(function(){ document.getElementById("doc").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function setMode(m){ MODE=m;
+    document.getElementById("seg_internal").classList.toggle("on", m==="internal");
+    document.getElementById("seg_client").classList.toggle("on", m==="client");
+    document.getElementById("clientOpts").style.display = m==="client" ? "inline-flex" : "none";
+    render();
+  }
+  document.getElementById("seg_internal").addEventListener("click", function(){ setMode("internal"); });
+  document.getElementById("seg_client").addEventListener("click", function(){ setMode("client"); });
+  document.getElementById("dt_estimate").addEventListener("click", function(){ DOCTYPE="Estimate"; this.classList.add("on"); document.getElementById("dt_invoice").classList.remove("on"); render(); });
+  document.getElementById("dt_invoice").addEventListener("click", function(){ DOCTYPE="Invoice"; this.classList.add("on"); document.getElementById("dt_estimate").classList.remove("on"); render(); });
+  document.getElementById("showItems").addEventListener("change", function(){ SHOW_ITEMS=this.checked; render(); });
+  document.getElementById("printBtn").addEventListener("click", function(){ window.print(); });
+
+  function metaRow(b){
+    return "<div class='meta'>"+
+      "<div><div class='lbl'>Bill to</div><div>"+esc(b.ticket.client||"—")+"</div></div>"+
+      "<div><div class='lbl'>Job</div><div>"+esc(b.ticket.title||"")+(b.ticket.ref?(" · Ref "+esc(b.ticket.ref)):"")+"</div></div>"+
+      "<div><div class='lbl'>Date</div><div>"+esc(fmtDate(b.ticket.created)||fmtDate(new Date().toISOString()))+"</div></div>"+
+    "</div>";
+  }
+
+  function renderInternal(b){
+    var h="<h1>Job cost sheet</h1><div class='sub'>Internal — not for the client</div>"+metaRow(b);
+    // Labor
+    h+="<div class='sec-title'>Labor</div>";
+    if(b.labor.length){ h+="<table><tr><th>Person</th><th class='r'>Hours</th><th class='r'>Rate</th><th class='r'>Cost</th></tr>";
+      b.labor.forEach(function(l){ h+="<tr><td>"+esc(l.person||"—")+"</td><td class='r'>"+(l.hours||0)+"</td><td class='r'>"+money(l.rate)+"</td><td class='r'>"+money(l.cost)+"</td></tr>"; });
+      h+="</table><div class='sub-tot'><span>Labor subtotal</span><span>"+money(b.laborCost)+"</span></div>";
+    } else h+="<div class='empty'>No labor logged.</div>";
+    // Parts
+    h+="<div class='sec-title'>Parts &amp; materials</div>";
+    if(b.parts.length){ h+="<table><tr><th>Item</th><th class='r'>Qty</th><th class='r'>Cost</th></tr>";
+      b.parts.forEach(function(p){ var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
+        h+="<tr><td>"+esc(p.item)+(p.covered?" <span class='pill'>WARRANTY</span>":"")+"</td><td class='r'>"+esc(q)+"</td><td class='r'>"+(p.covered?"<span class='muted'>covered</span>":(p.cost!=null?money(p.cost):"—"))+"</td></tr>"; });
+      h+="</table><div class='sub-tot'><span>Parts subtotal</span><span>"+money(b.partsCost)+"</span></div>";
+    } else h+="<div class='empty'>No parts logged.</div>";
+    // Vendor quote
+    if(b.quote){ h+="<div class='sec-title'>Vendor</div><div class='line'><span>"+esc(b.quote.vendor||"Vendor")+(b.quote.covered?" <span class='pill'>WARRANTY</span>":"")+"</span><span>"+(b.quote.covered?"<span class='muted'>covered</span>":money(b.vendorCost))+"</span></div>"; }
+    // Totals
+    h+="<div class='line big'><span>Job cost</span><span>"+money(b.jobCost)+"</span></div>";
+    h+="<div class='line'><span class='muted'>Markup ("+(b.markupPct||0)+"%)</span><span>+ "+money(b.markupAmt)+"</span></div>";
+    if(b.fee) h+="<div class='line'><span class='muted'>Service fee</span><span>+ "+money(b.fee)+"</span></div>";
+    h+="<div class='line big'><span>Charge client</span><span>"+money(b.total)+"</span></div>";
+    var pct = b.total>0 ? Math.round(b.margin/b.total*100) : 0;
+    var neg = b.margin<0;
+    h+="<div class='margin' style='background:"+(neg?"#f6e2d8":"#dff0e2")+";color:"+(neg?"#8a3d1c":"#1f5130")+"'><span>Margin</span><span>"+money(b.margin)+" · "+pct+"%</span></div>";
+    return h;
+  }
+
+  function renderClient(b){
+    var h="<h1>"+esc(DOCTYPE)+"</h1><div class='sub'>Ringwood Holding LLC</div>"+metaRow(b);
+    if(b.ticket.description){ h+="<div class='lbl' style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:4px'>Scope of work</div><div class='desc'>"+esc(b.ticket.description)+"</div>"; }
+    if(SHOW_ITEMS){
+      // Client-facing breakdown at marked-up prices (cost and markup % stay hidden).
+      var labMat = Math.round((b.jobCost + b.markupAmt)*100)/100;
+      h+="<table><tr><th>Description</th><th class='r'>Amount</th></tr>";
+      h+="<tr><td>Labor and materials</td><td class='r'>"+money(labMat)+"</td></tr>";
+      if(b.fee) h+="<tr><td>Service fee</td><td class='r'>"+money(b.fee)+"</td></tr>";
+      h+="</table>";
+    }
+    h+="<div class='line big'><span>"+(DOCTYPE==="Invoice"?"Amount due":"Estimated total")+"</span><span>"+money(b.total)+"</span></div>";
+    h+="<div class='foot'>"+(DOCTYPE==="Invoice"
+        ? "Thank you for your business. Please remit payment to Ringwood Holding LLC."
+        : "This is an estimate, not a final bill. Final amount may change with scope. Ringwood coordinates the work and stands behind it.")+
+      "</div>";
+    return h;
+  }
+
+  function render(){
+    if(!BILL) return;
+    document.getElementById("doc").innerHTML = MODE==="internal" ? renderInternal(BILL) : renderClient(BILL);
+  }
+</script>
+</body>
+</html>

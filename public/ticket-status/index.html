@@ -725,9 +725,9 @@
                 "</div>" +
                 "</div>"
             : "") +
-            // Job cost / pricing stands on its own, separated from the sections
-            // above by a divider so it doesn't read as part of Vendor quotes.
-            "<div id='e_money' style='margin-top:14px;padding-top:4px;border-top:1px solid var(--line)'></div>" +
+            // Job cost / pricing: its own collapsed section (#5), same style as
+            // Equipment / Parts / Labor / Vendor quotes above it.
+            "<div id='e_money'></div>" +
           "</div>"
         ) +
         "<div class='logsec'>" +
@@ -907,9 +907,9 @@
       var marginPct= total>0?Math.round(margin/total*100):0;
       var open=MONEY_OPEN;
       el.innerHTML =
-        "<div style='padding-top:8px'>"+
-          "<a href='#' id='e_jobToggle' style='display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--green-deep);font-weight:700'><span>Job cost "+(open?"▴":"▾")+"</span><span>"+amt0(cost)+"</span></a>"+
-          "<div id='e_jobBody' style='display:"+(open?"block":"none")+";margin-top:8px'>"+
+        "<div>"+
+          "<div style='margin:2px 0 12px'><a href='#' id='e_jobToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Job cost · "+amt0(cost)+" "+(open?"▴":"▾")+"</a></div>"+
+          "<div id='e_jobBody' style='display:"+(open?"block":"none")+";margin:0 0 6px'>"+
             "<div style='font-size:.74rem;color:var(--muted);margin:0 0 10px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
             "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px'>"+
               "<span style='display:flex;align-items:center;gap:6px'><label style='font-size:.92rem'>Markup</label><span style='display:flex;align-items:center;gap:2px'><input id='e_markup' type='number' min='0' step='1' value='"+esc(mk)+"' style='width:54px;text-align:right' />%</span></span>"+
@@ -921,6 +921,7 @@
             "</div>"+
             "<div style='display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:700'><span>Total</span><span>"+money(total)+"</span></div>"+
             "<div style='display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:8px;padding:8px 11px;border-radius:7px;background:"+(margin<0?"#f6e2d8":"#dff0e2")+";color:"+(margin<0?"#8a3d1c":"#1f5130")+"'><span>Margin</span><span>"+money(margin)+" · "+marginPct+"%</span></div>"+
+            "<div style='margin-top:12px'><a href='/bill?id="+esc(t.id)+"' target='_blank' class='qbtn rev' style='display:inline-block;text-decoration:none'>Generate bill / estimate →</a></div>"+
             "<div style='font-size:.78rem;color:var(--muted);margin-top:8px'>Default markup and fee come from <a href='/clients' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>client setup</a>. Changes here apply to this ticket."+(PRICING_COLS_MISSING?" <b style='color:#8a3d1c'>Run supabase/client_pricing.sql once to save overrides.</b>":"")+"</div>"+
           "</div>"+
         "</div>";

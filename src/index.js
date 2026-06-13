@@ -100,6 +100,7 @@ export default {
     if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
     if (url.pathname === "/api/tickets/parts/scan-invoice" && request.method === "POST") return scanInvoiceParts(request, env, session);
+    if (url.pathname === "/api/tickets/bill" && request.method === "GET") return getTicketBill(url, env, session);
     if (url.pathname === "/api/parts/list" && request.method === "GET") return listAllParts(url, env, session);
     if (url.pathname === "/api/redbook" && request.method === "GET") return listRedbook(url, env, session);
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
@@ -5784,6 +5785,61 @@ async function saveTicketPricing(request, env, session) {
   if (!res.ok && Object.keys(extra).length) { colsMissing = true; res = await sbUpdate(env, "tickets", id, base); }
   if (!res.ok) return json({ ok: false, error: "Couldn't save pricing." }, 502);
   return json({ ok: true, colsMissing });
+}
+
+// Everything the bill generator needs in one shot: the job's labor, parts (with
+// invoice-backed totals), the selected vendor quote, and the markup/fee that
+// build the charge. Computes job cost, charge, and margin so the page just
+// renders. Master only — bills are produced by the admin and shown to clients.
+async function getTicketBill(url, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: false, error: "Not found." }, 404);
+  const trows = await sbSelect(env, `tickets?id=eq.${id}&select=ref,title,description,created_at,client_id,client_price`);
+  const t = trows && trows[0];
+  if (!t) return json({ ok: false, error: "Ticket not found." }, 404);
+  // Pricing columns (ticket + client) are newer; degrade gracefully.
+  let tp = await sbSelect(env, `tickets?id=eq.${id}&select=markup_pct,service_fee`);
+  const tpr = tp && tp[0] ? tp[0] : {};
+  let clientName = "", cMarkup = null, cFee = null;
+  if (t.client_id) {
+    let cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name,markup_pct,service_fee`);
+    if (cr === null) cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name`);
+    const c0 = cr && cr[0];
+    if (c0) { clientName = c0.name || ""; cMarkup = c0.markup_pct != null ? c0.markup_pct : null; cFee = c0.service_fee != null ? c0.service_fee : null; }
+  }
+  // Labor
+  const lrows = await sbSelect(env, `ticket_labor?ticket_id=eq.${id}&select=person,hours,rate&order=created_at.asc`);
+  const labor = (lrows || []).map((l) => { const h = Number(l.hours) || 0, r = Number(l.rate) || 0; return { person: l.person || "", hours: h, rate: r, cost: h * r }; });
+  const laborCost = labor.reduce((a, l) => a + l.cost, 0);
+  // Parts
+  let prows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=item,quantity,unit,est_cost,warranty_covered&order=created_at.asc`);
+  if (prows === null) prows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=item,quantity,unit,est_cost&order=created_at.asc`);
+  const parts = (prows || []).map((p) => ({ item: p.item || "", quantity: p.quantity, unit: p.unit || "", cost: p.est_cost != null ? Number(p.est_cost) : null, covered: !!p.warranty_covered }));
+  const partsCost = parts.reduce((a, p) => a + (p.covered || p.cost == null || isNaN(p.cost) ? 0 : p.cost), 0);
+  // Vendor quote: the starred (Accepted) one, else the first
+  let qrows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=vendor,amount,status,warranty_covered&order=created_at.asc`);
+  if (qrows === null) qrows = await sbSelect(env, `ticket_quotes?ticket_id=eq.${id}&select=vendor,amount,status&order=created_at.asc`);
+  const qlist = qrows || [];
+  let quote = qlist.find((q) => q.status === "Accepted") || qlist[0] || null;
+  const vendorCost = quote && !quote.warranty_covered && quote.amount != null ? Number(quote.amount) : 0;
+  const jobCost = laborCost + partsCost + vendorCost;
+  // Effective markup / fee: ticket value, else client default, else 0.
+  const markupPct = tpr.markup_pct != null ? Number(tpr.markup_pct) : (cMarkup != null ? Number(cMarkup) : 0);
+  const feeRaw = tpr.service_fee != null ? Number(tpr.service_fee) : (cFee != null ? Number(cFee) : 0);
+  const fee = feeRaw > 0 ? feeRaw : 0;
+  const markupAmt = Math.round(jobCost * markupPct / 100 * 100) / 100;
+  const total = Math.round((jobCost + markupAmt + fee) * 100) / 100;
+  const margin = Math.round((total - jobCost) * 100) / 100;
+  return noStore({
+    ok: true,
+    ticket: { ref: t.ref || "", title: t.title || "", description: t.description || "", created: t.created_at || "", client: clientName },
+    labor, laborCost,
+    parts, partsCost,
+    quote: quote ? { vendor: quote.vendor || "", amount: quote.amount != null ? Number(quote.amount) : null, covered: !!quote.warranty_covered } : null,
+    vendorCost,
+    jobCost, markupPct, markupAmt, fee, total, margin,
+  });
 }
 
 async function listTicketParts(url, env, session) {
