@@ -762,12 +762,16 @@ async function listEmployees(url, env, session) {
   if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
-  const rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
-  if (rows === null) return noStore({ ok: true, employees: [], missing: true });
+  const rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
+  if (rows === null) {
+    const rows2 = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
+    if (rows2 === null) return noStore({ ok: true, employees: [], missing: true });
+    return noStore({ ok: true, employees: (rows2 || []).map((e) => ({ id: e.id, name: e.name || "", phone: e.phone || "", posKey: e.pos_key || "", posPassword: "", payrollName: e.payroll_name || "", role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false })) });
+  }
   return noStore({
     ok: true,
     employees: (rows || []).map((e) => ({
-      id: e.id, name: e.name || "", phone: e.phone || "", posKey: e.pos_key || "", payrollName: e.payroll_name || "",
+      id: e.id, name: e.name || "", phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
       role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
     })),
   });
@@ -783,21 +787,22 @@ async function saveEmployee(request, env, session) {
   if ("name" in body) patch.name = c(body.name);
   if ("phone" in body) patch.phone = c(body.phone) || null;
   if ("posKey" in body) patch.pos_key = c(body.posKey) || null;
+  if ("posPassword" in body) patch.pos_password = c(body.posPassword) || null;
   if ("payrollName" in body) patch.payroll_name = c(body.payrollName) || null;
   if ("role" in body) patch.role = c(body.role) || null;
   if ("crewNo" in body) patch.crew_no = c(body.crewNo) || null;
   if ("rate" in body) { const n = Number(body.rate); patch.rate = body.rate === "" || isNaN(n) ? null : n; }
   if ("otRate" in body) { const n = Number(body.otRate); patch.ot_rate = body.otRate === "" || isNaN(n) ? null : n; }
   if ("active" in body) patch.active = body.active !== false;
-  let res;
-  if (id) {
-    res = await sbUpdate(env, "employees", id, patch);
-  } else {
-    const clientId = c(body.clientId);
+  const clientId = c(body.clientId);
+  const doSave = (p) => id ? sbUpdate(env, "employees", id, p) : sbInsert(env, "employees", Object.assign({ client_id: clientId, active: true }, p));
+  if (!id) {
     if (!clientId) return json({ ok: false, error: "Pick a client." }, 400);
     if (!patch.name) return json({ ok: false, error: "Enter a name." }, 400);
-    res = await sbInsert(env, "employees", Object.assign({ client_id: clientId, active: true }, patch));
   }
+  let res = await doSave(patch);
+  // Degrade gracefully if pos_password hasn't been migrated yet.
+  if (!res.ok && "pos_password" in patch) { const p2 = Object.assign({}, patch); delete p2.pos_password; res = await doSave(p2); }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "Run supabase/employees.sql once.")).slice(0, 200) }, 502);
   return json({ ok: true });
 }
@@ -832,14 +837,15 @@ async function scanEmployees(request, env, session) {
   const prompt =
     "You are reading either a single ID / passport / driver's license (one person), or a roster / list / spreadsheet of food-service employees (many people). Extract every person you can see. For each:\n" +
     "- name: the person's everyday first name (or the name on the ID).\n" +
-    "- payrollName: the full legal name as payroll would show it (for example 'Akhter, Sheuli' or 'Sheuli Akhter') if visible, else empty.\n" +
-    "- posKey: the POS login key / employee number (digits) if shown, else empty.\n" +
+    "- payrollName: the full legal name as payroll would show it (for example 'Chowdhury, Dilara' or 'Dilara Chowdhury') if visible, else empty.\n" +
+    "- posKey: the short POS number / login key / employee number, usually 3 to 5 digits (e.g. 8011), if shown, else empty.\n" +
+    "- posPassword: a separate, longer POS password number (e.g. 3625388011) if a distinct password column is shown, else empty. Do not put the short posKey here.\n" +
     "- crewNo: a crew label or number if shown (e.g. 'Crew 3'), else empty.\n" +
     "- role: the role, privilege, or title if shown (e.g. 'Crew Plus / DD Shift', 'Manager'), else empty.\n" +
     "- phone: a phone number if shown, else empty.\n" +
     "- rate: an hourly pay rate as a number if shown, else 0.\n" +
     "Read only what is actually visible. Do not invent names, numbers, or rates. Return everyone you find.";
-  const schema = { type: "object", properties: { employees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, payrollName: { type: "string" }, posKey: { type: "string" }, crewNo: { type: "string" }, role: { type: "string" }, phone: { type: "string" }, rate: { type: "number" } }, required: ["name", "payrollName", "posKey", "crewNo", "role", "phone", "rate"], additionalProperties: false } } }, required: ["employees"], additionalProperties: false };
+  const schema = { type: "object", properties: { employees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, payrollName: { type: "string" }, posKey: { type: "string" }, posPassword: { type: "string" }, crewNo: { type: "string" }, role: { type: "string" }, phone: { type: "string" }, rate: { type: "number" } }, required: ["name", "payrollName", "posKey", "posPassword", "crewNo", "role", "phone", "rate"], additionalProperties: false } } }, required: ["employees"], additionalProperties: false };
   let list = [];
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -865,12 +871,14 @@ async function scanEmployees(request, env, session) {
       client_id: clientId, name, active: true,
       payroll_name: c(e.payrollName).slice(0, 160) || null,
       pos_key: c(e.posKey).slice(0, 40) || null,
+      pos_password: c(e.posPassword).slice(0, 60) || null,
       crew_no: c(e.crewNo).slice(0, 40) || null,
       role: c(e.role).slice(0, 120) || null,
       phone: c(e.phone).slice(0, 40) || null,
       rate: !isNaN(rn) && rn > 0 ? rn : null,
     };
-    const res = await sbInsert(env, "employees", row);
+    let res = await sbInsert(env, "employees", row);
+    if (!res.ok) { const r2 = Object.assign({}, row); delete r2.pos_password; res = await sbInsert(env, "employees", r2); }
     if (res.ok) added++;
   }
   if (!added) return json({ ok: false, error: list.length ? "Couldn't save. Run supabase/employees.sql once." : "No employees found in that photo." }, list.length ? 502 : 200);

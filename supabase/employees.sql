@@ -8,7 +8,8 @@ create table if not exists employees (
   client_id    uuid references clients(id) on delete cascade,
   name         text not null,
   phone        text,
-  pos_key      text,                 -- POS login key, e.g. 8000
+  pos_key      text,                 -- POS # / login key, e.g. 8011
+  pos_password text,                 -- POS password, e.g. 3625388011
   payroll_name text,                 -- e.g. "Alam, Mohammed"
   role         text,                 -- e.g. "Crew Plus / DD Shift", "Manager"
   crew_no      text,                 -- e.g. "Crew 0"
@@ -18,4 +19,6 @@ create table if not exists employees (
   sort         int not null default 0,
   created_at   timestamptz not null default now()
 );
+-- If the table already existed, make sure the newer columns are present:
+alter table employees add column if not exists pos_password text;
 create index if not exists employees_client on employees(client_id, sort, created_at);
