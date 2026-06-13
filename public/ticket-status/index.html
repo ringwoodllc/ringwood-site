@@ -1381,6 +1381,15 @@
       var partsEl=document.getElementById("e_parts"), PARTS=[], SUGG=[];
       function renderParts(){
         var rows = PARTS.map(function(p){
+          if(EDIT_PART_ID===p.id){
+            return "<div class='prow' data-id='"+esc(p.id)+"' style='gap:6px;flex-wrap:wrap'>"+
+              "<input class='pe_qty' type='number' min='0' step='1' value='"+esc(p.quantity==null?1:p.quantity)+"' style='width:56px' />"+
+              "<input class='pe_item' type='text' value='"+esc(p.item||"")+"' style='flex:1;min-width:120px' />"+
+              "<input class='pe_cost' type='number' min='0' step='0.01' value='"+esc(p.estCost==null?"":p.estCost)+"' placeholder='$ est.' style='width:90px' />"+
+              "<button type='button' class='qbtn rev' data-act='psave'>Save</button>"+
+              "<button type='button' class='icobtn' data-act='pcancel'>×</button>"+
+            "</div>";
+          }
           var q=(p.quantity==null?"":p.quantity)+(p.unit?(" "+p.unit):"");
           var thumbs=(p.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='invoice photo' style='width:38px;height:38px;object-fit:cover;border-radius:5px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
           return "<div class='prow' data-id='"+esc(p.id)+"'>"+
@@ -1445,22 +1454,14 @@
         var btn=e.target.closest?e.target.closest(".prow [data-act]"):null; if(!btn) return;
         var row=btn.closest(".prow"), id=row.getAttribute("data-id"), act=btn.getAttribute("data-act");
         var p=PARTS.filter(function(x){return x.id===id;})[0]; if(!p) return;
-        if(act==="edit"){
-          if(row.querySelector(".pedit")) return;
-          var main=row.querySelector(".pmain"); main.style.display="none";
-          var w=document.createElement("div"); w.className="pedit"; w.style.cssText="flex:1;display:flex;gap:6px;flex-wrap:wrap;align-items:center";
-          w.innerHTML="<input class='pe_qty' type='number' min='0' step='1' value='"+esc(p.quantity==null?1:p.quantity)+"' style='width:58px' />"+
-            "<input class='pe_item' type='text' value='"+esc(p.item||"")+"' style='flex:1;min-width:120px' />"+
-            "<input class='pe_cost' type='number' min='0' step='0.01' value='"+esc(p.estCost==null?"":p.estCost)+"' placeholder='$ est.' style='width:90px' />"+
-            "<button type='button' class='qbtn rev pe_save'>Save</button><button type='button' class='icobtn pe_cancel'>×</button>";
-          row.insertBefore(w, row.firstChild);
-          w.querySelector(".pe_item").focus();
-          w.querySelector(".pe_cancel").addEventListener("click", function(ev){ ev.stopPropagation(); loadParts(); });
-          w.querySelector(".pe_save").addEventListener("click", function(ev){ ev.stopPropagation();
-            var it=w.querySelector(".pe_item").value.trim(); if(!it){ w.querySelector(".pe_item").focus(); return; }
-            fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:id, item:it, quantity:w.querySelector(".pe_qty").value, estCost:w.querySelector(".pe_cost").value })})
-              .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); else alert((d&&d.error)||"Couldn\u0027t save."); }).catch(function(){});
-          });
+        if(act==="edit"){ EDIT_PART_ID=id; renderParts(); var pi=partsEl.querySelector(".pe_item"); if(pi) pi.focus(); return; }
+        if(act==="pcancel"){ EDIT_PART_ID=null; renderParts(); return; }
+        if(act==="psave"){
+          var it=row.querySelector(".pe_item").value.trim(); if(!it){ row.querySelector(".pe_item").focus(); return; }
+          var payload={ id:id, item:it, quantity:row.querySelector(".pe_qty").value, estCost:row.querySelector(".pe_cost").value };
+          EDIT_PART_ID=null;
+          fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+            .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadParts(); else { alert((d&&d.error)||"Couldn\u0027t save."); loadParts(); } }).catch(function(){ loadParts(); });
           return;
         }
         if(act==="cycle"){
@@ -1491,6 +1492,7 @@
           }).catch(function(){ sg.disabled=false; sg.textContent="✨ Suggest with AI"; alert("Couldn't reach the assistant."); });
       }
       function addSugg(p, cb){ fetch("/api/tickets/part",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:t.id,item:p.item,quantity:p.quantity,unit:p.unit})}).then(function(r){return r.json();}).then(function(d){ if(cb) cb(d); }).catch(function(){ if(cb) cb({}); }); }
+      var EDIT_PART_ID=null;
       function loadParts(){ fetch("/api/tickets/parts?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){return r.json();}).then(function(rows){ PARTS=Array.isArray(rows)?rows:[]; renderParts(); if(typeof renderMoney==="function") renderMoney(); }).catch(function(){ PARTS=[]; renderParts(); }); }
       var sgBtn=document.getElementById("p_suggest"); if(sgBtn) sgBtn.addEventListener("click", suggestParts);
       loadParts();
