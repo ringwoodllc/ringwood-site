@@ -131,10 +131,7 @@
     lines.push("");
     lines.push((DOCTYPE==="Invoice"?"Amount due: ":"Estimated total: ") + money(b.total));
     lines.push("");
-    lines.push(DOCTYPE==="Invoice"
-      ? "Thank you for your business. Please remit payment to Ringwood Holding LLC."
-      : "This is an estimate, not a final bill. The final amount may change with scope. Ringwood coordinates the work and stands behind it.");
-    lines.push("");
+    if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood Holding LLC."); lines.push(""); }
     lines.push("Thank you,");
     lines.push("Ringwood Holding LLC");
     var href = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
@@ -152,6 +149,12 @@
   document.getElementById("printBtn").addEventListener("click", function(){ window.print(); });
   document.getElementById("sendBtn").addEventListener("click", sendToClient);
 
+  function letterhead(){
+    return "<div style='display:flex;align-items:center;gap:11px;margin-bottom:16px'>"+
+      "<svg width='30' height='30' viewBox='0 0 26 26' aria-hidden='true'><g fill='none' stroke='#2f5d50' stroke-width='1.4'><circle cx='13' cy='13' r='3'/><circle cx='13' cy='13' r='7'/><circle cx='13' cy='13' r='11'/></g></svg>"+
+      "<div style='font-family:Spectral,serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)'>Ringwood Holding LLC</div>"+
+    "</div>";
+  }
   function metaRow(b){
     return "<div class='meta'>"+
       "<div><div class='lbl'>Bill to</div><div>"+esc(b.ticket.client||"—")+"</div></div>"+
@@ -161,7 +164,7 @@
   }
 
   function renderInternal(b){
-    var h="<h1>Job cost sheet</h1><div class='sub'>Internal — not for the client</div>"+metaRow(b);
+    var h=letterhead()+"<h1>Job cost sheet</h1><div class='sub'>Internal — not for the client</div>"+metaRow(b);
     // Labor
     h+="<div class='sec-title'>Labor</div>";
     if(b.labor.length){ h+="<table><tr><th>Person</th><th class='r'>Hours</th><th class='r'>Rate</th><th class='r'>Cost</th></tr>";
@@ -189,7 +192,7 @@
   }
 
   function renderClient(b){
-    var h="<h1>"+esc(DOCTYPE)+"</h1><div class='sub'>Ringwood Holding LLC</div>"+metaRow(b);
+    var h=letterhead()+"<h1>"+esc(DOCTYPE)+"</h1>"+metaRow(b);
     if(b.ticket.description){ h+="<div class='lbl' style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:4px'>Scope of work</div><div class='desc'>"+esc(b.ticket.description)+"</div>"; }
     if(SHOW_ITEMS){
       // Client-facing breakdown at marked-up prices (cost and markup % stay hidden).
@@ -200,10 +203,7 @@
       h+="</table>";
     }
     h+="<div class='line big'><span>"+(DOCTYPE==="Invoice"?"Amount due":"Estimated total")+"</span><span>"+money(b.total)+"</span></div>";
-    h+="<div class='foot'>"+(DOCTYPE==="Invoice"
-        ? "Thank you for your business. Please remit payment to Ringwood Holding LLC."
-        : "This is an estimate, not a final bill. Final amount may change with scope. Ringwood coordinates the work and stands behind it.")+
-      "</div>";
+    if(DOCTYPE==="Invoice") h+="<div class='foot'>Thank you for your business. Please remit payment to Ringwood Holding LLC.</div>";
     return h;
   }
 
