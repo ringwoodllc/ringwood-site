@@ -69,9 +69,11 @@
       <span class="seg"><button id="dt_estimate" class="on" type="button">Estimate</button><button id="dt_invoice" type="button">Invoice</button></span>
       <label class="chk"><input type="checkbox" id="showItems" /> Show breakdown</label>
     </span>
+    <button class="btn" id="sendBtn" type="button" style="display:none">Send to client</button>
     <button class="btn ghost" id="printBtn" type="button">Print / Save PDF</button>
   </div>
 
+  <div id="sendNote" style="display:none;font-size:.86rem;color:#8a3d1c;margin:-8px 0 14px"></div>
   <div class="doc" id="doc"><div class="empty">Loading…</div></div>
 </div>
 <script>
@@ -101,7 +103,42 @@
     document.getElementById("seg_internal").classList.toggle("on", m==="internal");
     document.getElementById("seg_client").classList.toggle("on", m==="client");
     document.getElementById("clientOpts").style.display = m==="client" ? "inline-flex" : "none";
+    document.getElementById("sendBtn").style.display = m==="client" ? "inline-block" : "none";
     render();
+  }
+  // Compose the estimate/invoice as an email to the client. No mail server is
+  // needed: this opens your email app with the client, subject, and body filled
+  // in, so you can review and send. (Attach the PDF from Print if you want it.)
+  function sendToClient(){
+    var b=BILL; if(!b) return;
+    var to = b.ticket.clientEmail || "";
+    var noun = DOCTYPE.toLowerCase();
+    var subject = "Ringwood " + DOCTYPE + (b.ticket.title?(" — "+b.ticket.title):"") + (b.ticket.ref?(" (Ref "+b.ticket.ref+")"):"");
+    var lines = [];
+    lines.push("Hi " + (b.ticket.client || "there") + ",");
+    lines.push("");
+    lines.push("Please find our " + noun + (b.ticket.title?(" for " + b.ticket.title):"") + " below.");
+    if(b.ticket.description){ lines.push(""); lines.push("Scope of work:"); lines.push(b.ticket.description); }
+    if(SHOW_ITEMS){
+      var labMat = Math.round((b.jobCost + b.markupAmt)*100)/100;
+      lines.push(""); lines.push("Labor and materials: " + money(labMat));
+      if(b.fee) lines.push("Service fee: " + money(b.fee));
+    }
+    lines.push("");
+    lines.push((DOCTYPE==="Invoice"?"Amount due: ":"Estimated total: ") + money(b.total));
+    lines.push("");
+    lines.push(DOCTYPE==="Invoice"
+      ? "Thank you for your business. Please remit payment to Ringwood Holding LLC."
+      : "This is an estimate, not a final bill. The final amount may change with scope. Ringwood coordinates the work and stands behind it.");
+    lines.push("");
+    lines.push("Thank you,");
+    lines.push("Ringwood Holding LLC");
+    var href = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
+    if(!to){
+      var note=document.getElementById("sendNote");
+      if(note){ note.textContent="No email on file for "+(b.ticket.client||"this client")+". Opening a blank draft — add their address, or set it in client setup."; note.style.display="block"; }
+    }
+    window.location.href = href;
   }
   document.getElementById("seg_internal").addEventListener("click", function(){ setMode("internal"); });
   document.getElementById("seg_client").addEventListener("click", function(){ setMode("client"); });
@@ -109,6 +146,7 @@
   document.getElementById("dt_invoice").addEventListener("click", function(){ DOCTYPE="Invoice"; this.classList.add("on"); document.getElementById("dt_estimate").classList.remove("on"); render(); });
   document.getElementById("showItems").addEventListener("change", function(){ SHOW_ITEMS=this.checked; render(); });
   document.getElementById("printBtn").addEventListener("click", function(){ window.print(); });
+  document.getElementById("sendBtn").addEventListener("click", sendToClient);
 
   function metaRow(b){
     return "<div class='meta'>"+

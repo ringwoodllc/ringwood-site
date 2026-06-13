@@ -5803,12 +5803,12 @@ async function getTicketBill(url, env, session) {
   // Pricing columns (ticket + client) are newer; degrade gracefully.
   let tp = await sbSelect(env, `tickets?id=eq.${id}&select=markup_pct,service_fee`);
   const tpr = tp && tp[0] ? tp[0] : {};
-  let clientName = "", cMarkup = null, cFee = null;
+  let clientName = "", clientEmail = "", cMarkup = null, cFee = null;
   if (t.client_id) {
-    let cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name,markup_pct,service_fee`);
-    if (cr === null) cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name`);
+    let cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name,email,markup_pct,service_fee`);
+    if (cr === null) cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name,email`);
     const c0 = cr && cr[0];
-    if (c0) { clientName = c0.name || ""; cMarkup = c0.markup_pct != null ? c0.markup_pct : null; cFee = c0.service_fee != null ? c0.service_fee : null; }
+    if (c0) { clientName = c0.name || ""; clientEmail = c0.email || ""; cMarkup = c0.markup_pct != null ? c0.markup_pct : null; cFee = c0.service_fee != null ? c0.service_fee : null; }
   }
   // Labor
   const lrows = await sbSelect(env, `ticket_labor?ticket_id=eq.${id}&select=person,hours,rate&order=created_at.asc`);
@@ -5835,7 +5835,7 @@ async function getTicketBill(url, env, session) {
   const margin = Math.round((total - jobCost) * 100) / 100;
   return noStore({
     ok: true,
-    ticket: { ref: t.ref || "", title: t.title || "", description: t.description || "", created: t.created_at || "", client: clientName },
+    ticket: { ref: t.ref || "", title: t.title || "", description: t.description || "", created: t.created_at || "", client: clientName, clientEmail: clientEmail },
     labor, laborCost,
     parts, partsCost,
     quote: quote ? { vendor: quote.vendor || "", amount: quote.amount != null ? Number(quote.amount) : null, covered: !!quote.warranty_covered } : null,
