@@ -176,7 +176,7 @@ export default {
     if (url.pathname === "/api/google/callback" && request.method === "GET") return googleCallback(request, env);
     if (url.pathname === "/api/google/disconnect" && request.method === "POST") return googleDisconnect(request, env);
     if (url.pathname === "/api/gmail/draft" && request.method === "POST") return gmailCreateDraft(request, env);
-    if (url.pathname === "/api/qbo/status" && request.method === "GET") return qboStatus(request, env);
+    if (url.pathname === "/api/qbo/status" && request.method === "GET") return qboStatus(url, env, session);
     if (url.pathname === "/api/qbo/connect" && request.method === "GET") return qboConnect(request, env);
     if (url.pathname === "/api/qbo/callback" && request.method === "GET") return qboCallback(request, env);
     if (url.pathname === "/api/qbo/disconnect" && request.method === "POST") return qboDisconnect(request, env);
@@ -1187,32 +1187,42 @@ async function getGoogleAccessToken(env) {
 }
 
 /* ===================== QuickBooks Online (OAuth, read-only) ===================== */
-// One org-wide QuickBooks connection, stored in app_oauth (provider 'qbo') with
-// the company id in realm_id. Used READ-ONLY to reconcile the roster against the
-// QBO employee list. Needs QBO_CLIENT_ID and QBO_CLIENT_SECRET as Cloudflare
-// Worker secrets. Scope is accounting (the Employee entity); creating payroll
-// employees is not available to third parties through the Intuit API, so the app
-// flags who to add and you add them in QuickBooks.
+// Per-location QuickBooks connections. Each Ringwood client (location) connects to
+// its own QBO company, stored in qbo_connections keyed by client_id (realm_id plus
+// tokens). One Intuit developer app (QBO_CLIENT_ID / QBO_CLIENT_SECRET as Cloudflare
+// Worker secrets) authorizes all of them. Used READ-ONLY to reconcile the roster
+// against the QBO employee list. Scope is accounting (the Employee entity); creating
+// payroll employees is not available to third parties through the Intuit API, so the
+// app flags who to add and you add them in QuickBooks.
 const QBO_SCOPES = "com.intuit.quickbooks.accounting";
 const QBO_API_BASE = "https://quickbooks.api.intuit.com";
 function qboRedirectUri(request) { return new URL(request.url).origin + "/api/qbo/callback"; }
 function qboBasicAuth(env) { return "Basic " + btoa(env.QBO_CLIENT_ID + ":" + env.QBO_CLIENT_SECRET); }
 
-async function qboStatus(request, env) {
-  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+async function qboStatus(url, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   const configured = !!(env.QBO_CLIENT_ID && env.QBO_CLIENT_SECRET);
-  let connected = false, realmId = "";
-  if (configured) {
-    const rows = await sbSelect(env, "app_oauth?provider=eq.qbo&select=refresh_token,realm_id");
-    const row = rows && rows[0];
-    connected = !!(row && row.refresh_token && row.realm_id); realmId = (row && row.realm_id) || "";
+  const clientId = url.searchParams.get("clientId") || "";
+  let connected = false, realmId = "", companyName = "", connectedCount = 0;
+  if (configured && sbReady(env)) {
+    if (clientId) {
+      const rows = await sbSelect(env, `qbo_connections?client_id=eq.${clientId}&select=realm_id,company_name,refresh_token`);
+      const row = rows && rows[0];
+      connected = !!(row && row.refresh_token && row.realm_id);
+      realmId = (row && row.realm_id) || ""; companyName = (row && row.company_name) || "";
+    } else {
+      const rows = await sbSelect(env, "qbo_connections?select=client_id");
+      connectedCount = (rows || []).length;
+    }
   }
-  return noStore({ ok: true, configured, connected, realmId });
+  return noStore({ ok: true, configured, connected, realmId, companyName, connectedCount });
 }
 
 async function qboConnect(request, env) {
   if (!(await requireMaster(request, env))) return new Response("Master only.", { status: 403 });
   if (!env.QBO_CLIENT_ID || !env.QBO_CLIENT_SECRET) return new Response("QuickBooks is not configured. Add QBO_CLIENT_ID and QBO_CLIENT_SECRET in Cloudflare.", { status: 503 });
+  const clientId = new URL(request.url).searchParams.get("clientId") || "";
+  if (!clientId) return new Response("Pick a location first.", { status: 400 });
   const state = randomToken();
   const u = new URL("https://appcenter.intuit.com/connect/oauth2");
   u.searchParams.set("client_id", env.QBO_CLIENT_ID);
@@ -1220,7 +1230,11 @@ async function qboConnect(request, env) {
   u.searchParams.set("response_type", "code");
   u.searchParams.set("scope", QBO_SCOPES);
   u.searchParams.set("state", state);
-  return new Response(null, { status: 302, headers: { Location: u.toString(), "Set-Cookie": `rw_qoauth=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600` } });
+  // Remember both the CSRF token and which location this connection is for.
+  const h = new Headers({ Location: u.toString() });
+  h.append("Set-Cookie", `rw_qoauth=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`);
+  h.append("Set-Cookie", `rw_qclient=${clientId}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`);
+  return new Response(null, { status: 302, headers: h });
 }
 
 async function qboCallback(request, env) {
@@ -1230,9 +1244,15 @@ async function qboCallback(request, env) {
   const state = url.searchParams.get("state") || "";
   const realmId = url.searchParams.get("realmId") || "";
   const cookieState = getCookie(request, "rw_qoauth") || "";
-  const back = (msg) => new Response(null, { status: 302, headers: { Location: "/admin?qbo=" + msg, "Set-Cookie": "rw_qoauth=; Path=/; Max-Age=0" } });
+  const clientId = getCookie(request, "rw_qclient") || "";
+  const back = (msg) => {
+    const h = new Headers({ Location: "/employees?qbo=" + msg + (clientId ? "&client=" + encodeURIComponent(clientId) : "") });
+    h.append("Set-Cookie", "rw_qoauth=; Path=/; Max-Age=0");
+    h.append("Set-Cookie", "rw_qclient=; Path=/; Max-Age=0");
+    return new Response(null, { status: 302, headers: h });
+  };
   if (!master) return new Response("Master only.", { status: 403 });
-  if (!code || !state || state !== cookieState || !realmId) return back("error");
+  if (!code || !state || state !== cookieState || !realmId || !clientId) return back("error");
   let tok;
   try {
     const r = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
@@ -1242,28 +1262,43 @@ async function qboCallback(request, env) {
     tok = await r.json();
     if (!r.ok || !tok.access_token || !tok.refresh_token) return back("error");
   } catch { return back("error"); }
+  const companyName = await qboCompanyName(env, { token: tok.access_token, realmId });
   const expires_at = new Date(Date.now() + ((tok.expires_in || 3600) - 60) * 1000).toISOString();
-  const patch = { provider: "qbo", realm_id: realmId, access_token: tok.access_token, refresh_token: tok.refresh_token, expires_at, updated_at: new Date().toISOString() };
-  const existing = await sbSelect(env, "app_oauth?provider=eq.qbo&select=provider");
+  const patch = { realm_id: realmId, company_name: companyName, access_token: tok.access_token, refresh_token: tok.refresh_token, expires_at, updated_at: new Date().toISOString() };
+  const existing = await sbSelect(env, `qbo_connections?client_id=eq.${clientId}&select=client_id`);
   if (existing && existing.length) {
-    await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.qbo`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
+    await fetch(`${env.SUPABASE_URL}/rest/v1/qbo_connections?client_id=eq.${clientId}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
   } else {
-    await sbInsert(env, "app_oauth", patch);
+    await sbInsert(env, "qbo_connections", Object.assign({ client_id: clientId }, patch));
   }
   return back("connected");
 }
 
 async function qboDisconnect(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.qbo`, { method: "DELETE", headers: sbHeaders(env) });
+  let body; try { body = await request.json(); } catch { body = {}; }
+  const clientId = (body.clientId || "").toString();
+  if (!clientId) return json({ ok: false, error: "Pick a location first." }, 400);
+  await fetch(`${env.SUPABASE_URL}/rest/v1/qbo_connections?client_id=eq.${clientId}`, { method: "DELETE", headers: sbHeaders(env) });
   return json({ ok: true });
 }
 
-// Fresh access token plus the realm id. Intuit rotates the refresh token on every
-// refresh, so the new one is stored back. Returns null when not connected.
-async function getQboAuth(env) {
-  if (!env.QBO_CLIENT_ID || !env.QBO_CLIENT_SECRET) return null;
-  const rows = await sbSelect(env, "app_oauth?provider=eq.qbo&select=access_token,refresh_token,expires_at,realm_id");
+// The connected QBO company name, for display. Best-effort.
+async function qboCompanyName(env, auth) {
+  try {
+    const r = await fetch(`${QBO_API_BASE}/v3/company/${auth.realmId}/companyinfo/${auth.realmId}?minorversion=70`, { headers: { Authorization: "Bearer " + auth.token, Accept: "application/json" } });
+    if (!r.ok) return "";
+    const d = await r.json();
+    return (d && d.CompanyInfo && d.CompanyInfo.CompanyName) || "";
+  } catch { return ""; }
+}
+
+// Fresh access token plus the realm id for one location. Intuit rotates the refresh
+// token on every refresh, so the new one is stored back. Returns null when that
+// location is not connected.
+async function getQboAuth(env, clientId) {
+  if (!env.QBO_CLIENT_ID || !env.QBO_CLIENT_SECRET || !clientId) return null;
+  const rows = await sbSelect(env, `qbo_connections?client_id=eq.${clientId}&select=access_token,refresh_token,expires_at,realm_id`);
   const row = rows && rows[0];
   if (!row || !row.refresh_token || !row.realm_id) return null;
   if (row.access_token && row.expires_at && new Date(row.expires_at).getTime() > Date.now() + 30000) {
@@ -1279,7 +1314,7 @@ async function getQboAuth(env) {
     const expires_at = new Date(Date.now() + ((tok.expires_in || 3600) - 60) * 1000).toISOString();
     const patch = { access_token: tok.access_token, expires_at, updated_at: new Date().toISOString() };
     if (tok.refresh_token) patch.refresh_token = tok.refresh_token;
-    await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.qbo`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
+    await fetch(`${env.SUPABASE_URL}/rest/v1/qbo_connections?client_id=eq.${clientId}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
     return { token: tok.access_token, realmId: row.realm_id };
   } catch { return null; }
 }
@@ -1326,10 +1361,10 @@ function splitPayroll(p) {
 // and likely same-person matches whose names are spelled differently.
 async function qboReconcile(url, env, session) {
   if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
-  const auth = await getQboAuth(env);
-  if (!auth) return json({ ok: false, error: "QuickBooks is not connected." }, 409);
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: false, error: "Pick a location first." }, 400);
+  const auth = await getQboAuth(env, clientId);
+  if (!auth) return json({ ok: false, error: "This location is not connected to QuickBooks." }, 409);
 
   const qboEmps = await qboFetchEmployees(env, auth);
   if (qboEmps === null) return json({ ok: false, error: "Couldn't read QuickBooks. Reconnect and try again." }, 502);

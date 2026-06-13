@@ -107,8 +107,9 @@
 
     <h2>QuickBooks</h2>
     <div class="panel" id="qboPanel">
-      <div style="font-size:.86rem;color:var(--muted);margin-bottom:8px">Check this roster against your QuickBooks employees: who is in both, who is in the app but not yet in QuickBooks (add them there), and who is in QuickBooks but not the app.</div>
-      <button class="btn sm" id="qboBtn" type="button">Check against QuickBooks</button>
+      <div style="font-size:.86rem;color:var(--muted);margin-bottom:8px">Connect this location to its QuickBooks company, then check the roster against the QBO employees: who is in both, who is in the app but not yet in QuickBooks (add them there), and who is in QuickBooks but not the app.</div>
+      <div id="qbo_conn" style="font-size:.88rem;margin-bottom:9px;color:var(--green-deep)">Checking QuickBooks…</div>
+      <div id="qbo_actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
       <div class="msg" id="qbo_msg"></div>
       <div id="qbo_out" style="margin-top:10px"></div>
     </div>
@@ -172,7 +173,6 @@
     document.getElementById("sortBy").addEventListener("change",function(){ SORT=this.value; render(); });
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
-    var qb=document.getElementById("qboBtn"); if(qb) qb.addEventListener("click", reconcileQbo);
     loadClients();
   }).catch(function(){});
 
@@ -215,6 +215,7 @@
 
   function load(){
     loadRoles();
+    loadQboStatus();
     fetch("/api/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var note=document.getElementById("setupNote");
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
@@ -314,6 +315,40 @@
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add employee"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
+
+  // Per-location QuickBooks connection. Each location ties to its own QBO company.
+  function loadQboStatus(){
+    var conn=document.getElementById("qbo_conn"), act=document.getElementById("qbo_actions"), out=document.getElementById("qbo_out");
+    if(out) out.innerHTML=""; document.getElementById("qbo_msg").textContent="";
+    if(!CLIENT_ID){ conn.textContent=""; act.innerHTML=""; return; }
+    conn.style.color="var(--muted)"; conn.textContent="Checking QuickBooks…"; act.innerHTML="";
+    fetch("/api/qbo/status?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ conn.textContent="Couldn't check QuickBooks."; return; }
+      if(!d.configured){ conn.style.color="var(--muted)"; conn.innerHTML="QuickBooks isn't set up yet. An admin needs to add the QuickBooks keys (see setup)."; return; }
+      if(d.connected){
+        conn.style.color="var(--green-deep)";
+        conn.innerHTML="Connected to <b>"+esc(d.companyName||("company "+d.realmId))+"</b>.";
+        act.innerHTML="<button class='btn sm' id='qboBtn' type='button'>Check against QuickBooks</button>"+
+          "<button class='btn sm' id='qboDisc' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Disconnect</button>";
+        document.getElementById("qboBtn").addEventListener("click", reconcileQbo);
+        document.getElementById("qboDisc").addEventListener("click", disconnectQbo);
+      } else {
+        conn.style.color="var(--muted)"; conn.textContent="This location isn't connected to QuickBooks yet.";
+        act.innerHTML="<a class='btn sm' id='qboConn' href='/api/qbo/connect?clientId="+encodeURIComponent(CLIENT_ID)+"' style='text-decoration:none;display:inline-block'>Connect QuickBooks</a>";
+      }
+    }).catch(function(){ conn.textContent="Couldn't check QuickBooks."; });
+  }
+  function disconnectQbo(){
+    if(!confirm("Disconnect this location from QuickBooks? You can reconnect any time.")) return;
+    this.disabled=true;
+    fetch("/api/qbo/disconnect",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID})})
+      .then(function(r){return r.json();}).then(function(){ loadQboStatus(); }).catch(function(){ loadQboStatus(); });
+  }
+  // Show the connect result when QuickBooks redirects back here.
+  (function(){ var p=QP.get("qbo"); if(!p) return; var m=document.getElementById("qbo_msg"); if(!m) return;
+    if(p==="connected"){ m.className="msg ok"; m.textContent="QuickBooks connected for this location."; }
+    else if(p==="error"){ m.className="msg err"; m.textContent="Couldn't connect QuickBooks. Check the keys and redirect URL, then try again."; }
+  })();
 
   // Reconcile the roster against QuickBooks. Read-only: it never changes QBO.
   function qboGroup(title, names, color, note){

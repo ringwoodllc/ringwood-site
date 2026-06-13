@@ -160,17 +160,12 @@
 
   function loadQbo(){
     var st=document.getElementById("qboStatus"), act=document.getElementById("qboActions");
+    act.innerHTML="";
     fetch("/api/qbo/status",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
-      if(!d||!d.ok){ st.textContent="Couldn't check the connection."; act.innerHTML=""; return; }
-      if(!d.configured){ st.innerHTML="Not set up yet. Add <b>QBO_CLIENT_ID</b> and <b>QBO_CLIENT_SECRET</b> as Cloudflare Worker secrets (see setup), then reload."; act.innerHTML=""; return; }
-      if(d.connected){
-        st.innerHTML="Connected"+(d.realmId?(" (company <b>"+gEsc(d.realmId)+"</b>)"):"")+". The employee setup page can reconcile the roster against QuickBooks. New payroll employees are still added in QuickBooks by hand.";
-        act.innerHTML="<button id='qbDisc' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);font-weight:600;font-size:.9rem;padding:9px 15px;border-radius:8px;cursor:pointer'>Disconnect</button>";
-        document.getElementById("qbDisc").addEventListener("click", function(){ this.disabled=true; fetch("/api/qbo/disconnect",{method:"POST"}).then(function(r){return r.json();}).then(function(){ loadQbo(); }).catch(function(){}); });
-      } else {
-        st.textContent="Not connected. Connect QuickBooks so the app can check the roster against your QBO employees.";
-        act.innerHTML="<a href='/api/qbo/connect' style='display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:.9rem;padding:10px 16px;border-radius:8px'>Connect QuickBooks</a>";
-      }
+      if(!d||!d.ok){ st.textContent="Couldn't check the connection."; return; }
+      if(!d.configured){ st.innerHTML="Not set up yet. Add <b>QBO_CLIENT_ID</b> and <b>QBO_CLIENT_SECRET</b> as Cloudflare Worker secrets (see setup), then reload."; return; }
+      var n=d.connectedCount||0;
+      st.innerHTML="QuickBooks is set up. "+(n?("<b>"+n+"</b> location"+(n===1?"":"s")+" connected."):"No locations connected yet.")+" Connect each location from <a href='/employees' style='color:var(--green-deep)'>Employee setup</a> (pick the location, then Connect QuickBooks). New payroll employees are still added in QuickBooks by hand.";
     }).catch(function(){ st.textContent="Couldn't check the connection."; });
   }
   (function(){ var p=new URLSearchParams(location.search).get("qbo"); var m=document.getElementById("qboMsg"); if(!p||!m) return;

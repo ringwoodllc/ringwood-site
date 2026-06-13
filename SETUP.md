@@ -94,19 +94,26 @@ Change the passwords from **Account** (footer link in the hub) after first sign-
 
 ## QuickBooks (optional, read-only roster reconcile)
 
-Lets the employee setup page check the roster against your QuickBooks employees.
-It is read-only: the app never changes QuickBooks, and it does not create payroll
+Lets the employee setup page check each location's roster against that location's
+QuickBooks employees. Each location connects to its own QuickBooks company. It is
+read-only: the app never changes QuickBooks, and it does not create payroll
 employees (Intuit does not allow third parties to do that by API, so you add new
-people in QuickBooks by hand).
+people in QuickBooks by hand; the reconcile view tells you who).
+
+One-time setup (a single Intuit app covers every location):
 
 1. In Supabase, run `supabase/qbo_oauth.sql` once.
-2. At the Intuit developer dashboard (developer.intuit.com), open your app, set the
+2. At the Intuit developer dashboard (developer.intuit.com), create an app, set the
    redirect URI to `https://app.ringwood.ai/api/qbo/callback`, and copy the
    **Client ID** and **Client Secret** (use the Production keys for live data).
 3. In Cloudflare → ringwood-site → Settings → Variables, add two secrets:
    `QBO_CLIENT_ID` and `QBO_CLIENT_SECRET`.
-4. Reload **Admin**, click **Connect QuickBooks**, and approve. Then open
-   **Employee setup** and use **Check against QuickBooks**.
+
+Then, per location:
+
+4. Open **Employee setup**, pick the location, click **Connect QuickBooks**, sign
+   in, and choose that location's QuickBooks company. Repeat for each location.
+5. Use **Check against QuickBooks** on that location any time to reconcile.
 
 ---
 
