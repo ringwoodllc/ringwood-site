@@ -823,8 +823,13 @@ async function saveEmployee(request, env, session) {
     if (!patch.name) return json({ ok: false, error: "Enter a name." }, 400);
   }
   let res = await doSave(patch);
-  // Degrade gracefully if newer columns haven't been migrated yet.
-  if (!res.ok && ("pos_password" in patch || "last_name" in patch)) { const p2 = Object.assign({}, patch); delete p2.pos_password; delete p2.last_name; res = await doSave(p2); }
+  // Degrade gracefully if newer columns haven't been migrated yet (so a save never
+  // fails wholesale). The dropped field just won't persist until the column exists.
+  if (!res.ok) {
+    const p2 = Object.assign({}, patch);
+    ["pos_password", "last_name", "address", "qbo_id", "nickname"].forEach((k) => delete p2[k]);
+    if (Object.keys(p2).length !== Object.keys(patch).length) res = await doSave(p2);
+  }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "Run supabase/employees.sql once.")).slice(0, 200) }, 502);
   return json({ ok: true });
 }

@@ -320,37 +320,50 @@
   function qbBadge(e){ return e.qb ? " <span title='In QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
   function renderItem(e){
     var k=ukey(e.id);
-    var sub=[(e.nickname?("“"+e.nickname+"”"):""),e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
+    var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
     // Fields QuickBooks owns are read-only when the person is linked to QB.
     var ql=e.qb||null;
     var roAttr=ql?" readonly style='background:#e7e1d3;color:var(--muted);cursor:not-allowed'":"";
     var roTag=ql?" <span style='font-weight:400;font-size:.72rem;color:#2ca01c'>· from QuickBooks</span>":"";
     var fnVal=ql?(ql.first||e.name):e.name, lnVal=ql?(ql.last||e.lastName):e.lastName, adVal=ql?(ql.address||e.address):e.address;
-    // Identity / QuickBooks chip: a compact, collapsed card (like the asset field).
-    // When linked, the corner action is Unlink and the QB-owned name/address sit
-    // inside, read-only. When not linked, the body holds editable name/address and
-    // a Link picker.
+    // Full Name / Payroll chip: a compact, collapsed card (like the asset field).
+    // Header shows the QB name (or "Full Name"), a $ when a pay rate is set, and an
+    // Unlink corner when linked. Body holds name/address (read-only from QB when
+    // linked) plus the pay rate, and a Link picker when not linked.
     var qbName=ql?esc(ql.display||((ql.first+" "+ql.last).trim())):"";
     var qbPicker="";
     if(!ql && QB_CONNECTED){ var opts=qbUnlinked().map(function(q){ return "<option value='"+esc(q.qboId)+"'>"+esc(q.display||((q.first+" "+q.last).trim()))+"</option>"; }).join(""); qbPicker="<div class='field' style='margin-top:8px;margin-bottom:0'><label>Link to QuickBooks</label><select onchange=\"if(this.value)setQbLink('"+esc(e.id)+"',this.value)\"><option value=''>— not linked —</option>"+opts+"</select></div>"; }
-    var idHead=ql?("● "+qbName+" · QuickBooks"):(QB_CONNECTED?"Identity · not in QuickBooks":"Identity");
+    var rateBadge=(e.rate!==""&&e.rate!=null)?" <span title='Pay rate set' style='color:#2ca01c;font-weight:800'>$</span>":"";
+    var idHead=ql?("● "+qbName+" · QuickBooks"):(QB_CONNECTED?"Full Name · not in QuickBooks":"Full Name");
     var corner=ql?("<a href='#' onclick=\"event.preventDefault();event.stopPropagation();setQbLink('"+esc(e.id)+"','')\" style='color:#8a3d1c;font-weight:600;border-bottom:1px solid rgba(138,61,28,.4)'>Unlink</a>"):"";
     var qbChip=
       "<div class='qbchip"+(ql?" linked":"")+"' id='qbc_"+k+"'>"+
         "<div class='qbchip-h' onclick=\"toggleQb('"+k+"')\">"+
-          "<span class='qbchip-t'>"+idHead+"</span>"+
+          "<span class='qbchip-t'>"+idHead+rateBadge+"</span>"+
           "<span class='qbchip-r'>"+corner+"<span class='caret'>›</span></span>"+
         "</div>"+
         "<div class='qbchip-b' id='qbb_"+k+"' style='display:none'>"+
           "<div class='row2'><div class='field'><label>First name"+roTag+"</label><input id='nm_"+k+"'"+roAttr+" value='"+esc(fnVal)+"'/></div>"+
           "<div class='field'><label>Last name"+roTag+"</label><input id='ls_"+k+"'"+roAttr+" value='"+esc(lnVal)+"'/></div></div>"+
-          "<div class='field' style='margin-bottom:0'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
+          "<div class='field'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
+          "<div class='field' style='margin-bottom:0'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
           qbPicker+
         "</div>"+
       "</div>";
+    // POS Pin: show the standard prefix dim, the short part highlighted (a space
+    // between). No prefix? the whole number sits in the highlighted box.
+    var pk=(e.posKey||"").toString();
+    var posPrefix=(pk.indexOf(POS_STD)===0 && pk.length>POS_STD.length)?POS_STD:"";
+    var posSuffix=posPrefix?pk.slice(POS_STD.length):pk;
+    var posField=
+      "<div class='field'><label>POS Pin</label>"+
+        "<div style='display:flex;align-items:center;gap:6px'>"+
+          (posPrefix?"<span style='color:var(--muted);font-weight:600;font-family:ui-monospace,monospace'>"+esc(POS_STD)+"</span>":"")+
+          "<input id='ps_"+k+"' inputmode='numeric' data-prefix='"+(posPrefix?POS_STD:"")+"' value='"+esc(posSuffix)+"' style='flex:1;min-width:0;background:#e7e0d0;font-weight:800;color:var(--green-deep)'/>"+
+        "</div></div>";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
-        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+qbBadge(e)+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
+        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+(e.nickname?(" ("+esc(e.nickname)+")"):"")+"</span>"+qbBadge(e)+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
         "<span style='display:flex;align-items:center;gap:6px'>"+
           (SORT==="manual" ? "<span style='display:flex;flex-direction:column;line-height:.9'><button type='button' onclick=\"event.stopPropagation();mv('"+esc(e.id)+"',-1)\" style='background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;padding:0 4px'>▲</button><button type='button' onclick=\"event.stopPropagation();mv('"+esc(e.id)+"',1)\" style='background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;padding:0 4px'>▼</button></span>" : "")+
           "<span class='caret'>›</span>"+
@@ -360,9 +373,8 @@
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div></div>"+
         "<div class='possec'><div class='poslabel'>POS</div>"+
           "<div class='row3'><div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
-          "<div class='field'><label>POS Pin</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
+          posField+
           "<div class='field'><label>Role</label><select id='rl_"+k+"'></select></div></div></div>"+
-        "<div class='field'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
         qbChip+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
         "<div style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
@@ -383,7 +395,8 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      var payload={ id:e.id, name:name, nickname:document.getElementById("nk_"+k).value, lastName:document.getElementById("ls_"+k).value, address:document.getElementById("ar_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:document.getElementById("ps_"+k).value, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, active:document.getElementById("ac_"+k).checked };
+      var pe=document.getElementById("ps_"+k); var posKey=(pe.getAttribute("data-prefix")||"")+(pe.value||"").trim();
+      var payload={ id:e.id, name:name, nickname:document.getElementById("nk_"+k).value, lastName:document.getElementById("ls_"+k).value, address:document.getElementById("ar_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:posKey, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, active:document.getElementById("ac_"+k).checked };
       fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
