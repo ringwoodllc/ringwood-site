@@ -92,6 +92,31 @@ Change the passwords from **Account** (footer link in the hub) after first sign-
 
 ---
 
+## Send to printer (email-to-print)
+
+The hub has a **Send to printer** button: pick any file (PDF, image, document)
+and the app emails it straight to your printer's print-by-email address. No
+software runs on any local computer — a website can't reach a printer on your
+network directly, so this goes through email instead.
+
+To set it up:
+
+1. **Connect Gmail** (one-time): Admin panel → *Gmail connection* → **Connect
+   Gmail**. The app sends the print email through that mailbox. (Needs
+   `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` Worker secrets — the same
+   connection used for estimate/RFQ drafts.)
+2. **Find your printer's email address.** Most modern printers have one — HP
+   ePrint, Epson Email Print, etc. Check the printer's control panel or its web
+   page, or enable it in the maker's app.
+3. On the **Send to printer** page, paste that address into *Printer address*
+   and **Save** (master only). After that, anyone signed in can print to it.
+
+Files are capped at about 10 MB. The printer address lives in the
+`app_settings` table (created by `supabase/setup_all.sql`, or run
+`supabase/print_settings.sql` on its own).
+
+---
+
 ## GitHub / deploys
 
 - The repo auto-deploys: a push to `main` builds and ships the Worker.
