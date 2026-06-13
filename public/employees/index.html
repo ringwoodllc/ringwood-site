@@ -83,18 +83,18 @@
     <h2>Add an employee</h2>
     <div class="panel">
       <div class="row2">
-        <div class="field"><label>Name <span style="font-weight:400;color:var(--muted)">— nickname</span></label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Sheuli" /></div>
+        <div class="field"><label>First name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Dilara" /></div>
+        <div class="field"><label>Last name</label><input id="n_last" type="text" autocomplete="off" placeholder="e.g. Chowdhury" /></div>
+      </div>
+      <div class="row2">
         <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
+        <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
       </div>
       <div class="row2">
         <div class="field"><label>POS # / key</label><input id="n_pos" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 8011" /></div>
         <div class="field"><label>POS password</label><input id="n_pospw" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 3625388011" /></div>
       </div>
-      <div class="row2">
-        <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
-        <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
-      </div>
-      <div class="field"><label>Payroll name <span style="font-weight:400;color:var(--muted)">— first &amp; last</span></label><input id="n_payroll" type="text" autocomplete="off" placeholder="e.g. Sheuli Akhter" /></div>
+      <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
       <div style="margin:-2px 0 8px"><a href="#" id="manageRolesLink" style="font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage roles</a></div>
       <div id="rolePanel" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:12px"></div>
       <div class="row2">
@@ -147,7 +147,8 @@
     Array.prototype.forEach.call(p.querySelectorAll(".delrole"),function(b){ b.addEventListener("click",function(){ if(confirm("Remove this role from the list? Employees keep it until you change them.")) delRoleDb(b.getAttribute("data-id")); }); });
     var ab=document.getElementById("addRoleBtn"); if(ab) ab.addEventListener("click",function(){ var inp=document.getElementById("newRoleInput"); var nm=(inp.value||"").trim(); if(nm){ addRoleDb(nm); inp.value=""; } });
   }
-  function lastName(e){ var src=((e.payrollName||"").trim())||(e.name||""); var p=src.split(/\s+/); return p[p.length-1]||""; }
+  function lastName(e){ if(e.lastName) return e.lastName; var src=((e.payrollName||"").trim())||(e.name||""); var p=src.split(/\s+/); return p[p.length-1]||""; }
+  function fullName(e){ return (e.name||"")+(e.lastName?(" "+e.lastName):""); }
 
   var CLIENT_ID="", EMP=[], SORT="nick", FILT="active";
   var CKEY="rw_emp_client";
@@ -187,13 +188,18 @@
     }).catch(function(e){ btn.disabled=false; msg.className="msg err"; msg.textContent=(e&&e.message)||"Couldn't reach the server."; });
   }
 
+  // Deep link from the schedule: ?client=…&emp=… selects the location and opens
+  // that employee's card.
+  var QP=new URLSearchParams(location.search), URL_CLIENT=QP.get("client")||"", URL_EMP=QP.get("emp")||"";
+  if(URL_EMP) FILT="all";
   function loadClients(){
     fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok) return;
       var sel=document.getElementById("clientPick");
       (d.clients||[]).forEach(function(c){ var o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
       var saved=""; try{ saved=localStorage.getItem(CKEY)||""; }catch(e){}
-      if(saved){ sel.value=saved; if(sel.value===saved){ CLIENT_ID=saved; document.getElementById("body").style.display="block"; load(); } }
+      if(URL_CLIENT) saved=URL_CLIENT;
+      if(saved){ sel.value=saved; if(sel.value===saved){ CLIENT_ID=saved; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} document.getElementById("body").style.display="block"; load(); } }
       sel.addEventListener("change", function(){ CLIENT_ID=sel.value; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} if(CLIENT_ID){ document.getElementById("body").style.display="block"; load(); } else { document.getElementById("body").style.display="none"; } });
     }).catch(function(){});
   }
@@ -206,6 +212,7 @@
       if(d.missing){ note.style.display="block"; note.textContent="The employees table isn't set up yet. Run supabase/employees.sql once in Supabase, then reload."; }
       else note.style.display="none";
       EMP=d.employees||[]; render();
+      if(URL_EMP){ var k=ukey(URL_EMP), it=document.getElementById("it_"+k); if(it){ window.tog(k); it.scrollIntoView({block:"center",behavior:"smooth"}); } URL_EMP=""; }
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
@@ -228,16 +235,16 @@
     var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
-        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(e.name)+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
+        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
         "<span class='caret'>›</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
-        "<div class='row2'><div class='field'><label>Name <span style='font-weight:400;color:var(--muted)'>— nickname</span></label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
-        "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div></div>"+
+        "<div class='row2'><div class='field'><label>First name</label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
+        "<div class='field'><label>Last name</label><input id='ls_"+k+"' value='"+esc(e.lastName)+"'/></div></div>"+
+        "<div class='row2'><div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div>"+
+        "<div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div></div>"+
         "<div class='row2'><div class='field'><label>POS # / key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
         "<div class='field'><label>POS password</label><input id='pw_"+k+"' inputmode='numeric' value='"+esc(e.posPassword)+"'/></div></div>"+
-        "<div class='row2'><div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
-        "<div class='field'><label>Role / privilege</label><select id='rl_"+k+"'></select></div></div>"+
-        "<div class='field'><label>Payroll name <span style='font-weight:400;color:var(--muted)'>— first &amp; last</span></label><input id='py_"+k+"' value='"+esc(e.payrollName)+"'/></div>"+
+        "<div class='field'><label>Role / privilege</label><select id='rl_"+k+"'></select></div>"+
         "<div class='row2'><div class='field'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
         "<div class='field'><label>OT rate ($/hr)</label><input id='ot_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.otRate)+"'/></div></div>"+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
@@ -256,7 +263,7 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      var payload={ id:e.id, name:name, phone:document.getElementById("ph_"+k).value, posKey:document.getElementById("ps_"+k).value, posPassword:document.getElementById("pw_"+k).value, crewNo:document.getElementById("cr_"+k).value, payrollName:document.getElementById("py_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, otRate:document.getElementById("ot_"+k).value, active:document.getElementById("ac_"+k).checked };
+      var payload={ id:e.id, name:name, lastName:document.getElementById("ls_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:document.getElementById("ps_"+k).value, posPassword:document.getElementById("pw_"+k).value, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, otRate:document.getElementById("ot_"+k).value, active:document.getElementById("ac_"+k).checked };
       fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
@@ -277,10 +284,10 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    var payload={ clientId:CLIENT_ID, name:name, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, posPassword:document.getElementById("n_pospw").value, crewNo:document.getElementById("n_crew").value, payrollName:document.getElementById("n_payroll").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value, otRate:document.getElementById("n_ot").value };
+    var payload={ clientId:CLIENT_ID, name:name, lastName:document.getElementById("n_last").value, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, posPassword:document.getElementById("n_pospw").value, crewNo:document.getElementById("n_crew").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value, otRate:document.getElementById("n_ot").value };
     fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add employee";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_phone","n_pos","n_pospw","n_crew","n_payroll","n_role","n_rate","n_ot"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_last","n_phone","n_pos","n_pospw","n_crew","n_role","n_rate","n_ot"].forEach(function(i){document.getElementById(i).value="";}); load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add employee"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }

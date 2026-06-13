@@ -766,16 +766,17 @@ async function listEmployees(url, env, session) {
   if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
-  const rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
-  if (rows === null) {
-    const rows2 = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
-    if (rows2 === null) return noStore({ ok: true, employees: [], missing: true });
-    return noStore({ ok: true, employees: (rows2 || []).map((e) => ({ id: e.id, name: e.name || "", phone: e.phone || "", posKey: e.pos_key || "", posPassword: "", payrollName: e.payroll_name || "", role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false })) });
-  }
+  const sel = (cols) => sbSelect(env, `employees?client_id=eq.${clientId}&select=${cols}&order=sort.asc,created_at.asc`);
+  let rows = await sel("id,name,last_name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  if (rows === null) rows = await sel("id,name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  if (rows === null) rows = await sel("id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  if (rows === null) return noStore({ ok: true, employees: [], missing: true });
+  const lastFromPayroll = (p) => { p = (p || "").trim(); if (!p) return ""; const parts = p.split(/\s+/); return parts.length > 1 ? parts[parts.length - 1] : ""; };
   return noStore({
     ok: true,
     employees: (rows || []).map((e) => ({
-      id: e.id, name: e.name || "", phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
+      id: e.id, name: e.name || "", lastName: e.last_name || lastFromPayroll(e.payroll_name),
+      phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
       role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
     })),
   });
@@ -789,6 +790,7 @@ async function saveEmployee(request, env, session) {
   const id = c(body.id);
   const patch = {};
   if ("name" in body) patch.name = c(body.name);
+  if ("lastName" in body) patch.last_name = c(body.lastName) || null;
   if ("phone" in body) patch.phone = c(body.phone) || null;
   if ("posKey" in body) patch.pos_key = c(body.posKey) || null;
   if ("posPassword" in body) patch.pos_password = c(body.posPassword) || null;
@@ -805,8 +807,8 @@ async function saveEmployee(request, env, session) {
     if (!patch.name) return json({ ok: false, error: "Enter a name." }, 400);
   }
   let res = await doSave(patch);
-  // Degrade gracefully if pos_password hasn't been migrated yet.
-  if (!res.ok && "pos_password" in patch) { const p2 = Object.assign({}, patch); delete p2.pos_password; res = await doSave(p2); }
+  // Degrade gracefully if newer columns haven't been migrated yet.
+  if (!res.ok && ("pos_password" in patch || "last_name" in patch)) { const p2 = Object.assign({}, patch); delete p2.pos_password; delete p2.last_name; res = await doSave(p2); }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "Run supabase/employees.sql once.")).slice(0, 200) }, 502);
   return json({ ok: true });
 }
@@ -875,9 +877,12 @@ async function scanEmployees(request, env, session) {
     const name = c(e.name).slice(0, 120);
     if (!name) continue;
     const rn = Number(e.rate);
+    const pn = firstLast(e.payrollName);
+    const lastNm = (() => { const p = pn.split(/\s+/); return p.length > 1 ? p[p.length - 1] : ""; })();
     const row = {
       client_id: clientId, name, active: e.active === false ? false : true,
-      payroll_name: firstLast(e.payrollName).slice(0, 160) || null,
+      last_name: lastNm.slice(0, 80) || null,
+      payroll_name: pn.slice(0, 160) || null,
       pos_key: c(e.posKey).slice(0, 40) || null,
       pos_password: c(e.posPassword).slice(0, 60) || null,
       crew_no: c(e.crewNo).slice(0, 40) || null,
@@ -886,7 +891,7 @@ async function scanEmployees(request, env, session) {
       rate: !isNaN(rn) && rn > 0 ? rn : null,
     };
     let res = await sbInsert(env, "employees", row);
-    if (!res.ok) { const r2 = Object.assign({}, row); delete r2.pos_password; res = await sbInsert(env, "employees", r2); }
+    if (!res.ok) { const r2 = Object.assign({}, row); delete r2.pos_password; delete r2.last_name; res = await sbInsert(env, "employees", r2); }
     if (res.ok) added++;
   }
   if (!added) return json({ ok: false, error: list.length ? "Couldn't save. Run supabase/employees.sql once." : "No employees found in that photo." }, list.length ? 502 : 200);
