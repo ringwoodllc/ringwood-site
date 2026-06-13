@@ -93,6 +93,7 @@ export default {
     if (url.pathname === "/api/tickets/quote" && request.method === "POST") return saveTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/quote/delete" && request.method === "POST") return deleteTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/quote/accept" && request.method === "POST") return acceptTicketQuote(request, env, session);
+    if (url.pathname === "/api/tickets/quote/select" && request.method === "POST") return selectTicketQuote(request, env, session);
     if (url.pathname === "/api/tickets/part" && request.method === "POST") return saveTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
@@ -5681,6 +5682,34 @@ async function acceptTicketQuote(request, env, session) {
   } catch { /* service call may not exist yet; assignment still stands */ }
   await logTicketEvent(env, q.ticket_id, session, "Accepted quote: " + q.vendor, q.vendor + (q.amount != null ? (" — $" + q.amount) : "") + ". Other quotes marked Declined; vendor assigned and the cost written to the service call.");
   return json({ ok: true, vendor: q.vendor });
+}
+
+// Star-select a quote as the one that feeds the job cost. Unlike Accept, this
+// is freely switchable: it never declines the others or locks editing, so you
+// can move the star between quotes as the pricing shakes out. "on:false" clears
+// the star (job cost then falls back to the first quote).
+async function selectTicketQuote(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const rows = await sbSelect(env, `ticket_quotes?id=eq.${id}&select=id,ticket_id`);
+  const q = rows && rows[0];
+  if (!q) return json({ ok: false, error: "Quote not found." }, 404);
+  const on = body.on !== false;
+  if (on) {
+    // Clear any other selection on this ticket, then star this one.
+    await fetch(`${env.SUPABASE_URL}/rest/v1/ticket_quotes?ticket_id=eq.${q.ticket_id}&status=eq.Accepted`, {
+      method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ status: "Pending" }),
+    });
+    const res = await sbUpdate(env, "ticket_quotes", id, { status: "Accepted" });
+    if (!res.ok) return json({ ok: false, error: "Couldn't select." }, 502);
+  } else {
+    const res = await sbUpdate(env, "ticket_quotes", id, { status: "Pending" });
+    if (!res.ok) return json({ ok: false, error: "Couldn't clear." }, 502);
+  }
+  return json({ ok: true });
 }
 
 async function listTicketParts(url, env, session) {

@@ -393,6 +393,10 @@
   var VENDORS = [];
   function loadVendors(){ return fetch("/api/vendors",{cache:"no-store"}).then(function(r){return r.json();}).then(function(list){ VENDORS = Array.isArray(list)?list:[]; }).catch(function(){ VENDORS=[]; }); }
   loadVendors();
+  // Two distinct rosters: Ringwood's own people (Labor, billed at their hourly
+  // rate) and outside vendors (Quotes). Kept apart so they never mix in a picker.
+  function employees(){ return (VENDORS||[]).filter(function(v){ return (v.kind||"")==="Internal"; }); }
+  function outsideVendors(){ return (VENDORS||[]).filter(function(v){ return (v.kind||"")!=="Internal"; }); }
   // The "Assigned to" dropdown: vendors/technicians, the current value (even if it
   // predates the list), and a "＋ New vendor…" quick-add.
   function assignedSelectHtml(cur){
@@ -678,7 +682,9 @@
               "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Quotes ▾</a></div>" +
               "<div id='e_quotesField' style='display:none;margin-bottom:12px'>" +
                 "<div id='e_quotes'></div>" +
-                "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'>" +
+                "<div style='margin-top:8px'><button type='button' class='qbtn rev' id='q_addToggle'>+ Add quote</button></div>" +
+                "<div id='q_addWrap' style='display:none;margin-top:8px'>" +
+                "<div style='display:flex;gap:8px;flex-wrap:wrap'>" +
                   "<input id='q_vendor' list='qvendlist' placeholder='Vendor' style='flex:2;min-width:120px' />" +
                   "<datalist id='qvendlist'></datalist>" +
                   "<input id='q_amount' type='number' step='0.01' placeholder='$' style='flex:1;min-width:80px' />" +
@@ -707,7 +713,7 @@
                     "<button type='button' class='qbtn rev' id='v_save'>Save vendor</button>" +
                   "</div>" +
                 "</div>" +
-              "</div>"
+                "</div>"
             : "") +
             // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
             // once someone's on it; tap the arrow to open the picker and change it.
@@ -845,25 +851,45 @@
     // job for the same customer starts from the same number.
     function pmFeeDefault(){ var c=t.client||""; var v=null; try{ v=localStorage.getItem("rw_pmfee:"+c); if(v==null) v=localStorage.getItem("rw_pmfee:"); }catch(e){} var n=Number(v); return (v!=null&&!isNaN(n)&&n>0)?n:150; }
     function setPmFeeDefault(n){ try{ localStorage.setItem("rw_pmfee:"+(t.client||""), String(n)); }catch(e){} }
+    // Markup is one percentage on the whole job cost (labor + parts + vendor).
+    // Remembered per client, like the fee. Charge = cost x (1 + markup).
+    function markupDefault(){ var c=t.client||""; var v=null; try{ v=localStorage.getItem("rw_markup:"+c); if(v==null) v=localStorage.getItem("rw_markup:"); }catch(e){} var n=Number(v); return (v!=null&&!isNaN(n)&&n>=0)?n:35; }
+    function setMarkupDefault(n){ try{ localStorage.setItem("rw_markup:"+(t.client||""), String(n)); }catch(e){} }
     function renderMoney(){
       var el=document.getElementById("e_money"); if(!el) return;
       var cost=laborCost()+partsCost()+ACCEPTED_AMT;
       var priceVal = (t.clientPrice!==""&&t.clientPrice!=null) ? t.clientPrice : "";
-      var margin = (priceVal!=="") ? (Number(priceVal)-cost) : null;
+      var charge = (priceVal!=="") ? Number(priceVal) : null;
+      var margin = (charge!=null) ? (charge-cost) : null;
+      var marginPct = (charge!=null&&charge>0) ? Math.round((margin/charge)*100) : null;
+      var mk=markupDefault();
+      var suggest = Math.round(cost*(1+mk/100)*100)/100;
       el.innerHTML =
         "<div style='border-top:1px solid var(--line);margin-top:6px;padding-top:10px'>"+
           "<div style='display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)'><span>Job cost</span><span>"+money(cost)+"</span></div>"+
           "<div style='font-size:.74rem;color:var(--muted);margin:2px 0 8px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
+          "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px'>"+
+            "<label style='font-size:.84rem;color:var(--muted)'>Markup</label>"+
+            "<span style='display:flex;align-items:center;gap:2px'><input id='e_markup' type='number' min='0' step='1' value='"+esc(mk)+"' style='width:58px;text-align:right' />%</span>"+
+            "<span style='font-size:.82rem;color:var(--muted)'>→ "+money(suggest)+"</span>"+
+            "<button type='button' class='qbtn' id='e_markupApply'>Apply</button>"+
+          "</div>"+
           "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px'><label style='font-weight:600'>Charge client</label>"+
             "<span style='display:flex;align-items:center;gap:4px'>$<input id='e_clientPrice' type='number' step='0.01' value='"+esc(priceVal)+"' placeholder='"+(cost?cost.toFixed(2):"0.00")+"' style='width:120px;text-align:right' /></span></div>"+
           "<div style='display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap'>"+
             "<button type='button' class='qbtn rev' id='e_pmFee'>+ Add "+money(pmFeeDefault())+" service fee</button>"+
             "<a href='#' id='e_pmFeeEdit' style='font-size:.8rem;color:var(--muted);border-bottom:1px solid var(--line)'>change fee</a>"+
           "</div>"+
-          (margin!=null ? "<div style='display:flex;justify-content:space-between;font-weight:700;margin-top:8px;color:"+(margin<0?"#8a3d1c":"var(--green-deep)")+"'><span>Margin</span><span>"+money(margin)+"</span></div>" : "")+
+          (margin!=null ? "<div style='display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:10px;padding:8px 11px;border-radius:7px;background:"+(margin<0?"#f6e2d8":"#dff0e2")+";color:"+(margin<0?"#8a3d1c":"#1f5130")+"'><span>Margin</span><span>"+money(margin)+(marginPct!=null?(" · "+marginPct+"%"):"")+"</span></div>" : "")+
         "</div>";
       var cp=document.getElementById("e_clientPrice");
       if(cp) cp.addEventListener("change", function(){ t.clientPrice=cp.value; autoSaveTicket({ clientPrice: cp.value }); renderMoney(); });
+      // Markup: typing a new % updates the suggestion (and remembers it for this
+      // client); Apply writes the marked-up number into the charge.
+      var mkIn=document.getElementById("e_markup");
+      if(mkIn) mkIn.addEventListener("change", function(){ var n=Number(mkIn.value); if(isNaN(n)||n<0) n=0; setMarkupDefault(n); renderMoney(); });
+      var mkApply=document.getElementById("e_markupApply");
+      if(mkApply) mkApply.addEventListener("click", function(){ var n=Number((document.getElementById("e_markup")||{}).value); if(isNaN(n)||n<0) n=0; setMarkupDefault(n); var nv=Math.round(cost*(1+n/100)*100)/100; t.clientPrice=nv; autoSaveTicket({ clientPrice: nv }); renderMoney(); });
       // One tap adds the service / PM fee onto whatever's already charged. On a
       // warranty call the parts are $0, so this is the whole charge.
       var pmBtn=document.getElementById("e_pmFee");
@@ -892,23 +918,37 @@
             "<button type='button' class='icobtn' data-act='ldel' title='Remove'>×</button></div>"+
         "</div>";
       }).join("");
-      var ppl=(typeof VENDORS!=="undefined"?VENDORS:[]);
+      // Labor is Ringwood's own people only (Internal), never outside vendors.
+      // Their hourly rate is set up once in the background and auto-fills here.
+      var ppl=employees();
+      var peopleOpts="<option value=''>Teammate…</option>"+ppl.map(function(v){ return "<option value='"+esc(v.name)+"'>"+esc(v.name)+(v.rate!==""&&v.rate!=null?(" ($"+esc(v.rate)+"/hr)"):"")+"</option>"; }).join("")+"<option value='__new'>+ New teammate…</option>";
       el.innerHTML = (rows||"<div style='color:var(--muted);font-size:.9rem'>No labor yet.</div>")+
         (tot?"<div style='text-align:right;font-size:.88rem;font-weight:700;color:var(--green-deep);padding:7px 2px'>Labor total: "+money(tot)+"</div>":"")+
         "<div class='paddrow'>"+
-          "<input id='l_person' list='l_people' placeholder='Person' style='flex:2;min-width:120px' />"+
-          "<datalist id='l_people'>"+ppl.map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("")+"</datalist>"+
+          "<select id='l_person' style='flex:2;min-width:120px'>"+peopleOpts+"</select>"+
           "<input id='l_hours' type='number' min='0' step='0.25' placeholder='hrs' style='flex:0 0 70px' />"+
-          "<input id='l_rate' type='number' min='0' step='0.01' placeholder='$/hr' style='flex:0 0 80px' title='Auto-fills from the person; override if needed' />"+
+          "<input id='l_rate' type='number' min='0' step='0.01' placeholder='$/hr' style='flex:0 0 80px' title='Auto-fills from the teammate; override if needed' />"+
           "<button type='button' class='qbtn rev' id='l_add'>Add</button>"+
         "</div>"+
         "<div id='l_msg' style='font-size:.82rem;color:#8a3d1c;margin-top:5px'></div>";
       var pe=document.getElementById("l_person");
-      if(pe) pe.addEventListener("change", function(){ var rt=rateFor(pe.value); if(rt!=="") document.getElementById("l_rate").value=rt; });
+      if(pe) pe.addEventListener("change", function(){
+        if(pe.value==="__new"){
+          var nm=(prompt("New teammate name (Ringwood):")||"").trim(); if(!nm){ pe.value=""; return; }
+          var rt=prompt("Their hourly rate ($/hr):", "150"); var rn=Number(rt); if(rt==null){ pe.value=""; return; }
+          var lm=document.getElementById("l_msg"); if(lm){ lm.style.color="var(--muted)"; lm.textContent="Adding "+nm+"…"; }
+          fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ name:nm, kind:"Internal", rate:(isNaN(rn)?"":rn) })})
+            .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ loadVendors().then(function(){ renderLabor(); var p2=document.getElementById("l_person"); if(p2){ p2.value=nm; var r2=document.getElementById("l_rate"); if(r2 && !isNaN(rn)) r2.value=rn; } }); } else if(lm){ lm.style.color="#8a3d1c"; lm.textContent=(d&&d.error)||"Couldn't add teammate."; } })
+            .catch(function(){ if(lm){ lm.style.color="#8a3d1c"; lm.textContent="Couldn't reach the server."; } });
+          return;
+        }
+        var rt=rateFor(pe.value); if(rt!=="") document.getElementById("l_rate").value=rt;
+      });
       var la=document.getElementById("l_add");
       if(la) la.addEventListener("click", function(){
         var person=(document.getElementById("l_person").value||"").trim(); var lm=document.getElementById("l_msg");
-        if(!person){ document.getElementById("l_person").focus(); if(lm) lm.textContent="Type a person."; return; }
+        if(person==="__new"){ return; }
+        if(!person){ document.getElementById("l_person").focus(); if(lm) lm.textContent="Pick a teammate."; return; }
         var rate=document.getElementById("l_rate").value; if(rate==="") rate=rateFor(person);
         la.disabled=true; if(lm){ lm.style.color="var(--muted)"; lm.textContent="Adding…"; }
         fetch("/api/tickets/labor/save",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, person:person, hours:document.getElementById("l_hours").value||0, rate:rate })})
@@ -1009,10 +1049,10 @@
       var box=document.getElementById("e_quotes"); if(!box || box.__qwired) return; box.__qwired=true;
       box.addEventListener("click", function(e){
         var tg=e.target; var cl=function(sel){ return tg.closest ? tg.closest(sel) : null; };
-        var acc=cl(".qaccept"), del=cl(".qdel"), att=cl(".qattach"), cadd=cl(".qcadd"), line=cl(".qline");
-        if(acc){ if(!confirm("Accept this quote? The vendor gets assigned and the others declined.")) return; acc.disabled=true;
-          fetch("/api/tickets/quote/accept",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:acc.getAttribute("data-id")})})
-            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ loadQuotes(); loadLog(); } else { acc.disabled=false; alert((d2&&d2.error)||"Couldn\u0027t accept."); } }).catch(function(){ acc.disabled=false; });
+        var star=cl(".qstar"), del=cl(".qdel"), att=cl(".qattach"), cadd=cl(".qcadd"), line=cl(".qline");
+        if(star){ var sid=star.getAttribute("data-id"); var turnOn=star.getAttribute("data-on")!=="1"; star.disabled=true;
+          fetch("/api/tickets/quote/select",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:sid, on:turnOn })})
+            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ loadQuotes(); loadLog(); } else { star.disabled=false; alert((d2&&d2.error)||"Couldn\u0027t accept."); } }).catch(function(){ star.disabled=false; });
           return; }
         if(del){ if(!confirm("Remove this quote?")) return;
           fetch("/api/tickets/quote/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:del.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok) loadQuotes(); });
@@ -1044,8 +1084,12 @@
       (function(d){
         if(!d||!d.ok){ el.innerHTML=""; return; }
         if(d.missing){ el.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Run supabase/ticket_quotes.sql once, then quotes save here.</div>"; return; }
-        var acc=(d.quotes||[]).filter(function(q){return q.status==="Accepted";})[0];
-        // A warranty-covered accepted quote costs us nothing (the vendor/maker pays).
+        // The starred quote feeds the job cost. If none is starred, the first
+        // quote stands in (you can move the star freely). A warranty-covered
+        // pick costs us nothing (the vendor/maker pays).
+        var starred=(d.quotes||[]).filter(function(q){return q.status==="Accepted";})[0];
+        var acc=starred || (d.quotes||[])[0];
+        var SELID = starred ? starred.id : ((d.quotes||[])[0] ? d.quotes[0].id : "");
         ACCEPTED_AMT = (acc && !acc.covered && acc.amount!==""&&acc.amount!=null) ? Number(acc.amount) : 0; if(typeof renderMoney==="function") renderMoney();
         if(!d.quotes.length){ el.innerHTML="<div style='font-size:.86rem;color:var(--muted)'>No quotes yet. Add each vendor you price below.</div>"; return; }
         // One numbered line per quote ("1. Florez Landscaping & Tr… $5,000 ▾"),
@@ -1054,11 +1098,11 @@
         el.innerHTML = d.quotes.map(function(q,ix){
           var open = !!Q_OPEN[q.id];
           var amt = (q.amount!==""&&q.amount!=null) ? ("$"+Number(q.amount).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})) : "—";
-          var chip = q.status==="Accepted" ? "<span style='background:#cfe3d2;color:#1f5130;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700'>ACCEPTED</span>"
-                   : q.status==="Declined" ? "<span style='background:var(--line);color:var(--muted);border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700'>DECLINED</span>" : "";
+          var isSel = (q.id===SELID);
+          var star = "<button type='button' class='qstar' data-id='"+esc(q.id)+"' data-on='"+(isSel?"1":"0")+"' title='"+(isSel?"Using this quote for the job cost":"Use this quote for the job cost")+"' style='background:none;border:none;cursor:pointer;font-size:1.1rem;line-height:1;padding:0 2px;color:"+(isSel?"#c79a2b":"var(--muted)")+"'>"+(isSel?"★":"☆")+"</button>";
           var wchip = q.covered ? "<span style='background:#e7eef7;color:#2c4866;border-radius:999px;padding:2px 8px;font-size:.66rem;font-weight:700'>WARRANTY</span>" : "";
-          var head = "<div class='qline' data-id='"+esc(q.id)+"'>"+
-            "<span class='qname'"+(q.status==="Declined"?" style='opacity:.55'":"")+">"+(ix+1)+". "+esc(q.vendor)+"</span>"+chip+wchip+
+          var head = "<div class='qline' data-id='"+esc(q.id)+"'>"+star+
+            "<span class='qname'>"+(ix+1)+". "+esc(q.vendor)+"</span>"+wchip+
             "<span class='qamt'>"+(q.covered?"<s style='color:var(--muted)'>"+amt+"</s>":amt)+"</span><span style='color:var(--muted)'>"+(open?"▴":"▾")+"</span></div>";
           if(!open) return "<div class='qrow'>"+head+"</div>";
           var thumbs = (q.photos||[]).map(function(u){ return "<img class='zoomable' loading='lazy' src='"+esc(u)+"' alt='quote photo' style='width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:zoom-in' />"; }).join("");
@@ -1077,7 +1121,6 @@
             "</div>"+
             "<label class='chk' style='font-weight:400;font-size:.84rem;display:flex;align-items:center;gap:6px;margin:10px 0 0'><input type='checkbox' class='qcov' data-id='"+esc(q.id)+"'"+(q.covered?" checked":"")+" /> Covered by warranty (no cost to us)</label>"+
             "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px'>"+
-              (q.status==="Pending"?"<button type='button' class='qbtn rev qaccept' data-id='"+esc(q.id)+"'>Accept</button>":"")+
               "<button type='button' class='qbtn qattach' data-id='"+esc(q.id)+"'>📎 Attach</button>"+
               "<button type='button' class='qdel' data-id='"+esc(q.id)+"' style='background:transparent;border:none;color:#8a3d1c;font-size:1rem;cursor:pointer;margin-left:auto'>× Remove</button>"+
             "</div>"+
@@ -1093,12 +1136,19 @@
       qf.style.display=open?"none":"block"; quotesT.textContent=open?"Quotes ▾":"Quotes ▴";
       if(!open){ loadQuotes();
         var dl=document.getElementById("qvendlist");
-        if(dl && !dl.children.length && typeof VENDORS!=="undefined") dl.innerHTML=(VENDORS||[]).map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
+        if(dl && !dl.children.length) dl.innerHTML=outsideVendors().map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
       }
     });
+    // The add-quote fields stay tucked away until you ask for them, so the
+    // Quotes section reads as a clean list until you're adding one.
+    var qAddT=document.getElementById("q_addToggle");
+    if(qAddT) qAddT.addEventListener("click", function(){
+      var w=document.getElementById("q_addWrap"); if(!w) return;
+      var open=w.style.display!=="none"; w.style.display=open?"none":"block";
+      qAddT.textContent=open?"+ Add quote":"Close";
+      if(!open){ var v=document.getElementById("q_vendor"); if(v) v.focus(); }
+    });
     // New vendor straight from the quote flow: scan a card/quote/ID, the AI
-    // fills the fields, the file link rides in the notes, and saving drops the
-    // vendor into the directory + the quote box. Builds the database as you work.
     var qnv=document.getElementById("q_newVendor");
     if(qnv) qnv.addEventListener("click", function(e){ e.preventDefault(); var pn=document.getElementById("q_vendPanel"); var open=pn.style.display!=="none"; pn.style.display=open?"none":"block"; qnv.textContent="＋ New vendor — scan a card or quote "+(open?"▾":"▴"); });
     function scanVendorFile(f){
@@ -1150,7 +1200,7 @@
           if(d&&d.ok){
             var name=nm.value.trim();
             if(typeof VENDORS!=="undefined") VENDORS.push({ name:name, kind:"Vendor", trade:document.getElementById("v_trade").value.trim() });
-            var dl=document.getElementById("qvendlist"); if(dl) dl.innerHTML=(VENDORS||[]).map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
+            var dl=document.getElementById("qvendlist"); if(dl) dl.innerHTML=outsideVendors().map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
             document.getElementById("q_vendor").value=name;
             ["v_name","v_phone","v_email","v_trade","v_notes"].forEach(function(id){ document.getElementById(id).value=""; });
             document.getElementById("q_vendPanel").style.display="none";
@@ -1192,7 +1242,7 @@
       fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:v.value.trim(), amount:a.value, notes:n.value.trim(), photos:Q_PENDING.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) })})
         .then(function(r){return r.json();}).then(function(d){
           qSaving=false; if(qAddB) qAddB.disabled=false;
-          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; Q_PENDING=[]; var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=""; if(m) m.textContent=""; loadQuotes(); }
+          if(d&&d.ok){ v.value=""; a.value=""; n.value=""; Q_PENDING=[]; var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=""; if(m) m.textContent=""; var aw=document.getElementById("q_addWrap"); if(aw) aw.style.display="none"; var at=document.getElementById("q_addToggle"); if(at) at.textContent="+ Add quote"; loadQuotes(); }
           else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t save."; }
         }).catch(function(){ qSaving=false; if(qAddB) qAddB.disabled=false; });
     }
