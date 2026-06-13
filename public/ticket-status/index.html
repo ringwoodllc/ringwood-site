@@ -597,7 +597,8 @@
         "<div class='statushdr'><h3>" + esc(t.title) + "</h3>" +
           (IS_CLIENT ? "" :
             "<span style='display:flex;gap:8px;align-items:center;flex:0 0 auto'>" +
-              (t.client ? "<span class='clchip' style='background:" + (t.clientColor||clientColor(t.client)) + "'>" + esc(t.client) + "</span>" : "") +
+              "<span id='e_clientChip' class='clchip' title='Tap to change client' style='cursor:pointer;background:" + (t.clientColor||clientColor(t.client||"")) + (t.client?"":";opacity:.6") + "'>" + esc(t.client||"+ Client") + "</span>" +
+              "<select id='e_client' style='display:none;font:inherit;font-size:.82rem;border:1px solid var(--line);border-radius:999px;padding:5px 10px;background:var(--bg)'>" + clientOpts + "</select>" +
               "<select id='e_status' class='statuspill'>" + statusOpts + "</select>" +
             "</span>") +
         "</div>" +
@@ -628,20 +629,12 @@
             "<div id='e_tkMeta' class='tkmeta'></div>" +
           "</div>" +
           "<div id='e_editFields' style='display:none'>" +
-            "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
-            "<div class='frow'>" +
-              "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
-              "<div class='field'>" +
-                "<div class='lblrow'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
-                  (!IS_CLIENT ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
-                "<select id='e_asset'>" + assetOpts + "</select>" +
-                "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' />" +
-                "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div></div>" +
-            "</div>" +
+            // Type of work is the first thing about the job (part of intake).
             "<div class='field'><label>Type of work</label>" +
               "<div id='e_catChips' style='display:flex;gap:8px;flex-wrap:wrap'></div>" +
               "<select id='e_cat' style='display:none'>" + catOpts + "</select>" +
             "</div>" +
+            "<div class='field'><label>Title</label><input id='e_title' value='" + esc(t.title) + "' /></div>" +
             "<div class='field'>" +
               "<div class='lblrow' style='flex-wrap:wrap'><label>Description</label><div style='display:flex;gap:8px;flex-wrap:wrap'><button type='button' class='aibtn' id='e_ai'>✨ Rewrite</button><button type='button' class='aibtn' id='e_fold'>✨ Pull updates</button></div></div>" +
               "<textarea id='e_desc' style='min-height:120px'>" + esc(t.description) + "</textarea>" +
@@ -669,9 +662,17 @@
           "<div class='svcsec'>" +
             "<div class='svchead'>Service</div>" +
             "<div id='e_svcdiag' style='font-size:.74rem;color:var(--muted);margin:-4px 0 8px'></div>" +
-            // The asset's vitals live on the ticket, so a dispatch call doesn't
-            // mean a trip back to Assets. No asset yet: a small arrow to tag one.
-            (t.assetId ? "<div id='e_equip' style='margin:0 0 12px'></div>" : "") +
+            // Equipment lives with the service work: select the asset (or add a
+            // new one), and its vitals load right below so a dispatch call never
+            // means a trip back to Assets.
+            "<div class='field' style='margin-bottom:10px'>" +
+              "<div class='lblrow'><label>Equipment</label>" +
+                (!IS_CLIENT ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
+              "<select id='e_asset'>" + assetOpts + "</select>" +
+              "<input id='e_newasset' type='text' placeholder='New equipment name' style='display:none;margin-top:8px' />" +
+              "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div>" +
+            "</div>" +
+            "<div id='e_equip' style='margin:0 0 12px'></div>" +
             (!IS_CLIENT ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
               "<div id='e_partsField' style='display:none;margin-bottom:12px'><div style='display:flex;justify-content:flex-end;margin-bottom:6px'><button type='button' class='aibtn' id='p_suggest'>✨ Suggest from the ticket</button></div><div id='e_parts'></div></div>" +
@@ -719,7 +720,6 @@
             // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
             // once someone's on it; tap the arrow to open the picker and change it.
 
-            (t.assetId ? "" : "<div style='margin:2px 0 12px'><a href='#' id='e_tagAsset' style='font-size:.85rem;color:var(--muted);border-bottom:1px solid var(--line)'>Equipment involved? Tag an asset ▾</a></div>") +
             "<div id='e_money'></div>" +
           "</div>"
         ) +
@@ -1002,10 +1002,13 @@
     try{ loadQuotes(); }catch(_qe2){}
     // Equipment at hand: pull the asset's vitals onto the ticket so a dispatch
     // call (serial, coverage, who to call first) never needs the Assets page.
-    (function(){
-      var eq=document.getElementById("e_equip"); if(!eq || !t.assetId) return;
+    // Equipment vitals load under the Equipment picker whenever an asset is set,
+    // and refresh when you change the selection.
+    function loadEquip(assetId){
+      var eq=document.getElementById("e_equip"); if(!eq) return;
+      if(!assetId){ eq.innerHTML=""; return; }
       eq.innerHTML="<div style='color:var(--muted);font-size:.86rem'>Loading equipment…</div>";
-      fetch("/api/asset?id="+encodeURIComponent(t.assetId),{cache:"no-store"}).then(function(r){return r.json();}).then(function(a){
+      fetch("/api/asset?id="+encodeURIComponent(assetId),{cache:"no-store"}).then(function(r){return r.json();}).then(function(a){
         if(!a||!a.ok){ eq.innerHTML=""; return; }
         var rows=[];
         var mm=[a.manufacturer,a.model].filter(Boolean).join(" · ");
@@ -1019,13 +1022,14 @@
           var tel=((a.supportContact.match(/[\d\-\.\(\)\s]{7,}/)||[""])[0]||"").replace(/[^\d+]/g,"");
           rows.push("<div>Call first: "+(tel?("<a href='tel:"+tel+"' style='font-weight:700;color:var(--green-deep)'>"+esc(a.supportContact)+"</a>"):("<b>"+esc(a.supportContact)+"</b>"))+"</div>");
         } else {
-          rows.push("<div style='color:var(--muted)'>No support contact on file. <a href='/a/?id="+esc(t.assetId)+"' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Add who to call</a></div>");
+          rows.push("<div style='color:var(--muted)'>No support contact on file. <a href='/a/?id="+esc(assetId)+"' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Add who to call</a></div>");
         }
         eq.innerHTML="<div style='background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:.9rem;line-height:1.6'>"+
-          "<div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap'><b style='color:var(--green-deep)'>⚙ "+esc(a.nickname||a.name||"Equipment")+"</b><a href='/a/?id="+esc(t.assetId)+"' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>full record</a></div>"+
+          "<div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap'><b style='color:var(--green-deep)'>⚙ "+esc(a.nickname||a.name||"Equipment")+"</b><a href='/a/?id="+esc(assetId)+"' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>full record</a></div>"+
           rows.join("")+"</div>";
       }).catch(function(){ eq.innerHTML=""; });
-    })();
+    }
+    loadEquip(t.assetId);
     // The internal service calls spawned from this ticket (the dispatch view).
     function loadTicketSvc(){
       var el=document.getElementById("e_svclist"); if(!el) return;
@@ -1208,6 +1212,8 @@
         vm.style.color="var(--green-deep)"; vm.textContent="Read. Check the fields and Save.";
       }).catch(function(){ vm.style.color="#8a3d1c"; vm.textContent="Couldn't read that."; });
     }
+    // Auto-format the vendor phone as you type, same as the site's contact form.
+    (function(){ var vp=document.getElementById("v_phone"); if(!vp) return; function fp(v){ var d=(v||"").replace(/\D/g,""); if(d.length>10&&d[0]==="1")d=d.slice(1); d=d.slice(0,10); if(d.length>6)return "("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6); if(d.length>3)return "("+d.slice(0,3)+") "+d.slice(3); if(d.length>0)return "("+d.slice(0,3); return v||""; } vp.addEventListener("input",function(){ vp.value=fp(vp.value); }); })();
     var qvf=document.getElementById("q_vfile");
     if(qvf) qvf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanVendorFile(f); });
     // The scan panel also takes a dropped file or a pasted screen capture,
@@ -1313,7 +1319,20 @@
     }
 
     var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
-    if (assetSelEl) assetSelEl.addEventListener("change", function(){ var isNew=assetSelEl.value==="__new"; newAssetEl.style.display = isNew ? "block" : "none"; if(isNew) newAssetEl.focus(); else autoSaveTicket({ assetId: assetSelEl.value }); });
+    if (assetSelEl) assetSelEl.addEventListener("change", function(){ var isNew=assetSelEl.value==="__new"; newAssetEl.style.display = isNew ? "block" : "none"; if(isNew){ newAssetEl.focus(); } else { autoSaveTicket({ assetId: assetSelEl.value }); t.assetId=assetSelEl.value; loadEquip(assetSelEl.value); } });
+    // Change the client straight from the chip at the top (no separate field).
+    var clientChipEl=document.getElementById("e_clientChip");
+    if(clientChipEl && eClientEl){
+      clientChipEl.addEventListener("click", function(){ clientChipEl.style.display="none"; eClientEl.style.display=""; eClientEl.focus(); });
+      eClientEl.addEventListener("change", function(){
+        var v=eClientEl.value;
+        clientChipEl.textContent = v || "+ Client";
+        var col = v ? (CLIENT_COLORS[v]||clientColor(v)) : "";
+        clientChipEl.style.background = col || clientColor("");
+        clientChipEl.style.opacity = v ? "1" : ".6";
+        eClientEl.style.display="none"; clientChipEl.style.display="";
+      });
+    }
 
     // Recommend an asset to tag, from the description, photos, and the client's
     // equipment on file. Picks a match (and saves it) or pre-fills a new name.
@@ -1329,7 +1348,7 @@
           if(d.assetId){
             var found=false;
             for(var i=0;i<assetSelEl.options.length;i++){ if(assetSelEl.options[i].value===d.assetId){ assetSelEl.selectedIndex=i; found=true; break; } }
-            if(found){ newAssetEl.style.display="none"; autoSaveTicket({ assetId:d.assetId });
+            if(found){ newAssetEl.style.display="none"; autoSaveTicket({ assetId:d.assetId }); t.assetId=d.assetId; loadEquip(d.assetId);
               if(note){ note.style.color="var(--green-deep)"; note.textContent="Tagged "+(d.assetName||"this asset")+". "+(d.reason||"")+" Change above if it's off."; } }
             else if(note){ note.style.color="var(--clay)"; note.textContent="Suggested an asset that isn't in the list. "+(d.reason||""); }
           } else if(d.newAssetName){

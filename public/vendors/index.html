@@ -96,11 +96,15 @@
 <script>
   function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function ukey(id){ return (id||"").toString().replace(/[^a-zA-Z0-9]/g,""); }
+  // Same phone formatting as the contact form on the main site.
+  function fmtPhone(v){ var d=(v||"").replace(/\D/g,""); if(d.length>10&&d[0]==="1")d=d.slice(1); d=d.slice(0,10); if(d.length>6)return "("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6); if(d.length>3)return "("+d.slice(0,3)+") "+d.slice(3); if(d.length>0)return "("+d.slice(0,3); return v||""; }
+  function phoneInput(el){ if(el) el.addEventListener("input",function(){ el.value=fmtPhone(el.value); }); }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/vendors"); return; }
     if(d.role!=="master"){ location.replace("/app"); return; }
     document.getElementById("n_add").addEventListener("click", addVendor);
+    phoneInput(document.getElementById("n_phone"));
     // The hourly rate only matters for Ringwood team members (Labor costing).
     var nk=document.getElementById("n_kind");
     function syncRate(){ var rw=document.getElementById("n_rateWrap"); if(rw) rw.style.display = nk.value==="Internal" ? "block" : "none"; }
@@ -165,6 +169,7 @@
     var k=ukey(v.id);
     var kd=document.getElementById("kd_"+k);
     if(kd) kd.addEventListener("change", function(){ var rw=document.getElementById("rtw_"+k); if(rw) rw.style.display = kd.value==="Internal" ? "block" : "none"; });
+    phoneInput(document.getElementById("ph_"+k));
     document.getElementById("sv_"+k).addEventListener("click", function(){
       var b=this, m=document.getElementById("m_"+k); m.className="msg";
       var name=document.getElementById("nm_"+k).value.trim();
