@@ -985,6 +985,33 @@
     window.__loadTicketSvc = loadTicketSvc;
     // ---- Quotes: price the job before dispatch, then accept the winner. ----
     var Q_OPEN={};
+    // One stable, delegated handler set on the quotes container — survives every
+    // re-render, so tapping a quote always expands/edits it.
+    (function(){
+      var box=document.getElementById("e_quotes"); if(!box || box.__qwired) return; box.__qwired=true;
+      box.addEventListener("click", function(e){
+        var tg=e.target; var cl=function(sel){ return tg.closest ? tg.closest(sel) : null; };
+        var acc=cl(".qaccept"), del=cl(".qdel"), att=cl(".qattach"), cadd=cl(".qcadd"), line=cl(".qline");
+        if(acc){ if(!confirm("Accept this quote? The vendor gets assigned and the others declined.")) return; acc.disabled=true;
+          fetch("/api/tickets/quote/accept",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:acc.getAttribute("data-id")})})
+            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ loadQuotes(); loadLog(); } else { acc.disabled=false; alert((d2&&d2.error)||"Couldn\u0027t accept."); } }).catch(function(){ acc.disabled=false; });
+          return; }
+        if(del){ if(!confirm("Remove this quote?")) return;
+          fetch("/api/tickets/quote/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:del.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok) loadQuotes(); });
+          return; }
+        if(att){ Q_ATTACH_ID=att.getAttribute("data-id"); var fi=document.getElementById("q_attachInput"); if(fi) fi.click(); return; }
+        if(cadd){ var id=cadd.getAttribute("data-id"); var inp=box.querySelector(".qcin[data-id='"+id+"']"); var txt=(inp&&inp.value||"").trim(); if(!txt){ if(inp) inp.focus(); return; }
+          cadd.disabled=true; fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:id, addComment:txt })}).then(function(r){return r.json();}).then(function(d2){ cadd.disabled=false; if(d2&&d2.ok) loadQuotes(); else alert((d2&&d2.error)||"Couldn\u0027t add."); }).catch(function(){ cadd.disabled=false; });
+          return; }
+        if(line){ var qid=line.getAttribute("data-id"); Q_OPEN[qid]=!Q_OPEN[qid]; paintQuotes(); return; }
+      });
+      box.addEventListener("change", function(e){
+        var inp=e.target.closest ? e.target.closest(".qedit") : null; if(!inp) return;
+        var payload={ id:inp.getAttribute("data-id") }; payload[inp.getAttribute("data-k")]=inp.value;
+        fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
+          .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ flashSaved(); loadQuotes(); } }).catch(function(){});
+      });
+    })();
     function renderQ(d){ QD=d; paintQuotes(); }
     var QD=null;
     function loadQuotes(){
@@ -1032,40 +1059,6 @@
           "</div>";
           return "<div class='qrow'>"+head+body+"</div>";
         }).join("");
-        Array.prototype.slice.call(el.querySelectorAll(".qline")).forEach(function(h){ h.addEventListener("click", function(){
-          var id=h.getAttribute("data-id"); Q_OPEN[id]=!Q_OPEN[id]; renderQ(d);
-        }); });
-        Array.prototype.slice.call(el.querySelectorAll(".qedit")).forEach(function(inp){ inp.addEventListener("change", function(){
-          var payload={ id:inp.getAttribute("data-id") }; payload[inp.getAttribute("data-k")]=inp.value;
-          fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
-            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ flashSaved(); loadQuotes(); } else alert((d2&&d2.error)||"Couldn\u0027t save."); }).catch(function(){});
-        }); });
-        Array.prototype.slice.call(el.querySelectorAll(".qcadd")).forEach(function(b){ b.addEventListener("click", function(){
-          var id=b.getAttribute("data-id");
-          var inp=el.querySelector(".qcin[data-id='"+id+"']"); var txt=(inp&&inp.value||"").trim(); if(!txt){ if(inp) inp.focus(); return; }
-          b.disabled=true;
-          fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:id, addComment:txt })})
-            .then(function(r){return r.json();}).then(function(d2){ b.disabled=false; if(d2&&d2.ok) loadQuotes(); else alert((d2&&d2.error)||"Couldn\u0027t add."); }).catch(function(){ b.disabled=false; });
-        }); });
-        Array.prototype.slice.call(el.querySelectorAll(".qattach")).forEach(function(b){ b.addEventListener("click", function(){
-          Q_ATTACH_ID=b.getAttribute("data-id");
-          var fi=document.getElementById("q_attachInput"); if(fi) fi.click();
-        }); });
-        Array.prototype.slice.call(el.querySelectorAll(".qaccept")).forEach(function(b){ b.addEventListener("click", function(){
-          if(!confirm("Accept this quote? The vendor gets assigned, the others are declined, and the cost is written to the service call.")) return;
-          b.disabled=true;
-          fetch("/api/tickets/quote/accept",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})})
-            .then(function(r){return r.json();}).then(function(d2){
-              if(d2&&d2.ok){ if(d2.vendor){ t.assignedTo=d2.vendor; var at=document.getElementById("e_asgToggle"); if(at) at.textContent="Assigned to "+d2.vendor+" ▾"; }
-                loadQuotes(); loadTicketSvc(); loadLog(); }
-              else { b.disabled=false; alert((d2&&d2.error)||"Couldn\u0027t accept."); }
-            }).catch(function(){ b.disabled=false; });
-        }); });
-        Array.prototype.slice.call(el.querySelectorAll(".qdel")).forEach(function(b){ b.addEventListener("click", function(){
-          if(!confirm("Remove this quote?")) return;
-          fetch("/api/tickets/quote/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})})
-            .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok) loadQuotes(); });
-        }); });
       })(QD);
     }
     var quotesT=document.getElementById("e_quotesToggle");
@@ -1164,17 +1157,29 @@
         if(d&&d.ok) loadQuotes(); else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t attach."; }
       }).catch(function(){ if(m){ m.style.color="#8a3d1c"; m.textContent="Couldn\u0027t attach."; } });
     });
-    var qAdd=document.getElementById("q_add");
-    if(qAdd) qAdd.addEventListener("click", function(){
+    // Create a new quote. Add button still works, but it also auto-creates when
+    // you've named a vendor and click away — no Add to forget.
+    var qSaving=false;
+    function createQuote(){
       var v=document.getElementById("q_vendor"), a=document.getElementById("q_amount"), n=document.getElementById("q_note"), m=document.getElementById("q_msg");
-      if(!v.value.trim()){ v.focus(); return; }
-      qAdd.disabled=true;
+      if(!v || !v.value.trim() || qSaving) return;
+      qSaving=true; var qAddB=document.getElementById("q_add"); if(qAddB) qAddB.disabled=true;
       fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, vendor:v.value.trim(), amount:a.value, notes:n.value.trim(), photos:Q_PENDING.map(function(p){ return { base64:p.base64, contentType:p.contentType }; }) })})
         .then(function(r){return r.json();}).then(function(d){
-          qAdd.disabled=false;
+          qSaving=false; if(qAddB) qAddB.disabled=false;
           if(d&&d.ok){ v.value=""; a.value=""; n.value=""; Q_PENDING=[]; var pc=document.getElementById("q_pendCount"); if(pc) pc.textContent=""; if(m) m.textContent=""; loadQuotes(); }
           else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t save."; }
-        }).catch(function(){ qAdd.disabled=false; });
+        }).catch(function(){ qSaving=false; if(qAddB) qAddB.disabled=false; });
+    }
+    var qAdd=document.getElementById("q_add");
+    if(qAdd) qAdd.addEventListener("click", createQuote);
+    // Auto-create when you fill the vendor and move focus out of the add row.
+    ["q_vendor","q_amount","q_note"].forEach(function(id){
+      var e2=document.getElementById(id); if(!e2) return;
+      e2.addEventListener("blur", function(){ setTimeout(function(){
+        var a=document.activeElement; if(a && ["q_vendor","q_amount","q_note","q_add"].indexOf(a.id)>=0) return;
+        createQuote();
+      },150); });
     });
     // Intake (description + photos) tucks away once the ticket is being worked.
     // One arrow for everything that isn't the work: intake + details.
