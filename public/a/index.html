@@ -466,10 +466,14 @@
       docs = "<div class='card' id='docCard'>"+
         "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px'>"+
           "<div style='font-weight:600;color:var(--green-deep)'>Troubleshoot · source files</div>"+
-          "<label class='btn ghost' for='docAdd' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:7px 12px;border-radius:999px;font-size:.82rem;margin:0'>＋ Add files</label>"+
+          "<label class='btn ghost' for='docAdd' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem;margin:0'>📄 Add files</label>"+
         "</div>"+
-        "<div style='font-size:.82rem;color:var(--muted);margin-bottom:6px'>Admin only. Invoices and screenshots kept for reference. Drop files here or paste a screen capture.</div>"+
+        "<div class='hint' style='color:var(--muted);margin-bottom:10px'>Admin only. Files, screenshots, photos, and manuals (PDF) kept for reference. Drop them, paste, or tap to choose.</div>"+
         "<input type='file' id='docAdd' accept='image/*,application/pdf' multiple style='display:none' />"+
+        "<label id='docDrop' for='docAdd' style='display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:18px;text-align:center;cursor:pointer;color:var(--green-deep);background:var(--bg);margin-bottom:10px'>"+
+          "<div style='font-weight:600'>Drop files, screenshots, photos, or PDFs here</div>"+
+          "<div style='font-size:.84rem;color:var(--muted);margin-top:3px'>or paste (Ctrl/Cmd+V), or tap to choose a file</div>"+
+        "</label>"+
         "<div id='docMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:4px'></div>"+
         (items || "<div style='font-size:.86rem;color:var(--muted)'>No files yet.</div>")+
       "</div>";
@@ -523,7 +527,6 @@
       "<h2 id='history'>History</h2>"+
       "<div class='histadd'>"+
         "<a class='hadd' href='/tickets?asset="+aid+"'>＋ Ticket</a>"+
-        "<a class='hadd' href='/service?asset="+aid+"'>＋ Service</a>"+
         "<a class='hall' href='/services'>All records &rarr;</a>"+
       "</div>"+
       "<div id='assetHistory'><div class='empty'>Loading…</div></div>"+
