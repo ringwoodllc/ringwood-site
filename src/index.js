@@ -176,6 +176,9 @@ export default {
     if (url.pathname === "/api/google/callback" && request.method === "GET") return googleCallback(request, env);
     if (url.pathname === "/api/google/disconnect" && request.method === "POST") return googleDisconnect(request, env);
     if (url.pathname === "/api/gmail/draft" && request.method === "POST") return gmailCreateDraft(request, env);
+    if (url.pathname === "/api/print/status" && request.method === "GET") return printStatus(request, env, session);
+    if (url.pathname === "/api/print/settings" && request.method === "POST") return printSaveSettings(request, env);
+    if (url.pathname === "/api/print/send" && request.method === "POST") return printSend(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -219,6 +222,7 @@ export default {
       "/receiving": "/receiving/",
       "/hotholding": "/hotholding/",
       "/inventory": "/inventory/",
+      "/print": "/print/",
       "/privacy": "/privacy/",
       "/support": "/support/",
     };
@@ -864,6 +868,60 @@ function b64stdUtf8(str) {
   return btoa(bin);
 }
 
+// Build a raw RFC822 message, optionally with one attachment, for Gmail
+// drafts or sends. `attachment` is { base64, filename, contentType }.
+function buildRawMime({ to, subject, text, attachment }) {
+  const att = attachment && attachment.base64 ? attachment : null;
+  if (att) {
+    const boundary = "rwb_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const attB64 = (att.base64 || "").replace(/\s+/g, "");
+    const attWrapped = (attB64.match(/.{1,76}/g) || []).join("\r\n");
+    const textWrapped = (b64stdUtf8(text || "").match(/.{1,76}/g) || []).join("\r\n");
+    const fn = (att.filename || "document.pdf").replace(/["\r\n]/g, "");
+    const lines = [];
+    if (to) lines.push("To: " + to);
+    lines.push("Subject: " + rfc2047(subject || ""));
+    lines.push("MIME-Version: 1.0");
+    lines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+    lines.push("");
+    lines.push("--" + boundary);
+    lines.push("Content-Type: text/plain; charset=UTF-8");
+    lines.push("Content-Transfer-Encoding: base64");
+    lines.push("");
+    lines.push(textWrapped);
+    lines.push("--" + boundary);
+    lines.push("Content-Type: " + (att.contentType || "application/octet-stream") + '; name="' + fn + '"');
+    lines.push("Content-Transfer-Encoding: base64");
+    lines.push('Content-Disposition: attachment; filename="' + fn + '"');
+    lines.push("");
+    lines.push(attWrapped);
+    lines.push("--" + boundary + "--");
+    return lines.join("\r\n");
+  }
+  const h = [];
+  if (to) h.push("To: " + to);
+  h.push("Subject: " + rfc2047(subject || ""));
+  h.push("MIME-Version: 1.0");
+  h.push("Content-Type: text/plain; charset=UTF-8");
+  return h.join("\r\n") + "\r\n\r\n" + (text || "");
+}
+
+// Send a raw message through the connected Gmail. Returns {ok, id} or
+// {ok:false, status, error}. Reuses the org-wide Google connection.
+async function gmailSendRaw(env, raw) {
+  const token = await getGoogleAccessToken(env);
+  if (!token) return { ok: false, status: 409, error: "Gmail is not connected." };
+  try {
+    const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST", headers: { Authorization: "Bearer " + token, "content-type": "application/json" },
+      body: JSON.stringify({ raw: b64urlUtf8(raw) }),
+    });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, status: 502, error: (d && d.error && d.error.message) || "Send failed." };
+    return { ok: true, id: d.id || "" };
+  } catch { return { ok: false, status: 502, error: "Couldn't reach Gmail." }; }
+}
+
 async function gmailCreateDraft(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
   let body;
@@ -874,41 +932,7 @@ async function gmailCreateDraft(request, env) {
   const att = body.attachment && body.attachment.base64 ? body.attachment : null;
   const token = await getGoogleAccessToken(env);
   if (!token) return json({ ok: false, error: "Gmail is not connected." }, 409);
-  let raw;
-  if (att) {
-    // multipart/mixed: a text part plus the (PDF) attachment, both base64.
-    const boundary = "rwb_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const attB64 = (att.base64 || "").replace(/\s+/g, "");
-    const attWrapped = (attB64.match(/.{1,76}/g) || []).join("\r\n");
-    const textWrapped = (b64stdUtf8(text).match(/.{1,76}/g) || []).join("\r\n");
-    const fn = (att.filename || "document.pdf").replace(/["\r\n]/g, "");
-    const lines = [];
-    if (to) lines.push("To: " + to);
-    lines.push("Subject: " + rfc2047(subject));
-    lines.push("MIME-Version: 1.0");
-    lines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
-    lines.push("");
-    lines.push("--" + boundary);
-    lines.push("Content-Type: text/plain; charset=UTF-8");
-    lines.push("Content-Transfer-Encoding: base64");
-    lines.push("");
-    lines.push(textWrapped);
-    lines.push("--" + boundary);
-    lines.push("Content-Type: " + (att.contentType || "application/pdf") + '; name="' + fn + '"');
-    lines.push("Content-Transfer-Encoding: base64");
-    lines.push('Content-Disposition: attachment; filename="' + fn + '"');
-    lines.push("");
-    lines.push(attWrapped);
-    lines.push("--" + boundary + "--");
-    raw = lines.join("\r\n");
-  } else {
-    const h = [];
-    if (to) h.push("To: " + to);
-    h.push("Subject: " + rfc2047(subject));
-    h.push("MIME-Version: 1.0");
-    h.push("Content-Type: text/plain; charset=UTF-8");
-    raw = h.join("\r\n") + "\r\n\r\n" + text;
-  }
+  const raw = buildRawMime({ to, subject, text, attachment: att && { contentType: "application/pdf", ...att } });
   try {
     const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
       method: "POST", headers: { Authorization: "Bearer " + token, "content-type": "application/json" },
@@ -920,6 +944,71 @@ async function gmailCreateDraft(request, env) {
     const link = msgId ? ("https://mail.google.com/mail/u/0/#drafts?compose=" + msgId) : "https://mail.google.com/mail/u/0/#drafts";
     return json({ ok: true, draftId: d.id || "", link });
   } catch { return json({ ok: false, error: "Couldn't reach Gmail." }, 502); }
+}
+
+/* ===================== App settings (key/value) ===================== */
+async function getSetting(env, key) {
+  const rows = await sbSelect(env, `app_settings?key=eq.${encodeURIComponent(key)}&select=value`);
+  return rows && rows[0] ? (rows[0].value || "") : "";
+}
+async function setSetting(env, key, value) {
+  const existing = await sbSelect(env, `app_settings?key=eq.${encodeURIComponent(key)}&select=key`);
+  const patch = { value, updated_at: new Date().toISOString() };
+  if (existing && existing.length) {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/app_settings?key=eq.${encodeURIComponent(key)}`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
+  } else {
+    await sbInsert(env, "app_settings", Object.assign({ key }, patch));
+  }
+}
+
+/* ===================== Send to printer (email-to-print) ===================== */
+// The app emails a file to the printer's "print-by-email" address using the
+// connected Gmail. No software on any local computer is needed. The printer
+// address is stored org-wide in app_settings; only the master can change it,
+// any signed-in user can print.
+const PRINTER_EMAIL_KEY = "printer_email";
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+async function printStatus(request, env, session) {
+  if (!session) return json({ ok: false, error: "Please sign in." }, 401);
+  const gmailReady = !!(await getGoogleAccessToken(env));
+  const printerEmail = await getSetting(env, PRINTER_EMAIL_KEY);
+  return noStore({ ok: true, gmailReady, printerEmail, canEdit: session.role === "master" });
+}
+
+async function printSaveSettings(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const email = (body.printerEmail || "").toString().trim();
+  if (email && !EMAIL_RE.test(email)) return json({ ok: false, error: "That doesn't look like an email address." }, 400);
+  await setSetting(env, PRINTER_EMAIL_KEY, email);
+  return json({ ok: true, printerEmail: email });
+}
+
+async function printSend(request, env, session) {
+  if (!session) return json({ ok: false, error: "Please sign in." }, 401);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  // A one-off override is allowed, otherwise use the saved printer address.
+  let to = ((body.to || "").toString().trim()) || (await getSetting(env, PRINTER_EMAIL_KEY));
+  to = (to || "").trim();
+  if (!to) return json({ ok: false, error: "No printer email set yet. Add one in settings first." }, 400);
+  if (!EMAIL_RE.test(to)) return json({ ok: false, error: "The printer email isn't a valid address." }, 400);
+  const att = body.attachment;
+  const b64 = att && att.base64 ? att.base64.toString().replace(/\s+/g, "") : "";
+  if (!b64) return json({ ok: false, error: "Pick a file to print." }, 400);
+  // Cap at ~10 MB of file (base64 is ~1.37x the byte size); printers/Gmail choke beyond this.
+  if (b64.length > 14 * 1024 * 1024) return json({ ok: false, error: "That file is too large to email (about 10 MB max)." }, 413);
+  const filename = (att.filename || "document").toString();
+  const note = (body.note || "").toString().trim();
+  const who = (session.email || "").toString();
+  const subject = "Print: " + filename;
+  const text = (note ? note + "\n\n" : "") + "Sent to print from the Ringwood app" + (who ? " by " + who : "") + ".";
+  const raw = buildRawMime({ to, subject, text, attachment: { base64: b64, filename, contentType: att.contentType || "application/octet-stream" } });
+  const res = await gmailSendRaw(env, raw);
+  if (!res.ok) return json({ ok: false, error: res.error || "Couldn't send the file to the printer." }, res.status || 502);
+  return json({ ok: true, to });
 }
 
 async function adminSaveClient(request, env) {

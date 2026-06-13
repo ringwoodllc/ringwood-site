@@ -267,6 +267,27 @@ alter table login_tokens drop constraint if exists login_tokens_user_email_fkey;
 alter table login_tokens add constraint login_tokens_user_email_fkey
   foreign key (user_email) references app_users(email) on update cascade on delete cascade;
 
+-- One org-wide Google connection (the admin's Gmail), so the app can create
+-- drafts and send email (e.g. email-to-print). Written by the Worker only.
+create table if not exists app_oauth (
+  provider      text primary key,        -- 'google'
+  email         text,
+  refresh_token text,
+  access_token  text,
+  expires_at    timestamptz,
+  updated_at    timestamptz not null default now()
+);
+alter table app_oauth enable row level security;
+
+-- Small key/value store for org-wide app settings (e.g. the printer's
+-- print-by-email address used by "Send to printer").
+create table if not exists app_settings (
+  key        text primary key,
+  value      text,
+  updated_at timestamptz not null default now()
+);
+alter table app_settings enable row level security;
+
 -- ===== 4) Sample QR assets =====
 -- Three sample assets with QR tags (QR-1, QR-2, QR-3) so you can demo the
 -- "scan a code, jump straight to the asset" flow without printing anything yet.

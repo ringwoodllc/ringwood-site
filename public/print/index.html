@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Ringwood · Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:440px;margin:0 auto;padding:0 22px 48px}
+  header{padding:24px 0;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.25rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.92rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay);padding-bottom:1px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:1.7rem;color:var(--green-deep);margin:14px 0 4px}
+  .lead{color:var(--muted);font-size:.95rem;margin-bottom:20px}
+  .banner{background:#f6ead9;border:1px solid rgba(169,99,58,.35);color:#8a5a36;border-radius:8px;padding:12px 14px;font-size:.9rem;margin-bottom:18px;display:none}
+  .banner a{color:#8a3d1c;font-weight:600}
+  form{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:22px 20px}
+  label{display:block;font-weight:600;font-size:.92rem;color:var(--green-deep);margin-bottom:6px}
+  .field{margin-bottom:16px}
+  input[type=email],input[type=text],textarea{width:100%;font:inherit;font-size:1.02rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:13px 14px}
+  input:focus,textarea:focus{outline:none;border-color:var(--green)}
+  textarea{resize:vertical;min-height:70px}
+  .drop{border:1.5px dashed rgba(35,40,42,.28);border-radius:8px;background:var(--bg);padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop:hover,.drop.over{border-color:var(--green);background:#f7f2e6}
+  .drop .di{display:block;margin:0 auto 8px;color:var(--green)}
+  .drop .dt{font-weight:600;color:var(--green-deep);font-size:.98rem}
+  .drop .ds{display:block;color:var(--muted);font-size:.82rem;margin-top:3px}
+  .picked{display:none;align-items:center;gap:11px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .picked .pn{font-weight:600;color:var(--green-deep);font-size:.95rem;word-break:break-all}
+  .picked .pm{color:var(--muted);font-size:.8rem}
+  .picked .px{margin-left:auto;background:transparent;border:none;color:#8a3d1c;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;flex:none}
+  .btn{width:100%;background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:1.05rem;padding:15px;border-radius:5px;margin-top:4px}
+  .btn:hover{background:var(--green-deep)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:14px;font-size:.92rem;text-align:center;min-height:18px}
+  .msg.err{color:#8a3d1c}
+  .msg.ok{color:var(--green-deep)}
+  .sec{margin-top:30px}
+  .sec h2{font-family:"Spectral",serif;font-weight:500;font-size:1.3rem;color:var(--green-deep);margin-bottom:4px}
+  .sec .lead{font-size:.9rem;margin-bottom:14px}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:18px 16px}
+  .row{display:flex;gap:9px}
+  .row input{flex:1}
+  .pbtn{background:var(--green);color:#f6f2e8;border:none;border-radius:5px;font:inherit;font-weight:600;font-size:.95rem;padding:0 16px;cursor:pointer;flex:none}
+  .pbtn:hover{background:var(--green-deep)}
+  .pbtn:disabled{opacity:.6;cursor:default}
+  .cur{font-size:.88rem;color:var(--muted);margin-top:9px;min-height:16px}
+  .cur b{color:var(--green-deep)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/app">Back</a>
+  </header>
+
+  <h1>Send to printer</h1>
+  <div class="lead">Pick a file and the app emails it straight to your printer's print-by-email address. Nothing to install.</div>
+
+  <div class="banner" id="banner"></div>
+
+  <form id="f">
+    <div class="field">
+      <input id="file" type="file" style="display:none" />
+      <div class="drop" id="drop" role="button" tabindex="0">
+        <svg class="di" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+        <span class="dt">Choose a file to print</span>
+        <span class="ds">PDF, image, or document — tap to browse or drop one here</span>
+      </div>
+      <div class="picked" id="picked">
+        <div><div class="pn" id="pn"></div><div class="pm" id="pm"></div></div>
+        <button type="button" class="px" id="clearFile">Remove</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="note">Note (optional)</label>
+      <textarea id="note" placeholder="Anything to include with the print job"></textarea>
+    </div>
+
+    <button class="btn" type="submit" id="btn">Send to printer</button>
+    <div class="msg" id="msg"></div>
+  </form>
+
+  <div class="sec">
+    <h2>Printer address</h2>
+    <div class="lead">The print-by-email address for your printer. Most modern printers have one (HP ePrint, Epson Email Print, etc.) — check the printer's settings or its web page.</div>
+    <div class="panel">
+      <div class="row">
+        <input id="printerEmail" type="email" inputmode="email" autocomplete="off" placeholder="printer@print.example.com" />
+        <button type="button" class="pbtn" id="saveBtn">Save</button>
+      </div>
+      <div class="cur" id="cur"></div>
+    </div>
+  </div>
+</div>
+<script>
+  var fileInput = document.getElementById("file"),
+      drop = document.getElementById("drop"),
+      picked = document.getElementById("picked"),
+      pn = document.getElementById("pn"), pm = document.getElementById("pm"),
+      btn = document.getElementById("btn"), msg = document.getElementById("msg"),
+      noteEl = document.getElementById("note"),
+      printerEmailEl = document.getElementById("printerEmail"),
+      saveBtn = document.getElementById("saveBtn"),
+      cur = document.getElementById("cur"),
+      banner = document.getElementById("banner");
+
+  var chosen = null;      // { base64, filename, contentType }
+  var canEdit = false;    // master may change the saved address
+
+  function esc(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function fmtSize(n){ if(n<1024) return n+" B"; if(n<1048576) return (n/1024).toFixed(0)+" KB"; return (n/1048576).toFixed(1)+" MB"; }
+
+  // Load status: Gmail connection, saved printer address, edit rights.
+  fetch("/api/print/status",{cache:"no-store"}).then(function(r){
+    if (r.status === 401){ window.location.replace("/login?next=/print"); return null; }
+    return r.json();
+  }).then(function(d){
+    if (!d) return;
+    canEdit = !!d.canEdit;
+    printerEmailEl.value = d.printerEmail || "";
+    printerEmailEl.disabled = !canEdit;
+    saveBtn.style.display = canEdit ? "" : "none";
+    if (d.printerEmail) cur.innerHTML = "Sending to <b>" + esc(d.printerEmail) + "</b>.";
+    else cur.textContent = canEdit ? "No printer address saved yet." : "No printer address has been set yet — ask an admin to add one.";
+    if (!d.gmailReady){
+      banner.style.display = "block";
+      banner.innerHTML = canEdit
+        ? "Gmail isn't connected yet, so the app can't send the print email. Connect it on the <a href='/admin'>Admin panel</a>, then come back."
+        : "Email-to-print isn't set up yet (Gmail isn't connected). Ask an admin to finish setup.";
+    }
+  }).catch(function(){});
+
+  // ---- file selection ----
+  function setFile(file){
+    if (!file) return;
+    // ~10 MB ceiling, matching the server.
+    if (file.size > 10 * 1024 * 1024){ msg.className="msg err"; msg.textContent="That file is too large (about 10 MB max)."; return; }
+    var reader = new FileReader();
+    reader.onload = function(){
+      var s = reader.result || "";
+      var comma = s.indexOf(",");
+      chosen = { base64: comma >= 0 ? s.slice(comma+1) : s, filename: file.name || "document", contentType: file.type || "application/octet-stream" };
+      pn.textContent = file.name || "Selected file";
+      pm.textContent = (file.type || "file") + " · " + fmtSize(file.size);
+      drop.style.display = "none"; picked.style.display = "flex";
+      msg.className="msg"; msg.textContent="";
+    };
+    reader.onerror = function(){ msg.className="msg err"; msg.textContent="Couldn't read that file."; };
+    reader.readAsDataURL(file);
+  }
+  drop.addEventListener("click", function(){ fileInput.click(); });
+  drop.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener("change", function(){ if(fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]); });
+  ["dragenter","dragover"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave","drop"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function(e){ if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+  document.getElementById("clearFile").addEventListener("click", function(){
+    chosen=null; fileInput.value=""; drop.style.display="block"; picked.style.display="none"; msg.className="msg"; msg.textContent="";
+  });
+
+  // ---- send ----
+  document.getElementById("f").addEventListener("submit", function(e){
+    e.preventDefault();
+    msg.className="msg";
+    if (!chosen){ msg.className="msg err"; msg.textContent="Pick a file first."; return; }
+    btn.disabled=true; btn.textContent="Sending…"; msg.textContent="";
+    fetch("/api/print/send", { method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ attachment: chosen, note: noteEl.value }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        btn.disabled=false; btn.textContent="Send to printer";
+        if (d && d.ok){ msg.className="msg ok"; msg.textContent="Sent to "+(d.to||"the printer")+". It should print shortly."; }
+        else { msg.className="msg err"; msg.textContent=(d&&d.error)||"Couldn't send the file."; }
+      }).catch(function(){ btn.disabled=false; btn.textContent="Send to printer"; msg.className="msg err"; msg.textContent="Couldn't reach the server."; });
+  });
+
+  // ---- save printer address (master only) ----
+  saveBtn.addEventListener("click", function(){
+    var email = printerEmailEl.value.trim();
+    saveBtn.disabled=true; var orig=saveBtn.textContent; saveBtn.textContent="Saving…";
+    fetch("/api/print/settings", { method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ printerEmail: email }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        saveBtn.disabled=false; saveBtn.textContent=orig;
+        if (d && d.ok){ if (d.printerEmail) cur.innerHTML="Saved. Sending to <b>"+esc(d.printerEmail)+"</b>."; else cur.textContent="Address cleared."; }
+        else { cur.style.color="#8a3d1c"; cur.textContent=(d&&d.error)||"Couldn't save."; }
+      }).catch(function(){ saveBtn.disabled=false; saveBtn.textContent=orig; cur.style.color="#8a3d1c"; cur.textContent="Couldn't reach the server."; });
+  });
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>
