@@ -3,7 +3,7 @@
    network-first — pages and scripts always come fresh when you're online, and
    the cache is only a fallback when you're offline. /api is network-only.
    Bump VERSION to force every client to drop old caches. */
-const VERSION = "rw-v142";
+const VERSION = "rw-v143";
 const STATIC = "rw-static-" + VERSION;
 const PAGES = "rw-pages-" + VERSION;
 

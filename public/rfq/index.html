@@ -91,13 +91,14 @@
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}); }catch(e){ return s; } }
   function qs(k){ return new URLSearchParams(location.search).get(k)||""; }
 
-  var ID=qs("id"), RFQ=null;
+  var ID=qs("id"), RFQ=null, GMAIL_CONNECTED=false;
   var SCOPE="", INSTR="", DUE="", CONTACT="", SHOW_PHOTOS=true, SHOW_LOC=true, SHOW_EQ=true;
   document.getElementById("backLink").href = ID ? ("/status?id="+encodeURIComponent(ID)) : "/status";
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if(!w||!w.ok){ location.replace("/login?next="+encodeURIComponent(location.pathname+location.search)); return; }
     if(w.role!=="master"){ location.replace("/app"); return; }
+    fetch("/api/google/status",{cache:"no-store"}).then(function(r){return r.json();}).then(function(g){ GMAIL_CONNECTED=!!(g&&g.ok&&g.connected); }).catch(function(){});
     load();
   }).catch(function(){ load(); });
 
@@ -179,8 +180,19 @@
     if(vendor){
       fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:ID, vendor:vendor.name })}).catch(function(){});
     }
-    if(note){ note.style.display="block"; note.textContent=(vendor?("Added a pending quote for "+vendor.name+" on the ticket. "):"")+"Opening a Gmail draft"+((t.photos&&t.photos.length)?" — attach the PDF (Print / Save PDF) so the vendor gets the photos.":"."); }
-    // Open a Gmail compose window with everything filled in (a ready draft).
+    var pre=(vendor?("Added a pending quote for "+vendor.name+" on the ticket. "):"");
+    var photoTail=(t.photos&&t.photos.length)?" Attach the PDF (Print / Save PDF) so the vendor gets the photos.":"";
+    // If Gmail is connected, create the draft server-side; else open a compose window.
+    if(GMAIL_CONNECTED){
+      if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent=pre+"Creating a Gmail draft…"; }
+      fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:body})})
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML=pre+"Draft created in your Gmail. <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>."+photoTail; } }
+          else if(note){ note.style.color="#8a3d1c"; note.textContent=(d&&d.error)||"Couldn't create the draft."; }
+        }).catch(function(){ if(note){ note.style.color="#8a3d1c"; note.textContent="Couldn't reach Gmail."; } });
+      return;
+    }
+    if(note){ note.style.display="block"; note.style.color="#8a3d1c"; note.textContent=pre+"Opening a Gmail draft."+photoTail; }
     var url="https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(to)+"&su="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
     window.open(url,"_blank");
   }

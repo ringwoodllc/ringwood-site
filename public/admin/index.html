@@ -105,6 +105,13 @@
     </a>
   </div>
 
+  <div id="gmailCard" style="background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-top:16px">
+    <div style="font-family:'Spectral',serif;font-size:1.05rem;color:var(--green-deep);margin-bottom:5px">Gmail connection</div>
+    <div id="gmailStatus" style="font-size:.9rem;color:var(--muted)">Checking…</div>
+    <div id="gmailActions" style="margin-top:11px;display:flex;gap:10px;flex-wrap:wrap"></div>
+    <div id="gmailMsg" style="font-size:.84rem;margin-top:9px;min-height:14px"></div>
+  </div>
+
   <footer><a href="/app">Back to home</a> &middot; <a href="/account">Account</a></footer>
 </div>
 <script>
@@ -112,7 +119,30 @@
     if(!d||!d.ok){ location.replace("/login?next=/admin"); return; }
     if(d.role!=="master"){ location.replace("/app"); return; }
     loadStats();
+    loadGmail();
   }).catch(function(){});
+
+  function gEsc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function loadGmail(){
+    var st=document.getElementById("gmailStatus"), act=document.getElementById("gmailActions");
+    fetch("/api/google/status",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ st.textContent="Couldn't check the connection."; act.innerHTML=""; return; }
+      if(!d.configured){ st.innerHTML="Not set up yet. Add <b>GOOGLE_CLIENT_ID</b> and <b>GOOGLE_CLIENT_SECRET</b> as Cloudflare Worker secrets (see setup), then reload."; act.innerHTML=""; return; }
+      if(d.connected){
+        st.innerHTML="Connected"+(d.email?(" as <b>"+gEsc(d.email)+"</b>"):"")+". Estimates and RFQs can drop a ready draft straight into Gmail.";
+        act.innerHTML="<button id='gmDisc' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4);font-weight:600;font-size:.9rem;padding:9px 15px;border-radius:8px;cursor:pointer'>Disconnect</button>";
+        document.getElementById("gmDisc").addEventListener("click", function(){ this.disabled=true; fetch("/api/google/disconnect",{method:"POST"}).then(function(r){return r.json();}).then(function(){ loadGmail(); }).catch(function(){}); });
+      } else {
+        st.textContent="Not connected. Connect your Gmail so the app can create drafts for you automatically.";
+        act.innerHTML="<a href='/api/google/connect' style='display:inline-block;background:var(--green);color:#f6f2e8;text-decoration:none;font-weight:600;font-size:.9rem;padding:10px 16px;border-radius:8px'>Connect Gmail</a>";
+      }
+    }).catch(function(){ st.textContent="Couldn't check the connection."; });
+  }
+  (function(){ var p=new URLSearchParams(location.search).get("gmail"); var m=document.getElementById("gmailMsg"); if(!p||!m) return;
+    if(p==="connected"){ m.style.color="var(--green-deep)"; m.textContent="Gmail connected."; }
+    else if(p==="noreftoken"){ m.style.color="#8a3d1c"; m.textContent="Connected, but Google didn't return a refresh token. Disconnect and reconnect (the consent screen must show 'allow')."; }
+    else if(p==="error"){ m.style.color="#8a3d1c"; m.textContent="Couldn't connect. Check the Client ID/Secret and that the redirect URI matches, then try again."; }
+  })();
 
   document.getElementById("ovHead").addEventListener("click", function(){
     var b=document.getElementById("ovBody"), t=document.getElementById("ovTog");

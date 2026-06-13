@@ -171,6 +171,11 @@ export default {
     if (url.pathname === "/api/admin/vendors" && request.method === "GET") return adminListVendors(request, env);
     if (url.pathname === "/api/admin/vendor" && request.method === "POST") return adminSaveVendor(request, env);
     if (url.pathname === "/api/admin/vendor/delete" && request.method === "POST") return deleteVendor(request, env);
+    if (url.pathname === "/api/google/status" && request.method === "GET") return googleStatus(request, env);
+    if (url.pathname === "/api/google/connect" && request.method === "GET") return googleConnect(request, env);
+    if (url.pathname === "/api/google/callback" && request.method === "GET") return googleCallback(request, env);
+    if (url.pathname === "/api/google/disconnect" && request.method === "POST") return googleDisconnect(request, env);
+    if (url.pathname === "/api/gmail/draft" && request.method === "POST") return gmailCreateDraft(request, env);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -742,6 +747,143 @@ async function deleteVendor(request, env) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/vendors?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
+}
+
+/* ===================== Google / Gmail (OAuth) ===================== */
+// One org-wide Google connection (the admin's Gmail). The app uses it to create
+// a ready draft in Gmail automatically (gmail.compose scope). Tokens live in
+// app_oauth and never reach the browser. Needs GOOGLE_CLIENT_ID and
+// GOOGLE_CLIENT_SECRET as Cloudflare Worker secrets.
+const GOOGLE_SCOPES = "openid email https://www.googleapis.com/auth/gmail.compose";
+function googleRedirectUri(request) { return new URL(request.url).origin + "/api/google/callback"; }
+
+async function googleStatus(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const configured = !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+  let connected = false, email = "";
+  if (configured) {
+    const rows = await sbSelect(env, "app_oauth?provider=eq.google&select=email,refresh_token");
+    const row = rows && rows[0];
+    connected = !!(row && row.refresh_token); email = (row && row.email) || "";
+  }
+  return noStore({ ok: true, configured, connected, email });
+}
+
+async function googleConnect(request, env) {
+  if (!(await requireMaster(request, env))) return new Response("Master only.", { status: 403 });
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return new Response("Google is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare.", { status: 503 });
+  const state = randomToken();
+  const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
+  u.searchParams.set("redirect_uri", googleRedirectUri(request));
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("scope", GOOGLE_SCOPES);
+  u.searchParams.set("access_type", "offline");
+  u.searchParams.set("prompt", "consent");
+  u.searchParams.set("state", state);
+  return new Response(null, { status: 302, headers: { Location: u.toString(), "Set-Cookie": `rw_goauth=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600` } });
+}
+
+async function googleCallback(request, env) {
+  const master = await requireMaster(request, env);
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code") || "";
+  const state = url.searchParams.get("state") || "";
+  const cookieState = getCookie(request, "rw_goauth") || "";
+  const back = (msg) => new Response(null, { status: 302, headers: { Location: "/admin?gmail=" + msg, "Set-Cookie": "rw_goauth=; Path=/; Max-Age=0" } });
+  if (!master) return new Response("Master only.", { status: 403 });
+  if (!code || !state || state !== cookieState) return back("error");
+  let tok;
+  try {
+    const r = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: googleRedirectUri(request), grant_type: "authorization_code" }),
+    });
+    tok = await r.json();
+    if (!r.ok || !tok.access_token) return back("error");
+  } catch { return back("error"); }
+  let email = "";
+  try {
+    const ui = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: "Bearer " + tok.access_token } });
+    if (ui.ok) { const u2 = await ui.json(); email = u2.email || ""; }
+  } catch { /* email is just for display */ }
+  const expires_at = new Date(Date.now() + ((tok.expires_in || 3600) - 60) * 1000).toISOString();
+  const patch = { provider: "google", email, access_token: tok.access_token, expires_at, updated_at: new Date().toISOString() };
+  if (tok.refresh_token) patch.refresh_token = tok.refresh_token;
+  const existing = await sbSelect(env, "app_oauth?provider=eq.google&select=provider");
+  if (existing && existing.length) {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.google`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
+  } else {
+    await sbInsert(env, "app_oauth", patch);
+  }
+  return back(tok.refresh_token ? "connected" : "noreftoken");
+}
+
+async function googleDisconnect(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.google`, { method: "DELETE", headers: sbHeaders(env) });
+  return json({ ok: true });
+}
+
+// Fresh access token, refreshing via the stored refresh_token when needed.
+async function getGoogleAccessToken(env) {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
+  const rows = await sbSelect(env, "app_oauth?provider=eq.google&select=access_token,refresh_token,expires_at");
+  const row = rows && rows[0];
+  if (!row || !row.refresh_token) return null;
+  if (row.access_token && row.expires_at && new Date(row.expires_at).getTime() > Date.now() + 30000) return row.access_token;
+  try {
+    const r = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: row.refresh_token, grant_type: "refresh_token" }),
+    });
+    const tok = await r.json();
+    if (!r.ok || !tok.access_token) return null;
+    const expires_at = new Date(Date.now() + ((tok.expires_in || 3600) - 60) * 1000).toISOString();
+    await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.google`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ access_token: tok.access_token, expires_at, updated_at: new Date().toISOString() }) });
+    return tok.access_token;
+  } catch { return null; }
+}
+
+// UTF-8 safe base64url (for the raw RFC822 message).
+function b64urlUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function rfc2047(s) {
+  if (!/[^\x00-\x7F]/.test(s)) return s;
+  const bytes = new TextEncoder().encode(s);
+  let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return "=?UTF-8?B?" + btoa(bin) + "?=";
+}
+
+async function gmailCreateDraft(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const to = (body.to || "").toString().trim();
+  const subject = (body.subject || "").toString();
+  const text = (body.body || "").toString();
+  const token = await getGoogleAccessToken(env);
+  if (!token) return json({ ok: false, error: "Gmail is not connected." }, 409);
+  const headers = [];
+  if (to) headers.push("To: " + to);
+  headers.push("Subject: " + rfc2047(subject));
+  headers.push("MIME-Version: 1.0");
+  headers.push("Content-Type: text/plain; charset=UTF-8");
+  const raw = headers.join("\r\n") + "\r\n\r\n" + text;
+  try {
+    const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
+      method: "POST", headers: { Authorization: "Bearer " + token, "content-type": "application/json" },
+      body: JSON.stringify({ message: { raw: b64urlUtf8(raw) } }),
+    });
+    const d = await r.json();
+    if (!r.ok) return json({ ok: false, error: (d && d.error && d.error.message) || "Couldn't create the draft." }, 502);
+    const msgId = (d.message && d.message.id) || "";
+    const link = msgId ? ("https://mail.google.com/mail/u/0/#drafts?compose=" + msgId) : "https://mail.google.com/mail/u/0/#drafts";
+    return json({ ok: true, draftId: d.id || "", link });
+  } catch { return json({ ok: false, error: "Couldn't reach Gmail." }, 502); }
 }
 
 async function adminSaveClient(request, env) {

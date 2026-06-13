@@ -86,12 +86,13 @@
   function fmtDate(s){ if(!s) return ""; try{ var d=new Date(s); return d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}); }catch(e){ return s; } }
   function qs(k){ return new URLSearchParams(location.search).get(k)||""; }
 
-  var ID=qs("id"), MODE="internal", DOCTYPE="Estimate", SHOW_ITEMS=false, BILL=null;
+  var ID=qs("id"), MODE="internal", DOCTYPE="Estimate", SHOW_ITEMS=false, BILL=null, GMAIL_CONNECTED=false;
   document.getElementById("backLink").href = ID ? ("/status?id="+encodeURIComponent(ID)) : "/status";
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
     if(!w||!w.ok){ location.replace("/login?next="+encodeURIComponent(location.pathname+location.search)); return; }
     if(w.role!=="master"){ location.replace("/app"); return; }
+    fetch("/api/google/status",{cache:"no-store"}).then(function(r){return r.json();}).then(function(g){ GMAIL_CONNECTED=!!(g&&g.ok&&g.connected); }).catch(function(){});
     load();
   }).catch(function(){ load(); });
 
@@ -134,12 +135,22 @@
     if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood Holding LLC."); lines.push(""); }
     lines.push("Thank you,");
     lines.push("Ringwood Holding LLC");
-    var note=document.getElementById("sendNote");
-    if(note){ note.style.display="block"; note.textContent = to
-      ? "Opening a Gmail draft for "+(b.ticket.client||"the client")+", ready to review and send."
-      : "No email on file for "+(b.ticket.client||"this client")+". Opening a blank Gmail draft — add their address, or set it in client setup."; }
-    // Open a Gmail compose window with the estimate/invoice filled in (a draft).
-    var url = "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(to) + "&su=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
+    var note=document.getElementById("sendNote"), bodyV=lines.join("\n");
+    // If Gmail is connected, create the draft server-side (it lands in your
+    // Gmail automatically). Otherwise open a pre-filled Gmail compose window.
+    if(GMAIL_CONNECTED){
+      if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent="Creating a Gmail draft…"; }
+      fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:bodyV})})
+        .then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML="Draft created in your Gmail. <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>"+(to?"":" — add the client's address."); } }
+          else if(note){ note.style.color="#8a3d1c"; note.textContent=(d&&d.error)||"Couldn't create the draft."; }
+        }).catch(function(){ if(note){ note.style.color="#8a3d1c"; note.textContent="Couldn't reach Gmail."; } });
+      return;
+    }
+    if(note){ note.style.display="block"; note.style.color="#8a3d1c"; note.textContent = to
+      ? "Opening a Gmail draft, ready to review and send."
+      : "No email on file for "+(b.ticket.client||"this client")+". Opening a blank draft — add their address, or set it in client setup."; }
+    var url = "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(to) + "&su=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(bodyV);
     window.open(url, "_blank");
   }
   document.getElementById("seg_internal").addEventListener("click", function(){ setMode("internal"); });
