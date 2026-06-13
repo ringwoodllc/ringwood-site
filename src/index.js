@@ -99,6 +99,7 @@ export default {
     if (url.pathname === "/api/tickets/part" && request.method === "POST") return saveTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/part/delete" && request.method === "POST") return deleteTicketPart(request, env, session);
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
+    if (url.pathname === "/api/tickets/parts/scan-invoice" && request.method === "POST") return scanInvoiceParts(request, env, session);
     if (url.pathname === "/api/parts/list" && request.method === "GET") return listAllParts(url, env, session);
     if (url.pathname === "/api/redbook" && request.method === "GET") return listRedbook(url, env, session);
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
@@ -5941,6 +5942,67 @@ async function suggestTicketParts(request, env, session) {
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
   }
+}
+
+// AI: read a supplier invoice / receipt photo and log each purchased material as
+// a part on the ticket (item, quantity, line total), with the invoice image
+// attached for verification. This is what makes job costing accurate: the real
+// money spent at the paint shop lands straight on the job.
+async function scanInvoiceParts(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const ticketId = (body.id || "").toString().trim();
+  const base64 = (body.base64 || "").toString();
+  if (!ticketId) return json({ ok: false, error: "No ticket." }, 400);
+  if (!base64) return json({ ok: false, error: "No invoice photo." }, 400);
+  const ct = (body.contentType || "image/jpeg").toString();
+  const isPdf = ct.indexOf("pdf") >= 0;
+  // Keep the invoice itself for human verification (best-effort).
+  let invoiceUrl = null;
+  try { invoiceUrl = await uploadToStorage(env, `tickets/${ticketId}/invoices/inv-${Date.now()}.${isPdf ? "pdf" : "jpg"}`, base64, isPdf ? "application/pdf" : ct); } catch { /* items still useful */ }
+  const source = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
+  const block = isPdf ? { type: "document", source } : { type: "image", source };
+  const prompt =
+    "You are reading a supplier invoice or store receipt for materials bought for a job (for example a paint store receipt). List every purchased line item. For each:\n" +
+    "- item: a short clear name (e.g. 'Interior paint, eggshell white' or 'Paint roller 9in' or 'Painter\\'s tape').\n" +
+    "- quantity: a number (1 if not shown).\n" +
+    "- unit: a short unit like 'gal', 'ea', 'box', 'ft', or empty if none.\n" +
+    "- cost: the LINE TOTAL in dollars as a number (quantity times unit price), not the unit price.\n" +
+    "Skip tax, subtotal, grand total, store name, discounts, and payment lines. Only actual materials or products purchased. Read only what is printed; do not invent items or prices.";
+  const schema = { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { item: { type: "string" }, quantity: { type: "number" }, unit: { type: "string" }, cost: { type: "number" } }, required: ["item", "quantity", "unit", "cost"], additionalProperties: false } } }, required: ["items"], additionalProperties: false };
+  let items = [];
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 1500, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that invoice." }, 502);
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return json({ ok: false, error: "The assistant couldn't read that invoice." }, 502);
+    let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read the invoice." }, 502); }
+    items = Array.isArray(out.items) ? out.items : [];
+  } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
+  items = items.slice(0, 60);
+  let added = 0;
+  const photoArr = invoiceUrl ? [invoiceUrl] : [];
+  for (const it of items) {
+    const item = (it.item || "").toString().trim().slice(0, 160);
+    if (!item) continue;
+    const q = Number(it.quantity); const quantity = isNaN(q) || q <= 0 ? 1 : q;
+    const unit = (it.unit || "").toString().trim().slice(0, 24) || null;
+    const cn = Number(it.cost); const est_cost = isNaN(cn) ? null : cn;
+    const row = { ticket_id: ticketId, item, quantity, unit, est_cost, source: "invoice", status: "Received" };
+    let r2 = await sbInsert(env, "ticket_parts", photoArr.length ? Object.assign({ photo_urls: photoArr }, row) : row);
+    if (!r2.ok && photoArr.length) r2 = await sbInsert(env, "ticket_parts", row);
+    if (r2.ok) added++;
+  }
+  if (!added) return json({ ok: false, error: items.length ? "Couldn't save the items. Run supabase/ticket_parts.sql once." : "No line items found on that invoice." }, items.length ? 502 : 200);
+  return json({ ok: true, added, invoiceUrl: invoiceUrl || "" });
 }
 
 // Rollup across all tickets for the "Parts to buy" screen.

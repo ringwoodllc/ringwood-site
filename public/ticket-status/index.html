@@ -675,7 +675,14 @@
             "<div id='e_equip' style='margin:0 0 12px'></div>" +
             (!IS_CLIENT ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
-              "<div id='e_partsField' style='display:none;margin-bottom:12px'><div style='display:flex;justify-content:flex-end;margin-bottom:6px'><button type='button' class='aibtn' id='p_suggest'>✨ Suggest from the ticket</button></div><div id='e_parts'></div></div>" +
+              "<div id='e_partsField' style='display:none;margin-bottom:12px'>" +
+                "<div style='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-bottom:6px'>" +
+                  "<button type='button' class='aibtn' id='p_scanInv'>📷 Scan invoice</button>" +
+                  "<button type='button' class='aibtn' id='p_suggest'>✨ Suggest from the ticket</button>" +
+                "</div>" +
+                "<input type='file' id='p_invFile' accept='image/*,application/pdf' style='display:none' />" +
+                "<div id='p_invMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:6px'></div>" +
+                "<div id='e_parts'></div></div>" +
               "<div style='margin:2px 0 12px'><a href='#' id='e_laborToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Labor ▾</a></div>" +
               "<div id='e_laborField' style='display:none;margin-bottom:12px'><div id='e_labor'></div></div>"
             : "") +
@@ -1717,6 +1724,26 @@
         }).catch(function(err){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>network: "+esc((err&&err.message)||(""+err))+"</span>"; PARTS=[]; PARTS_MISSING=false; safeRenderParts(); }); }
       function safeRenderParts(){ try{ renderParts(); }catch(e){ var dg=document.getElementById("e_svcdiag"); if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts render error: "+esc((e&&e.message)||(""+e))+"</span>"; } }
       var sgBtn=document.getElementById("p_suggest"); if(sgBtn) sgBtn.addEventListener("click", suggestParts);
+      // Photograph a supplier invoice / receipt: AI logs each material bought
+      // (paint, rollers, tape…) as a part with its line total, for real job cost.
+      function scanPartsInvoice(file){
+        if(!file) return;
+        var msg=document.getElementById("p_invMsg"); if(msg){ msg.style.color="var(--muted)"; msg.textContent="Reading the invoice…"; }
+        var btn=document.getElementById("p_scanInv"); if(btn) btn.disabled=true;
+        var isPdf=/pdf/i.test(file.type||"");
+        var toPayload = isPdf
+          ? new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res({base64:b>=0?d.slice(b+1):d, contentType:"application/pdf"}); }; r.onerror=rej; r.readAsDataURL(file); })
+          : processPhoto(file).then(function(p){ return {base64:p.base64, contentType:p.contentType}; });
+        toPayload.then(function(p){
+          return fetch("/api/tickets/parts/scan-invoice",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:t.id, base64:p.base64, contentType:p.contentType })});
+        }).then(function(r){return r.json();}).then(function(d){
+          if(btn) btn.disabled=false;
+          if(d&&d.ok){ if(msg){ msg.style.color="var(--green-deep)"; msg.textContent="Added "+d.added+" item"+(d.added===1?"":"s")+" from the invoice. Check and edit below."; } loadParts(); }
+          else if(msg){ msg.style.color="#8a3d1c"; msg.textContent=(d&&d.error)||"Couldn't read that invoice."; }
+        }).catch(function(){ if(btn) btn.disabled=false; if(msg){ msg.style.color="#8a3d1c"; msg.textContent="Couldn't reach the assistant."; } });
+      }
+      var scanInvBtn=document.getElementById("p_scanInv"); if(scanInvBtn) scanInvBtn.addEventListener("click", function(){ var fi=document.getElementById("p_invFile"); if(fi) fi.click(); });
+      var invFileEl=document.getElementById("p_invFile"); if(invFileEl) invFileEl.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanPartsInvoice(f); });
       loadParts();
     }
 
