@@ -22,4 +22,5 @@ create table if not exists employees (
 -- If the table already existed, make sure the newer columns are present:
 alter table employees add column if not exists pos_password text;
 alter table employees add column if not exists last_name text;
+alter table employees add column if not exists address text;
 create index if not exists employees_client on employees(client_id, sort, created_at);

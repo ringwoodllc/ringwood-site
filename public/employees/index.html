@@ -72,37 +72,40 @@
   <div id="setupNote" class="note" style="display:none"></div>
 
   <div id="body" style="display:none">
-    <h2>Import from a photo</h2>
-    <div class="panel">
-      <div style="font-size:.86rem;color:var(--muted);margin-bottom:8px">Snap an ID, passport, or a completed crew list and the assistant adds everyone it reads.</div>
-      <button class="btn sm" id="scanBtn" type="button">📷 Scan ID / list</button>
-      <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
-      <div class="msg" id="scan_msg"></div>
-    </div>
-
-    <h2>Add an employee</h2>
-    <div class="panel">
-      <div class="row2">
-        <div class="field"><label>First name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Dilara" /></div>
-        <div class="field"><label>Last name</label><input id="n_last" type="text" autocomplete="off" placeholder="e.g. Chowdhury" /></div>
+    <div class="citem" id="addBox" style="margin-bottom:12px">
+      <div class="csum" onclick="toggleAdd()">
+        <div><span class="nm">Add someone manually</span><div class="cs">Most people come from QuickBooks. Use this for anyone not in QuickBooks, or to scan an ID.</div></div>
+        <span class="caret">›</span>
       </div>
-      <div class="row2">
-        <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
-        <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
+      <div class="cbody" id="addBody">
+        <div style="font-size:.84rem;color:var(--muted);margin-bottom:7px">Snap an ID, passport, or a completed crew list and the assistant adds everyone it reads.</div>
+        <button class="btn sm" id="scanBtn" type="button">📷 Scan ID / list</button>
+        <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
+        <div class="msg" id="scan_msg"></div>
+        <div style="border-top:1px solid var(--line);margin:13px 0 12px"></div>
+        <div class="row2">
+          <div class="field"><label>First name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Dilara" /></div>
+          <div class="field"><label>Last name</label><input id="n_last" type="text" autocomplete="off" placeholder="e.g. Chowdhury" /></div>
+        </div>
+        <div class="field"><label>Address</label><input id="n_addr" type="text" autocomplete="off" placeholder="Street, City, ST ZIP" /></div>
+        <div class="row2">
+          <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
+          <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>POS # / key</label><input id="n_pos" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 8011" /></div>
+          <div class="field"><label>POS password</label><input id="n_pospw" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 3625388011" /></div>
+        </div>
+        <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
+        <div style="margin:-2px 0 8px"><a href="#" id="manageRolesLink" style="font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage roles</a></div>
+        <div id="rolePanel" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:12px"></div>
+        <div class="row2">
+          <div class="field"><label>Rate ($/hr)</label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 16.00" /></div>
+          <div class="field"><label>OT rate ($/hr)</label><input id="n_ot" type="number" min="0" step="0.01" autocomplete="off" placeholder="optional" /></div>
+        </div>
+        <button class="btn" id="n_add" type="button">Add employee</button>
+        <div class="msg" id="n_msg"></div>
       </div>
-      <div class="row2">
-        <div class="field"><label>POS # / key</label><input id="n_pos" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 8011" /></div>
-        <div class="field"><label>POS password</label><input id="n_pospw" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 3625388011" /></div>
-      </div>
-      <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
-      <div style="margin:-2px 0 8px"><a href="#" id="manageRolesLink" style="font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage roles</a></div>
-      <div id="rolePanel" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:12px"></div>
-      <div class="row2">
-        <div class="field"><label>Rate ($/hr)</label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 16.00" /></div>
-        <div class="field"><label>OT rate ($/hr)</label><input id="n_ot" type="number" min="0" step="0.01" autocomplete="off" placeholder="optional" /></div>
-      </div>
-      <button class="btn" id="n_add" type="button">Add employee</button>
-      <div class="msg" id="n_msg"></div>
     </div>
 
     <h2>QuickBooks</h2>
@@ -221,11 +224,25 @@
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
       if(d.missing){ note.style.display="block"; note.textContent="The employees table isn't set up yet. Run supabase/employees.sql once in Supabase, then reload."; }
       else note.style.display="none";
-      EMP=d.employees||[]; render();
+      EMP=d.employees||[]; render(); enrichWithQb();
       if(URL_EMP){ var k=ukey(URL_EMP), it=document.getElementById("it_"+k); if(it){ window.tog(k); it.scrollIntoView({block:"center",behavior:"smooth"}); } URL_EMP=""; }
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
+  // Tag each roster person who matches a QuickBooks employee, so we can badge them
+  // and lock the QB-owned fields. Matching is name-based (order-independent).
+  function nmeKeyJs(first,last){ var s=((first||"")+" "+(last||"")).toLowerCase().replace(/[^a-z\s]/g," ").replace(/\s+/g," ").trim(); return s.split(" ").sort().join(" "); }
+  function enrichWithQb(){
+    if(!CLIENT_ID) return;
+    fetch("/api/qbo/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok||!d.employees) return; // not connected or error: leave roster as-is
+      var byKey={};
+      d.employees.forEach(function(q){ if(!q.active) return; var k=nmeKeyJs(q.first,q.last)||nmeKeyJs(q.display,""); if(k&&!byKey[k]) byKey[k]=q; });
+      var changed=false;
+      EMP.forEach(function(e){ var q=byKey[nmeKeyJs(e.name,e.lastName)]||null; if(q!==e.qb){ e.qb=q; changed=true; } });
+      if(changed) render();
+    }).catch(function(){});
+  }
   function viewList(){
     if(SORT==="manual") return EMP.slice(); // server (sort) order, unfiltered, for reordering
     var list=EMP.filter(function(e){ return FILT==="all"?true:(FILT==="active"?e.active:!e.active); });
@@ -251,19 +268,27 @@
     el.innerHTML = list.length ? list.map(renderItem).join("") : "<div class='empty'>None match this filter.</div>";
     list.forEach(wire);
   }
+  // A small QuickBooks badge (QB green) when this person is linked to a QBO record.
+  function qbBadge(e){ return e.qb ? " <span title='In QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
   function renderItem(e){
     var k=ukey(e.id);
     var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
+    // Fields QuickBooks owns are read-only when the person is linked to QB.
+    var ql=e.qb||null;
+    var roAttr=ql?" readonly style='background:#e7e1d3;color:var(--muted);cursor:not-allowed'":"";
+    var roTag=ql?" <span style='font-weight:400;font-size:.72rem;color:#2ca01c'>· from QuickBooks</span>":"";
+    var fnVal=ql?(ql.first||e.name):e.name, lnVal=ql?(ql.last||e.lastName):e.lastName, adVal=ql?(ql.address||e.address):e.address;
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
-        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
+        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+qbBadge(e)+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
         "<span style='display:flex;align-items:center;gap:6px'>"+
           (SORT==="manual" ? "<span style='display:flex;flex-direction:column;line-height:.9'><button type='button' onclick=\"event.stopPropagation();mv('"+esc(e.id)+"',-1)\" style='background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;padding:0 4px'>▲</button><button type='button' onclick=\"event.stopPropagation();mv('"+esc(e.id)+"',1)\" style='background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;padding:0 4px'>▼</button></span>" : "")+
           "<span class='caret'>›</span>"+
         "</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
-        "<div class='row2'><div class='field'><label>First name</label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
-        "<div class='field'><label>Last name</label><input id='ls_"+k+"' value='"+esc(e.lastName)+"'/></div></div>"+
+        "<div class='row2'><div class='field'><label>First name"+roTag+"</label><input id='nm_"+k+"'"+roAttr+" value='"+esc(fnVal)+"'/></div>"+
+        "<div class='field'><label>Last name"+roTag+"</label><input id='ls_"+k+"'"+roAttr+" value='"+esc(lnVal)+"'/></div></div>"+
+        "<div class='field'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
         "<div class='row2'><div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div>"+
         "<div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div></div>"+
         "<div class='row2'><div class='field'><label>POS # / key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
@@ -277,6 +302,7 @@
         "<div class='msg' id='m_"+k+"'></div></div></div>";
   }
   window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
+  window.toggleAdd=function(){ var box=document.getElementById("addBox"), b=document.getElementById("addBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
 
   function wire(e){
     var k=ukey(e.id);
@@ -287,7 +313,7 @@
       var name=document.getElementById("nm_"+k).value.trim();
       if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
       b.disabled=true; b.textContent="Saving…";
-      var payload={ id:e.id, name:name, lastName:document.getElementById("ls_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:document.getElementById("ps_"+k).value, posPassword:document.getElementById("pw_"+k).value, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, otRate:document.getElementById("ot_"+k).value, active:document.getElementById("ac_"+k).checked };
+      var payload={ id:e.id, name:name, lastName:document.getElementById("ls_"+k).value, address:document.getElementById("ar_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:document.getElementById("ps_"+k).value, posPassword:document.getElementById("pw_"+k).value, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, otRate:document.getElementById("ot_"+k).value, active:document.getElementById("ac_"+k).checked };
       fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
@@ -308,10 +334,10 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    var payload={ clientId:CLIENT_ID, name:name, lastName:document.getElementById("n_last").value, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, posPassword:document.getElementById("n_pospw").value, crewNo:document.getElementById("n_crew").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value, otRate:document.getElementById("n_ot").value };
+    var payload={ clientId:CLIENT_ID, name:name, lastName:document.getElementById("n_last").value, address:document.getElementById("n_addr").value, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, posPassword:document.getElementById("n_pospw").value, crewNo:document.getElementById("n_crew").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value, otRate:document.getElementById("n_ot").value };
     fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add employee";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_last","n_phone","n_pos","n_pospw","n_crew","n_role","n_rate","n_ot"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_last","n_addr","n_phone","n_pos","n_pospw","n_crew","n_role","n_rate","n_ot"].forEach(function(i){document.getElementById(i).value="";}); load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add employee"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
