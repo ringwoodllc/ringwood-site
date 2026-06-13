@@ -836,16 +836,17 @@ async function scanEmployees(request, env, session) {
   const block = isPdf ? { type: "document", source: src } : { type: "image", source: src };
   const prompt =
     "You are reading either a single ID / passport / driver's license (one person), or a roster / list / spreadsheet of food-service employees (many people). Extract every person you can see. For each:\n" +
-    "- name: the person's everyday first name (or the name on the ID).\n" +
+    "- name: the person's everyday first name (or the name on the ID). This is the 'Name' column.\n" +
     "- payrollName: the full legal name as payroll would show it (for example 'Chowdhury, Dilara' or 'Dilara Chowdhury') if visible, else empty.\n" +
-    "- posKey: the short POS number / login key / employee number, usually 3 to 5 digits (e.g. 8011), if shown, else empty.\n" +
-    "- posPassword: a separate, longer POS password number (e.g. 3625388011) if a distinct password column is shown, else empty. Do not put the short posKey here.\n" +
-    "- crewNo: a crew label or number if shown (e.g. 'Crew 3'), else empty.\n" +
-    "- role: the role, privilege, or title if shown (e.g. 'Crew Plus / DD Shift', 'Manager'), else empty.\n" +
+    "- posKey: the SHORT POS number / login key / 'Short pin' / 'POS #', usually 3 to 5 digits (e.g. 8011), if shown, else empty.\n" +
+    "- posPassword: the LONGER 'Full pin' / 'POS password' number (e.g. 3625388011) if a distinct column is shown, else empty. Never put the short posKey here.\n" +
+    "- crewNo: the crew label from 'System ID' / 'POS Name' / 'Crew #' (e.g. 'Crew 3'), else empty.\n" +
+    "- role: the role / privilege / title from 'POS Config', 'Employee Privilege', or 'Role' (e.g. 'Crew Plus / DD Shift', 'Manager', 'DD Franchisee'), else empty.\n" +
     "- phone: a phone number if shown, else empty.\n" +
     "- rate: an hourly pay rate as a number if shown, else 0.\n" +
-    "Read only what is actually visible. Do not invent names, numbers, or rates. Return everyone you find.";
-  const schema = { type: "object", properties: { employees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, payrollName: { type: "string" }, posKey: { type: "string" }, posPassword: { type: "string" }, crewNo: { type: "string" }, role: { type: "string" }, phone: { type: "string" }, rate: { type: "number" } }, required: ["name", "payrollName", "posKey", "posPassword", "crewNo", "role", "phone", "rate"], additionalProperties: false } } }, required: ["employees"], additionalProperties: false };
+    "- active: false if the row is marked 'Not active', 'Inactive', or struck out; otherwise true.\n" +
+    "Read only what is actually visible. Do not invent names, numbers, or rates. Return everyone you find, including managers.";
+  const schema = { type: "object", properties: { employees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, payrollName: { type: "string" }, posKey: { type: "string" }, posPassword: { type: "string" }, crewNo: { type: "string" }, role: { type: "string" }, phone: { type: "string" }, rate: { type: "number" }, active: { type: "boolean" } }, required: ["name", "payrollName", "posKey", "posPassword", "crewNo", "role", "phone", "rate", "active"], additionalProperties: false } } }, required: ["employees"], additionalProperties: false };
   let list = [];
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -868,7 +869,7 @@ async function scanEmployees(request, env, session) {
     if (!name) continue;
     const rn = Number(e.rate);
     const row = {
-      client_id: clientId, name, active: true,
+      client_id: clientId, name, active: e.active === false ? false : true,
       payroll_name: c(e.payrollName).slice(0, 160) || null,
       pos_key: c(e.posKey).slice(0, 40) || null,
       pos_password: c(e.posPassword).slice(0, 60) || null,
