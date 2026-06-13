@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<title>Ringwood · Weekly schedule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.14)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh;padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 16px calc(56px + env(safe-area-inset-bottom))}
+  header{padding:18px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:11px;font-family:"Spectral",serif;font-size:1.2rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.9rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay)}
+  .eyebrow{font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);font-weight:600;margin:6px 0 8px}
+  h1{font-family:"Spectral",serif;font-weight:500;font-size:1.9rem;color:var(--green-deep);line-height:1.1;margin-bottom:12px}
+  select,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;-webkit-appearance:none;appearance:none}
+  select{width:100%;font-size:1rem;padding:10px 12px}
+  select:focus,input:focus{outline:none;border-color:var(--green)}
+  .field{margin-bottom:12px}
+  label{display:block;font-weight:600;font-size:.84rem;color:var(--green-deep);margin-bottom:5px}
+  .weekbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 14px}
+  .nb{background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:600;font-size:.9rem;color:var(--green-deep);cursor:pointer}
+  .nb:hover{border-color:var(--green)}
+  .range{font-weight:600;color:var(--green-deep);font-size:1.02rem}
+  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.88rem;padding:9px 14px;border-radius:8px}
+  .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
+  .scrollx{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg-2)}
+  table{border-collapse:collapse;min-width:760px;width:100%;font-size:.84rem}
+  th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:6px 7px;text-align:center;vertical-align:middle}
+  thead th{background:#e7e0d0;color:var(--green-deep);font-weight:700;position:sticky;top:0;white-space:nowrap}
+  th.emp,td.emp{position:sticky;left:0;background:var(--bg-2);text-align:left;min-width:120px;font-weight:600;color:var(--green-deep);z-index:1}
+  thead th.emp{background:#e7e0d0;z-index:2}
+  td.day{min-width:92px}
+  td.day input{width:78px;font-size:.8rem;padding:4px 5px;text-align:center;margin:1px 0}
+  td.hrs{font-weight:700;color:var(--green-deep);min-width:48px;background:#efe8d8}
+  .dnum{font-size:.74rem;color:var(--muted);font-weight:600}
+  .msg{font-size:.86rem;margin:10px 0;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
+  .empty{color:var(--muted);padding:14px}
+  .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  tfoot td{font-weight:700;color:var(--green-deep);background:#e7e0d0}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" href="/employees">Employee setup</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="eyebrow">Food service · Admin</div>
+  <h1>Weekly schedule</h1>
+
+  <div class="field"><label>Location (client)</label><select id="clientPick"><option value="">Choose a location…</option></select></div>
+
+  <div id="body" style="display:none">
+    <div class="weekbar">
+      <button class="nb" id="prevW" type="button">‹ Prev</button>
+      <span class="range" id="range"></span>
+      <button class="nb" id="nextW" type="button">Next ›</button>
+      <button class="nb" id="thisW" type="button">This week</button>
+      <button class="btn ghost" id="copyW" type="button">Copy previous week →</button>
+    </div>
+    <div id="setupNote" class="note" style="display:none"></div>
+    <div class="msg" id="msg"></div>
+    <div class="scrollx"><div id="grid"><div class="empty">Loading…</div></div></div>
+  </div>
+</main>
+<script>
+  function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
+  function sundayOf(d){ var x=new Date(d); x.setHours(12,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
+  function toMin(t){ if(!t) return null; var p=t.split(":"); return (+p[0])*60+(+p[1]); }
+  function shiftHrs(inT,outT){ var a=toMin(inT),b=toMin(outT); if(a==null||b==null) return 0; if(b<a) b+=1440; return (b-a)/60; }
+  function startColor(inT){ if(!inT) return ""; var h=+inT.split(":")[0]; if(h<8) return "#cfeaf2"; if(h>=15) return "#e6dcf0"; return ""; }
+  var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  var CLIENT_ID="", START=sundayOf(new Date()), DATA=null, CKEY="rw_emp_client";
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok){ location.replace("/login?next=/schedule"); return; }
+    if(d.role!=="master"){ location.replace("/app"); return; }
+    document.getElementById("prevW").addEventListener("click",function(){ START=addDays(START,-7); load(); });
+    document.getElementById("nextW").addEventListener("click",function(){ START=addDays(START,7); load(); });
+    document.getElementById("thisW").addEventListener("click",function(){ START=sundayOf(new Date()); load(); });
+    document.getElementById("copyW").addEventListener("click", copyPrev);
+    loadClients();
+  }).catch(function(){});
+
+  function loadClients(){
+    fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok) return;
+      var sel=document.getElementById("clientPick");
+      (d.clients||[]).forEach(function(c){ var o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+      var saved=""; try{ saved=localStorage.getItem(CKEY)||""; }catch(e){}
+      if(saved){ sel.value=saved; if(sel.value===saved){ CLIENT_ID=saved; document.getElementById("body").style.display="block"; load(); } }
+      sel.addEventListener("change",function(){ CLIENT_ID=sel.value; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} if(CLIENT_ID){ document.getElementById("body").style.display="block"; load(); } else document.getElementById("body").style.display="none"; });
+    }).catch(function(){});
+  }
+
+  function fmtMD(d){ return (d.getMonth()+1)+"/"+d.getDate(); }
+  function load(){
+    var end=addDays(START,6);
+    document.getElementById("range").textContent = START.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" – "+end.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
+    fetch("/api/schedule?clientId="+encodeURIComponent(CLIENT_ID)+"&start="+ymd(START)+"&end="+ymd(end),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      var note=document.getElementById("setupNote");
+      if(!d||!d.ok){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
+      if(d.missing){ note.style.display="block"; note.textContent="No employees here yet — add them in Employee setup first."; }
+      else if(d.scheduleMissing){ note.style.display="block"; note.textContent="The schedule table isn't set up yet. Run supabase/schedule_shifts.sql once, then reload."; }
+      else note.style.display="none";
+      DATA=d; render();
+    }).catch(function(){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function render(){
+    var g=document.getElementById("grid");
+    if(!DATA.employees.length){ g.innerHTML="<div class='empty'>No active employees for this location.</div>"; return; }
+    var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
+    var h="<table><thead><tr><th class='emp'>Employee</th>";
+    dates.forEach(function(d,i){ h+="<th>"+DAYS[i]+"<div class='dnum'>"+fmtMD(d)+"</div></th>"; });
+    h+="<th>Hrs</th></tr></thead><tbody>";
+    DATA.employees.forEach(function(e){
+      h+="<tr><td class='emp'>"+esc(e.name)+"</td>";
+      dates.forEach(function(d){
+        var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
+        h+="<td class='day'>"+
+          "<input type='time' class='ti tin' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.in)+"' style='background:"+(startColor(sh.in)||"var(--bg)")+"' />"+
+          "<input type='time' class='ti tout' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' />"+
+        "</td>";
+      });
+      h+="<td class='hrs' id='hrs_"+esc(e.id)+"'>"+rowHrs(e.id,dates).toFixed(1)+"</td></tr>";
+    });
+    h+="</tbody><tfoot><tr><td class='emp'>Total</td>";
+    dates.forEach(function(){ h+="<td></td>"; });
+    h+="<td id='grandHrs'>"+grandHrs(dates).toFixed(1)+"</td></tr></tfoot></table>";
+    g.innerHTML=h;
+    g.querySelectorAll(".ti").forEach(function(inp){ inp.addEventListener("change", onCell); });
+  }
+  function rowHrs(empId,dates){ var t=0; dates.forEach(function(d){ var sh=(DATA.shifts[empId]&&DATA.shifts[empId][ymd(d)])||{}; t+=shiftHrs(sh.in,sh.out); }); return t; }
+  function grandHrs(dates){ var t=0; DATA.employees.forEach(function(e){ t+=rowHrs(e.id,dates); }); return t; }
+
+  function onCell(ev){
+    var inp=ev.target, emp=inp.getAttribute("data-emp"), date=inp.getAttribute("data-date");
+    var cell=inp.parentNode;
+    var inT=cell.querySelector(".tin").value, outT=cell.querySelector(".tout").value;
+    cell.querySelector(".tin").style.background = startColor(inT)||"var(--bg)";
+    DATA.shifts[emp]=DATA.shifts[emp]||{}; DATA.shifts[emp][date]={in:inT,out:outT};
+    var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
+    var hc=document.getElementById("hrs_"+emp); if(hc) hc.textContent=rowHrs(emp,dates).toFixed(1);
+    var gh=document.getElementById("grandHrs"); if(gh) gh.textContent=grandHrs(dates).toFixed(1);
+    var m=document.getElementById("msg"); m.className="msg";
+    fetch("/api/schedule/shift",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({employeeId:emp,date:date,in:inT,out:outT})})
+      .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved ✓"; setTimeout(function(){ if(m.textContent==="Saved ✓") m.textContent=""; },1200); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't save."; } })
+      .catch(function(){ m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
+
+  function copyPrev(){
+    if(!confirm("Copy the previous week's schedule into this week? It overwrites any shifts already set for these dates.")) return;
+    var b=document.getElementById("copyW"); b.disabled=true; b.textContent="Copying…";
+    fetch("/api/schedule/copy",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID,fromStart:ymd(addDays(START,-7)),toStart:ymd(START)})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Copy previous week →";
+        var m=document.getElementById("msg"); if(d&&d.ok){ m.className="msg ok"; m.textContent="Copied "+d.copied+" shift"+(d.copied===1?"":"s")+" from last week."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't copy."; } })
+      .catch(function(){ b.disabled=false; b.textContent="Copy previous week →"; });
+  }
+</script>
+<script src="/whoami-badge.js"></script>
+</body>
+</html>

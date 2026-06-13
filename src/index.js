@@ -179,6 +179,9 @@ export default {
     if (url.pathname === "/api/employees" && request.method === "GET") return listEmployees(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
+    if (url.pathname === "/api/schedule" && request.method === "GET") return getSchedule(url, env, session);
+    if (url.pathname === "/api/schedule/shift" && request.method === "POST") return saveScheduleShift(request, env, session);
+    if (url.pathname === "/api/schedule/copy" && request.method === "POST") return copyScheduleWeek(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -807,6 +810,77 @@ async function deleteEmployee(request, env, session) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/employees?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
   return json({ ok: true });
+}
+
+/* ===================== Weekly schedule ===================== */
+function addDaysYmd(ymd, n) { const d = new Date(ymd + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function diffDaysYmd(a, b) { return Math.round((new Date(a + "T00:00:00Z") - new Date(b + "T00:00:00Z")) / 86400000); }
+
+async function getSchedule(url, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  const clientId = url.searchParams.get("clientId") || "";
+  const start = url.searchParams.get("start") || "";
+  const end = url.searchParams.get("end") || "";
+  if (!clientId || !start || !end || !sbReady(env)) return json({ ok: true, employees: [], shifts: {} });
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,payroll_name,rate&order=sort.asc,created_at.asc`);
+  if (emps === null) return noStore({ ok: true, employees: [], shifts: {}, missing: true });
+  const ids = (emps || []).map((e) => e.id);
+  const shifts = {};
+  let scheduleMissing = false;
+  if (ids.length) {
+    const rows = await sbSelect(env, `schedule_shifts?employee_id=in.(${ids.join(",")})&work_date=gte.${start}&work_date=lte.${end}&select=employee_id,work_date,in_time,out_time`);
+    if (rows === null) scheduleMissing = true;
+    else (rows || []).forEach((s) => { (shifts[s.employee_id] = shifts[s.employee_id] || {})[s.work_date] = { in: s.in_time || "", out: s.out_time || "" }; });
+  }
+  return noStore({ ok: true, scheduleMissing, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "" })), shifts });
+}
+
+async function saveScheduleShift(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  const empId = c(body.employeeId), date = c(body.date);
+  if (!empId || !date) return json({ ok: false, error: "Missing employee or date." }, 400);
+  const inT = c(body.in) || null, outT = c(body.out) || null;
+  const existing = await sbSelect(env, `schedule_shifts?employee_id=eq.${empId}&work_date=eq.${date}&select=id`);
+  if (existing === null) return json({ ok: false, error: "Run supabase/schedule_shifts.sql once." }, 502);
+  if (!inT && !outT) {
+    if (existing && existing[0]) await fetch(`${env.SUPABASE_URL}/rest/v1/schedule_shifts?id=eq.${existing[0].id}`, { method: "DELETE", headers: sbHeaders(env) });
+    return json({ ok: true });
+  }
+  let res;
+  if (existing && existing[0]) res = await sbUpdate(env, "schedule_shifts", existing[0].id, { in_time: inT, out_time: outT });
+  else res = await sbInsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT });
+  if (!res.ok) return json({ ok: false, error: "Couldn't save. Run supabase/schedule_shifts.sql once." }, 502);
+  return json({ ok: true });
+}
+
+async function copyScheduleWeek(request, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const fromStart = (body.fromStart || "").toString().trim();
+  const toStart = (body.toStart || "").toString().trim();
+  if (!clientId || !fromStart || !toStart) return json({ ok: false, error: "Missing dates." }, 400);
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id`);
+  const ids = (emps || []).map((e) => e.id);
+  if (!ids.length) return json({ ok: true, copied: 0 });
+  const fromEnd = addDaysYmd(fromStart, 6);
+  const rows = await sbSelect(env, `schedule_shifts?employee_id=in.(${ids.join(",")})&work_date=gte.${fromStart}&work_date=lte.${fromEnd}&select=employee_id,work_date,in_time,out_time`);
+  if (rows === null) return json({ ok: false, error: "Run supabase/schedule_shifts.sql once." }, 502);
+  const diff = diffDaysYmd(toStart, fromStart);
+  let copied = 0;
+  for (const s of (rows || [])) {
+    if (!s.in_time && !s.out_time) continue;
+    const newDate = addDaysYmd(s.work_date, diff);
+    const ex = await sbSelect(env, `schedule_shifts?employee_id=eq.${s.employee_id}&work_date=eq.${newDate}&select=id`);
+    if (ex && ex[0]) await sbUpdate(env, "schedule_shifts", ex[0].id, { in_time: s.in_time, out_time: s.out_time });
+    else await sbInsert(env, "schedule_shifts", { employee_id: s.employee_id, work_date: newDate, in_time: s.in_time, out_time: s.out_time });
+    copied++;
+  }
+  return json({ ok: true, copied });
 }
 
 /* ===================== Google / Gmail (OAuth) ===================== */
