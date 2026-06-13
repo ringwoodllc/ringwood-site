@@ -662,11 +662,11 @@
           "<div class='svcsec'>" +
             "<div class='svchead'>Service</div>" +
             "<div id='e_svcdiag' style='font-size:.74rem;color:var(--muted);margin:-4px 0 8px'></div>" +
-            // Equipment lives with the service work: select the asset (or add a
-            // new one), and its vitals load right below so a dispatch call never
-            // means a trip back to Assets.
-            "<div class='field' style='margin-bottom:10px'>" +
-              "<div class='lblrow'><label>Equipment</label>" +
+            // Equipment is collapsed by default. Open it to select or add an
+            // asset; once one's tagged its vitals show below (same as before).
+            "<div style='margin:2px 0 10px'><a href='#' id='e_equipToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Equipment ▾</a></div>" +
+            "<div id='e_equipField' style='display:none;margin-bottom:10px'>" +
+              "<div class='lblrow'><label>Select or add equipment</label>" +
                 (!IS_CLIENT ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
               "<select id='e_asset'>" + assetOpts + "</select>" +
               "<input id='e_newasset' type='text' placeholder='New equipment name' style='display:none;margin-top:8px' />" +
@@ -680,7 +680,7 @@
               "<div id='e_laborField' style='display:none;margin-bottom:12px'><div id='e_labor'></div></div>"
             : "") +
             (!IS_CLIENT ?
-              "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Quotes ▾</a></div>" +
+              "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Vendor quotes ▾</a></div>" +
               "<div id='e_quotesField' style='display:none;margin-bottom:12px'>" +
                 "<div id='e_quotes'></div>" +
                 "<div style='margin-top:8px'><button type='button' class='qbtn rev' id='q_addToggle'>+ Add quote</button></div>" +
@@ -718,10 +718,9 @@
                 "</div>" +
                 "</div>"
             : "") +
-            // Same pattern as Parts: a one-line arrow. Reads "Assigned to Tamer"
-            // once someone's on it; tap the arrow to open the picker and change it.
-
-            "<div id='e_money'></div>" +
+            // Job cost / pricing stands on its own, separated from the sections
+            // above by a divider so it doesn't read as part of Vendor quotes.
+            "<div id='e_money' style='margin-top:14px;padding-top:4px;border-top:1px solid var(--line)'></div>" +
           "</div>"
         ) +
         "<div class='logsec'>" +
@@ -840,6 +839,16 @@
       }
     });
     updateTkMeta();
+    // Equipment toggle: collapsed by default; the header shows the tagged asset.
+    function setEquipLabel(){
+      var tg=document.getElementById("e_equipToggle"), f=document.getElementById("e_equipField"), sel=document.getElementById("e_asset");
+      if(!tg) return;
+      var open = f && f.style.display!=="none";
+      var nm=""; if(sel && sel.value && sel.value!=="__new"){ var o=sel.options[sel.selectedIndex]; nm=o?o.text:""; }
+      tg.textContent = "Equipment" + (nm?(" · "+nm):"") + " " + (open?"▴":"▾");
+    }
+    var equipT=document.getElementById("e_equipToggle");
+    if(equipT) equipT.addEventListener("click", function(e){ e.preventDefault(); var ef=document.getElementById("e_equipField"); var open=ef.style.display!=="none"; ef.style.display=open?"none":"block"; setEquipLabel(); });
     var partsT=document.getElementById("e_partsToggle");
     if(partsT) partsT.addEventListener("click", function(e){ e.preventDefault(); var pf=document.getElementById("e_partsField"); var open=pf.style.display!=="none"; pf.style.display=open?"none":"block"; updateSectionTotals(); });
     // ---- Money model: job cost (labor + parts + accepted vendor quote) vs the
@@ -891,8 +900,8 @@
       var marginPct= total>0?Math.round(margin/total*100):0;
       var open=MONEY_OPEN;
       el.innerHTML =
-        "<div style='border-top:1px solid var(--line);margin-top:6px;padding-top:10px'>"+
-          "<a href='#' id='e_jobToggle' style='display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--green-deep);font-weight:600'><span>Job cost "+(open?"▴":"▾")+"</span><span>"+amt0(cost)+"</span></a>"+
+        "<div style='padding-top:8px'>"+
+          "<a href='#' id='e_jobToggle' style='display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--green-deep);font-weight:700'><span>Job cost "+(open?"▴":"▾")+"</span><span>"+amt0(cost)+"</span></a>"+
           "<div id='e_jobBody' style='display:"+(open?"block":"none")+";margin-top:8px'>"+
             "<div style='font-size:.74rem;color:var(--muted);margin:0 0 10px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
             "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px'>"+
@@ -930,7 +939,8 @@
     function updateSectionTotals(){
       setSecLabel("e_partsToggle","e_partsField","Parts & materials", partsCost());
       setSecLabel("e_laborToggle","e_laborField","Labor", laborCost());
-      setSecLabel("e_quotesToggle","e_quotesField","Quotes", ACCEPTED_AMT);
+      setSecLabel("e_quotesToggle","e_quotesField","Vendor quotes", ACCEPTED_AMT);
+      if(typeof setEquipLabel==="function") setEquipLabel();
     }
     // ---- Labor lines: person (rate auto-fills from the directory) x hours. ----
     function loadLabor(){
@@ -1365,7 +1375,7 @@
     }
 
     var assetSelEl = document.getElementById("e_asset"), newAssetEl = document.getElementById("e_newasset");
-    if (assetSelEl) assetSelEl.addEventListener("change", function(){ var isNew=assetSelEl.value==="__new"; newAssetEl.style.display = isNew ? "block" : "none"; if(isNew){ newAssetEl.focus(); } else { autoSaveTicket({ assetId: assetSelEl.value }); t.assetId=assetSelEl.value; loadEquip(assetSelEl.value); } });
+    if (assetSelEl) assetSelEl.addEventListener("change", function(){ var isNew=assetSelEl.value==="__new"; newAssetEl.style.display = isNew ? "block" : "none"; if(isNew){ newAssetEl.focus(); } else { autoSaveTicket({ assetId: assetSelEl.value }); t.assetId=assetSelEl.value; loadEquip(assetSelEl.value); } if(typeof setEquipLabel==="function") setEquipLabel(); });
     // Change the client straight from the chip at the top (no separate field).
     var clientChipEl=document.getElementById("e_clientChip");
     if(clientChipEl && eClientEl){
