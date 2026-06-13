@@ -714,6 +714,7 @@
                     "<input id='v_notes' placeholder='Notes' style='flex:3;min-width:160px' />" +
                     "<button type='button' class='qbtn rev' id='v_save'>Save vendor</button>" +
                   "</div>" +
+                  "<div id='v_cardPrev' style='margin-top:9px'></div>" +
                 "</div>" +
                 "</div>"
             : "") +
@@ -1193,10 +1194,35 @@
     // New vendor straight from the quote flow: scan a card/quote/ID, the AI
     var qnv=document.getElementById("q_newVendor");
     if(qnv) qnv.addEventListener("click", function(e){ e.preventDefault(); var pn=document.getElementById("q_vendPanel"); var open=pn.style.display!=="none"; pn.style.display=open?"none":"block"; qnv.textContent="＋ New vendor — scan a card or quote "+(open?"▾":"▴"); });
+    // The AI-cropped card image, pending until the vendor is saved.
+    var VENDOR_CARD=null;
+    // Crop the original photo to the AI's bounding box (fractions 0..1) on a
+    // canvas, capped to a sensible size. Kept on the vendor for verification.
+    function cropCardImage(file, crop){
+      return new Promise(function(resolve){
+        try{
+          var img=new Image();
+          img.onload=function(){
+            var iw=img.naturalWidth, ih=img.naturalHeight;
+            var cx=Math.max(0,Math.min(1,(crop&&crop.x)||0)), cy=Math.max(0,Math.min(1,(crop&&crop.y)||0));
+            var cw=Math.max(0.05,Math.min(1-cx,(crop&&crop.w)||1)), ch=Math.max(0.05,Math.min(1-cy,(crop&&crop.h)||1));
+            var sx=cx*iw, sy=cy*ih, sw=cw*iw, sh=ch*ih;
+            var scale=Math.min(1, 1200/Math.max(sw,sh,1));
+            var ow=Math.max(1,Math.round(sw*scale)), oh=Math.max(1,Math.round(sh*scale));
+            var cv=document.createElement("canvas"); cv.width=ow; cv.height=oh;
+            cv.getContext("2d").drawImage(img, sx,sy,sw,sh, 0,0,ow,oh);
+            resolve(cv.toDataURL("image/jpeg",0.85));
+          };
+          img.onerror=function(){ resolve(null); };
+          img.src=URL.createObjectURL(file);
+        }catch(e){ resolve(null); }
+      });
+    }
     function scanVendorFile(f){
       if(!f) return;
+      var isPdf=/pdf/i.test(f.type||"");
       var vm=document.getElementById("q_vmsg"); vm.style.color="var(--muted)"; vm.textContent="Reading…";
-      var toPayload = /pdf/i.test(f.type||"")
+      var toPayload = isPdf
         ? new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res({ base64:b>=0?d.slice(b+1):d, contentType:"application/pdf" }); }; r.onerror=rej; r.readAsDataURL(f); })
         : processPhoto(f).then(function(p){ return { base64:p.base64, contentType:p.contentType }; });
       toPayload.then(function(payload){
@@ -1207,9 +1233,14 @@
         if(d.phone) document.getElementById("v_phone").value=d.phone;
         if(d.email) document.getElementById("v_email").value=d.email;
         if(d.trade) document.getElementById("v_trade").value=d.trade;
-        var bits=[]; if(d.person) bits.push("Contact: "+d.person); if(d.notes) bits.push(d.notes); if(d.fileUrl) bits.push("Card: "+d.fileUrl);
+        var bits=[]; if(d.person) bits.push("Contact: "+d.person); if(d.notes) bits.push(d.notes);
         if(bits.length){ var ne=document.getElementById("v_notes"); ne.value = ne.value ? (ne.value+" · "+bits.join(" · ")) : bits.join(" · "); }
         vm.style.color="var(--green-deep)"; vm.textContent="Read. Check the fields and Save.";
+        // Crop the card and show it for human verification; saved with the vendor.
+        var prev=document.getElementById("v_cardPrev");
+        if(!isPdf){ cropCardImage(f, d.crop).then(function(durl){ if(!durl) return; VENDOR_CARD=durl.split(",")[1]||null;
+          if(prev) prev.innerHTML="<div style='font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:4px'>Card — saved for verification</div><img class='zoomable' src='"+durl+"' alt='business card' style='max-width:150px;border-radius:7px;border:1px solid var(--line);cursor:zoom-in' />"; }); }
+        else if(prev && d.fileUrl){ VENDOR_CARD=null; prev.innerHTML="<a href='"+esc(d.fileUrl)+"' target='_blank' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>View the scanned document</a>"; }
       }).catch(function(){ vm.style.color="#8a3d1c"; vm.textContent="Couldn't read that."; });
     }
     // Auto-format the vendor phone as you type, same as the site's contact form.
@@ -1238,7 +1269,7 @@
       var nm=document.getElementById("v_name"), vm=document.getElementById("q_vmsg");
       if(!nm.value.trim()){ nm.focus(); return; }
       vSave.disabled=true; vSave.textContent="Saving…";
-      fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ name:nm.value.trim(), kind:"Vendor", trade:document.getElementById("v_trade").value.trim(), phone:document.getElementById("v_phone").value.trim(), email:document.getElementById("v_email").value.trim(), notes:document.getElementById("v_notes").value.trim() })})
+      fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ name:nm.value.trim(), kind:"Vendor", trade:document.getElementById("v_trade").value.trim(), phone:document.getElementById("v_phone").value.trim(), email:document.getElementById("v_email").value.trim(), notes:document.getElementById("v_notes").value.trim(), cardBase64:VENDOR_CARD||"" })})
         .then(function(r){return r.json();}).then(function(d){
           vSave.disabled=false; vSave.textContent="Save vendor";
           if(d&&d.ok){
@@ -1247,6 +1278,7 @@
             var dl=document.getElementById("qvendlist"); if(dl) dl.innerHTML=outsideVendors().map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
             document.getElementById("q_vendor").value=name;
             ["v_name","v_phone","v_email","v_trade","v_notes"].forEach(function(id){ document.getElementById(id).value=""; });
+            VENDOR_CARD=null; var cp2=document.getElementById("v_cardPrev"); if(cp2) cp2.innerHTML="";
             document.getElementById("q_vendPanel").style.display="none";
             if(qnv) qnv.textContent="＋ New vendor — scan a card or quote ▾";
             vm.style.color="var(--green-deep)"; vm.textContent="";

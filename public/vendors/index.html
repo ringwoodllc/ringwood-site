@@ -158,6 +158,7 @@
           "<div class='field'><label>Email</label><input id='em_"+k+"' type='email' value='"+esc(v.email)+"'/></div>"+
         "</div>"+
         "<div class='field'><label>Notes</label><textarea id='no_"+k+"'>"+esc(v.notes)+"</textarea></div>"+
+        (v.cardUrl ? "<div class='field'><label>Scanned card</label><img src='"+esc(v.cardUrl)+"' alt='business card' style='max-width:170px;border-radius:7px;border:1px solid var(--line)' /></div>" : "")+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 10px'><input type='checkbox' id='ac_"+k+"' "+(v.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active (shows in the Assigned-to list)</label>"+
         "<div style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
           "<button class='btn sm' id='del_"+k+"' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Delete</button></div>"+

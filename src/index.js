@@ -626,7 +626,8 @@ async function listVendors(request, env, session) {
 
 async function adminListVendors(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  let rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,hourly_rate,active&order=name");
+  let rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,hourly_rate,active,card_url&order=name");
+  if (rows === null) rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,hourly_rate,active&order=name");
   if (rows === null) rows = await sbSelect(env, "vendors?select=id,name,kind,trade,phone,email,notes,active&order=name");
   if (rows === null) return noStore({ ok: true, vendors: [], missing: true });
   return noStore({
@@ -634,6 +635,7 @@ async function adminListVendors(request, env) {
     vendors: (rows || []).map((v) => ({
       id: v.id, name: v.name || "", kind: v.kind || "Vendor", trade: v.trade || "",
       phone: v.phone || "", email: v.email || "", notes: v.notes || "", rate: v.hourly_rate != null ? v.hourly_rate : "", active: v.active !== false,
+      cardUrl: v.card_url || "",
     })),
   });
 }
@@ -664,11 +666,13 @@ async function scanVendorCard(request, env, session) {
     "- email: the email address shown, or empty.\n" +
     "- trade: what they do, in two or three plain words (e.g. 'tree removal', 'HVAC', 'plumbing'). Empty if unclear.\n" +
     "- notes: one short line of anything else useful (license number, address, quoted amount if this is a quote). Empty if nothing.\n" +
+    "- crop: the tight bounding box of just the card or document within the photo, as fractions of the image from 0 to 1: x (left edge), y (top edge), w (width), h (height). If it already fills the frame, use {x:0,y:0,w:1,h:1}.\n" +
     "Only what is actually visible. Do not invent names, numbers, or emails.";
   const schema = {
     type: "object",
-    properties: { company: { type: "string" }, person: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, trade: { type: "string" }, notes: { type: "string" } },
-    required: ["company", "person", "phone", "email", "trade", "notes"],
+    properties: { company: { type: "string" }, person: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, trade: { type: "string" }, notes: { type: "string" },
+      crop: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } }, required: ["x", "y", "w", "h"], additionalProperties: false } },
+    required: ["company", "person", "phone", "email", "trade", "notes", "crop"],
     additionalProperties: false,
   };
   try {
@@ -693,6 +697,7 @@ async function scanVendorCard(request, env, session) {
       trade: c(out.trade).slice(0, 80),
       notes: c(out.notes).slice(0, 300),
       fileUrl: fileUrl || "",
+      crop: (out.crop && typeof out.crop === "object" && !isPdf) ? { x: +out.crop.x || 0, y: +out.crop.y || 0, w: +out.crop.w || 1, h: +out.crop.h || 1 } : null,
     });
   } catch {
     return json({ ok: false, error: "Couldn't reach the assistant." }, 502);
@@ -710,10 +715,17 @@ async function adminSaveVendor(request, env) {
   const patch = { name, kind, trade: c(body.trade) || null, phone: c(body.phone) || null, email: c(body.email) || null, notes: c(body.notes) || null };
   if ("rate" in body) { const rt = Number(body.rate); patch.hourly_rate = body.rate === "" || isNaN(rt) ? null : rt; }
   if ("active" in body) patch.active = body.active !== false;
+  // A scanned business card / quote, AI-cropped client-side, kept on the vendor
+  // for human verification. New column, so degrade gracefully if not migrated.
+  let cardUrl = typeof body.cardUrl === "string" ? body.cardUrl : null;
+  if (body.cardBase64) { try { cardUrl = await uploadToStorage(env, `vendors/card-${Date.now()}.jpg`, body.cardBase64, "image/jpeg"); } catch { /* keep going */ } }
+  const extra = {};
+  if (cardUrl) extra.card_url = cardUrl;
   const id = c(body.id);
-  const res = id ? await sbUpdate(env, "vendors", id, patch) : await sbInsert(env, "vendors", Object.assign({ active: true }, patch));
+  let res = id ? await sbUpdate(env, "vendors", id, Object.assign({}, patch, extra)) : await sbInsert(env, "vendors", Object.assign({ active: true }, patch, extra));
+  if (!res.ok && Object.keys(extra).length) { res = id ? await sbUpdate(env, "vendors", id, patch) : await sbInsert(env, "vendors", Object.assign({ active: true }, patch)); }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "")).slice(0, 200) }, 502);
-  return json({ ok: true, vendor: res.data || null });
+  return json({ ok: true, vendor: res.data || null, cardUrl: cardUrl || "" });
 }
 
 async function deleteVendor(request, env) {
