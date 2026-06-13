@@ -904,7 +904,7 @@
     }
     var laborT=document.getElementById("e_laborToggle");
     if(laborT) laborT.addEventListener("click", function(e){ e.preventDefault(); var lf=document.getElementById("e_laborField"); var open=lf.style.display!=="none"; lf.style.display=open?"none":"block"; laborT.textContent=open?"Labor ▾":"Labor ▴"; if(!open) loadLabor(); });
-    loadLabor(); renderMoney();
+    try{ loadLabor(); renderMoney(); }catch(_le){ if(window.console) console.error("labor/money:",_le); }
     // Equipment at hand: pull the asset's vitals onto the ticket so a dispatch
     // call (serial, coverage, who to call first) never needs the Assets page.
     (function(){
@@ -988,6 +988,7 @@
     // One stable, delegated handler set on the quotes container — survives every
     // re-render, so tapping a quote always expands/edits it.
     (function(){
+      try{
       var box=document.getElementById("e_quotes"); if(!box || box.__qwired) return; box.__qwired=true;
       box.addEventListener("click", function(e){
         var tg=e.target; var cl=function(sel){ return tg.closest ? tg.closest(sel) : null; };
@@ -1011,6 +1012,7 @@
         fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
           .then(function(r){return r.json();}).then(function(d2){ if(d2&&d2.ok){ flashSaved(); loadQuotes(); } }).catch(function(){});
       });
+      }catch(_qe){ if(window.console) console.error("quotes wiring:",_qe); }
     })();
     function renderQ(d){ QD=d; paintQuotes(); }
     var QD=null;
@@ -1171,16 +1173,18 @@
           else if(m){ m.style.color="#8a3d1c"; m.textContent=(d&&d.error)||"Couldn\u0027t save."; }
         }).catch(function(){ qSaving=false; if(qAddB) qAddB.disabled=false; });
     }
-    var qAdd=document.getElementById("q_add");
-    if(qAdd) qAdd.addEventListener("click", createQuote);
-    // Auto-create when you fill the vendor and move focus out of the add row.
-    ["q_vendor","q_amount","q_note"].forEach(function(id){
-      var e2=document.getElementById(id); if(!e2) return;
-      e2.addEventListener("blur", function(){ setTimeout(function(){
-        var a=document.activeElement; if(a && ["q_vendor","q_amount","q_note","q_add"].indexOf(a.id)>=0) return;
-        createQuote();
-      },150); });
-    });
+    try{
+      var qAdd=document.getElementById("q_add");
+      if(qAdd) qAdd.addEventListener("click", createQuote);
+      // Auto-create when you fill the vendor and move focus out of the add row.
+      ["q_vendor","q_amount","q_note"].forEach(function(id){
+        var e2=document.getElementById(id); if(!e2) return;
+        e2.addEventListener("blur", function(){ setTimeout(function(){
+          var a=document.activeElement; if(a && ["q_vendor","q_amount","q_note","q_add"].indexOf(a.id)>=0) return;
+          createQuote();
+        },150); });
+      });
+    }catch(_ae){ if(window.console) console.error("quote add:",_ae); }
     // Intake (description + photos) tucks away once the ticket is being worked.
     // One arrow for everything that isn't the work: intake + details.
     var intakeT=document.getElementById("e_intakeToggle");
