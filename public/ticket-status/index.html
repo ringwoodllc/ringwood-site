@@ -884,18 +884,20 @@
           "<input id='l_hours' type='number' min='0' step='0.25' placeholder='hrs' style='flex:0 0 70px' />"+
           "<input id='l_rate' type='number' min='0' step='0.01' placeholder='$/hr' style='flex:0 0 80px' title='Auto-fills from the person; override if needed' />"+
           "<button type='button' class='qbtn rev' id='l_add'>Add</button>"+
-        "</div>";
+        "</div>"+
+        "<div id='l_msg' style='font-size:.82rem;color:#8a3d1c;margin-top:5px'></div>";
       var pe=document.getElementById("l_person");
       if(pe) pe.addEventListener("change", function(){ var rt=rateFor(pe.value); if(rt!=="") document.getElementById("l_rate").value=rt; });
       var la=document.getElementById("l_add");
       if(la) la.addEventListener("click", function(){
-        var person=(document.getElementById("l_person").value||"").trim(); if(!person){ document.getElementById("l_person").focus(); return; }
+        var person=(document.getElementById("l_person").value||"").trim(); var lm=document.getElementById("l_msg");
+        if(!person){ document.getElementById("l_person").focus(); if(lm) lm.textContent="Type a person."; return; }
         var rate=document.getElementById("l_rate").value; if(rate==="") rate=rateFor(person);
-        la.disabled=true;
+        la.disabled=true; if(lm){ lm.style.color="var(--muted)"; lm.textContent="Adding…"; }
         fetch("/api/tickets/labor/save",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:t.id, person:person, hours:document.getElementById("l_hours").value||0, rate:rate })})
-          .then(function(r){return r.json();}).then(function(d){ la.disabled=false; if(d&&d.ok) loadLabor(); else alert((d&&d.error)||"Couldn\u0027t add."); }).catch(function(){ la.disabled=false; });
+          .then(function(r){return r.json();}).then(function(d){ la.disabled=false; if(d&&d.ok){ if(lm) lm.textContent=""; loadLabor(); } else if(lm){ lm.style.color="#8a3d1c"; lm.textContent=(d&&d.error)||"Couldn\u0027t add."; } }).catch(function(){ la.disabled=false; if(lm){ lm.style.color="#8a3d1c"; lm.textContent="Couldn\u0027t reach the server."; } });
       });
-      el.querySelectorAll(".prow [data-act='ldel']").forEach(function(b){ b.addEventListener("click", function(){
+      Array.prototype.slice.call(el.querySelectorAll(".prow [data-act='ldel']")).forEach(function(b){ b.addEventListener("click", function(){
         var id=b.closest(".prow").getAttribute("data-id");
         fetch("/api/tickets/labor/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadLabor(); });
       }); });
