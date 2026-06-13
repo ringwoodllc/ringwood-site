@@ -82,6 +82,10 @@
         <button class="btn sm" id="scanBtn" type="button">📷 Scan ID / list</button>
         <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
         <div class="msg" id="scan_msg"></div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <button class="btn sm" type="button" disabled title="Not set up yet" style="opacity:.5;cursor:not-allowed;background:#9aa39c">🔒 Save scanned ID securely</button>
+          <span style="font-size:.78rem;color:#8a5a12;background:#f6eccf;border:1px solid var(--line);border-radius:6px;padding:3px 8px">Not set up yet — we need to configure secure, access-controlled storage before turning this on.</span>
+        </div>
         <div style="border-top:1px solid var(--line);margin:13px 0 12px"></div>
         <div class="row2">
           <div class="field"><label>First name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Dilara" /></div>
@@ -229,19 +233,40 @@
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
-  // Tag each roster person who matches a QuickBooks employee, so we can badge them
-  // and lock the QB-owned fields. Matching is name-based (order-independent).
+  // Link each roster person to a QuickBooks employee. The real link is the stored
+  // QuickBooks Id (qboId); when that is set we match by Id no matter how the name is
+  // spelled. For anyone not yet linked, we fall back to an exact name match and, on
+  // a confident hit, save the QB Id so it becomes a hard link from then on.
+  var QB_LIST=null, QB_CONNECTED=false;
   function nmeKeyJs(first,last){ var s=((first||"")+" "+(last||"")).toLowerCase().replace(/[^a-z\s]/g," ").replace(/\s+/g," ").trim(); return s.split(" ").sort().join(" "); }
+  function persistQbLink(id, qboId){ fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id, qboId:qboId})}).catch(function(){}); }
   function enrichWithQb(){
     if(!CLIENT_ID) return;
     fetch("/api/qbo/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
-      if(!d||!d.ok||!d.employees) return; // not connected or error: leave roster as-is
-      var byKey={};
-      d.employees.forEach(function(q){ if(!q.active) return; var k=nmeKeyJs(q.first,q.last)||nmeKeyJs(q.display,""); if(k&&!byKey[k]) byKey[k]=q; });
+      if(!d||!d.ok||!d.employees){ QB_CONNECTED=false; QB_LIST=null; return; } // not connected: leave roster as-is
+      QB_CONNECTED=true;
+      QB_LIST=d.employees.filter(function(q){return q.active;});
+      var byId={}, byKey={};
+      QB_LIST.forEach(function(q){ if(q.qboId) byId[q.qboId]=q; var k=nmeKeyJs(q.first,q.last)||nmeKeyJs(q.display,""); if(k&&!byKey[k]) byKey[k]=q; });
       var changed=false;
-      EMP.forEach(function(e){ var q=byKey[nmeKeyJs(e.name,e.lastName)]||null; if(q!==e.qb){ e.qb=q; changed=true; } });
-      if(changed) render();
+      EMP.forEach(function(e){
+        var q=null;
+        if(e.qboId && byId[e.qboId]) q=byId[e.qboId];                 // hard link by stored Id
+        else if(!e.qboId){                                            // not linked yet: try name
+          q=byKey[nmeKeyJs(e.name,e.lastName)]||null;
+          if(q && q.qboId){ persistQbLink(e.id, q.qboId); e.qboId=q.qboId; }  // promote to a hard link
+        }
+        if(q!==e.qb){ e.qb=q; changed=true; }
+      });
+      if(changed) render(); else render(); // re-render so manual link controls show
     }).catch(function(){});
+  }
+  // QB employees not yet linked to anyone in the roster, for the manual link picker.
+  function qbUnlinked(){ if(!QB_LIST) return []; var taken={}; EMP.forEach(function(e){ if(e.qboId) taken[e.qboId]=1; }); return QB_LIST.filter(function(q){ return q.qboId && !taken[q.qboId]; }); }
+  function setQbLink(empId, qboId){
+    var e=null; for(var i=0;i<EMP.length;i++){ if(EMP[i].id===empId){ e=EMP[i]; break; } } if(!e) return;
+    e.qboId=qboId||""; e.qb = qboId && QB_LIST ? (QB_LIST.filter(function(q){return q.qboId===qboId;})[0]||null) : null;
+    persistQbLink(empId, e.qboId); render();
   }
   function viewList(){
     if(SORT==="manual") return EMP.slice(); // server (sort) order, unfiltered, for reordering
@@ -278,6 +303,11 @@
     var roAttr=ql?" readonly style='background:#e7e1d3;color:var(--muted);cursor:not-allowed'":"";
     var roTag=ql?" <span style='font-weight:400;font-size:.72rem;color:#2ca01c'>· from QuickBooks</span>":"";
     var fnVal=ql?(ql.first||e.name):e.name, lnVal=ql?(ql.last||e.lastName):e.lastName, adVal=ql?(ql.address||e.address):e.address;
+    // QuickBooks link control: show the link + Unlink when linked; a picker when the
+    // location is connected but this person is not yet linked.
+    var qbRow="";
+    if(ql){ qbRow="<div style='font-size:.82rem;margin:0 0 11px;color:#2ca01c'>● Linked to QuickBooks ("+esc(ql.display||((ql.first+" "+ql.last).trim()))+") · <a href='#' onclick=\"event.preventDefault();setQbLink('"+esc(e.id)+"','')\" style='color:#8a3d1c;border-bottom:1px solid rgba(138,61,28,.4)'>Unlink</a></div>"; }
+    else if(QB_CONNECTED){ var opts=qbUnlinked().map(function(q){ return "<option value='"+esc(q.qboId)+"'>"+esc(q.display||((q.first+" "+q.last).trim()))+"</option>"; }).join(""); qbRow="<div class='field'><label>Link to QuickBooks</label><select onchange=\"if(this.value)setQbLink('"+esc(e.id)+"',this.value)\"><option value=''>— not linked —</option>"+opts+"</select></div>"; }
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
         "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+qbBadge(e)+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
@@ -289,6 +319,7 @@
         "<div class='row2'><div class='field'><label>First name"+roTag+"</label><input id='nm_"+k+"'"+roAttr+" value='"+esc(fnVal)+"'/></div>"+
         "<div class='field'><label>Last name"+roTag+"</label><input id='ls_"+k+"'"+roAttr+" value='"+esc(lnVal)+"'/></div></div>"+
         "<div class='field'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
+        qbRow+
         "<div class='row2'><div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div>"+
         "<div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div></div>"+
         "<div class='row2'><div class='field'><label>POS # / key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
@@ -303,6 +334,7 @@
   }
   window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
   window.toggleAdd=function(){ var box=document.getElementById("addBox"), b=document.getElementById("addBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
+  window.setQbLink=setQbLink;
 
   function wire(e){
     var k=ukey(e.id);

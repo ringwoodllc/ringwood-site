@@ -23,4 +23,5 @@ create table if not exists employees (
 alter table employees add column if not exists pos_password text;
 alter table employees add column if not exists last_name text;
 alter table employees add column if not exists address text;
+alter table employees add column if not exists qbo_id text;   -- hard link to the QuickBooks employee Id
 create index if not exists employees_client on employees(client_id, sort, created_at);

@@ -777,7 +777,8 @@ async function listEmployees(url, env, session) {
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
   const sel = (cols) => sbSelect(env, `employees?client_id=eq.${clientId}&select=${cols}&order=sort.asc,created_at.asc`);
-  let rows = await sel("id,name,last_name,address,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  let rows = await sel("id,name,last_name,address,qbo_id,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  if (rows === null) rows = await sel("id,name,last_name,address,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
   if (rows === null) rows = await sel("id,name,last_name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
   if (rows === null) rows = await sel("id,name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
   if (rows === null) rows = await sel("id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
@@ -786,7 +787,7 @@ async function listEmployees(url, env, session) {
   return noStore({
     ok: true,
     employees: (rows || []).map((e) => ({
-      id: e.id, name: e.name || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "",
+      id: e.id, name: e.name || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "", qboId: e.qbo_id || "",
       phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
       role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
     })),
@@ -803,6 +804,7 @@ async function saveEmployee(request, env, session) {
   if ("name" in body) patch.name = c(body.name);
   if ("lastName" in body) patch.last_name = c(body.lastName) || null;
   if ("address" in body) patch.address = c(body.address) || null;
+  if ("qboId" in body) patch.qbo_id = c(body.qboId) || null;
   if ("phone" in body) patch.phone = c(body.phone) || null;
   if ("posKey" in body) patch.pos_key = c(body.posKey) || null;
   if ("posPassword" in body) patch.pos_password = c(body.posPassword) || null;
@@ -1342,6 +1344,7 @@ async function qboFetchEmployees(env, auth) {
     list.forEach((e) => {
       const a = e.PrimaryAddr || {};
       out.push({
+        qboId: (e.Id || "").toString(),
         first: (e.GivenName || "").trim(), last: (e.FamilyName || "").trim(),
         display: (e.DisplayName || "").trim(), active: e.Active !== false,
         phone: (e.PrimaryPhone && e.PrimaryPhone.FreeFormNumber) || "",
