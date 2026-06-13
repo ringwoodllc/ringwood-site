@@ -24,13 +24,13 @@
   .eyebrow{font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:10px}
   h1{font-family:"Spectral",serif;font-weight:500;font-size:clamp(1.9rem,7vw,2.5rem);color:var(--green-deep);line-height:1.1}
   .lead{color:var(--muted);font-size:1rem;margin:8px 0 0}
-  h2{font-family:"Spectral",serif;font-weight:500;font-size:1.2rem;color:var(--green-deep);margin:22px 0 10px}
-  label{display:block;font-weight:600;font-size:.84rem;color:var(--green-deep);margin-bottom:5px}
-  .field{margin-bottom:12px}
-  input,select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 13px;-webkit-appearance:none;appearance:none}
+  h2{font-family:"Spectral",serif;font-weight:500;font-size:1.12rem;color:var(--green-deep);margin:16px 0 7px}
+  label{display:block;font-weight:600;font-size:.8rem;color:var(--green-deep);margin-bottom:3px}
+  .field{margin-bottom:8px}
+  input,select{width:100%;font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 11px;-webkit-appearance:none;appearance:none}
   input:focus,select:focus{outline:none;border-color:var(--green)}
-  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px}
-  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.96rem;padding:12px 16px;border-radius:6px}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:13px 14px;margin-bottom:12px}
+  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.94rem;padding:10px 16px;border-radius:6px}
   .btn:hover{background:var(--green-deep)}
   .btn.sm{padding:8px 13px;font-size:.86rem;border-radius:999px}
   .btn:disabled{opacity:.6;cursor:default}
@@ -74,7 +74,7 @@
   <div id="body" style="display:none">
     <h2>Import from a photo</h2>
     <div class="panel">
-      <div style="font-size:.9rem;color:var(--muted);margin-bottom:10px">Snap an ID, passport, or your completed crew list / roster and the assistant adds everyone it can read. You review and edit after.</div>
+      <div style="font-size:.86rem;color:var(--muted);margin-bottom:8px">Snap an ID, passport, or a completed crew list and the assistant adds everyone it reads.</div>
       <button class="btn sm" id="scanBtn" type="button">📷 Scan ID / list</button>
       <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
       <div class="msg" id="scan_msg"></div>
@@ -90,10 +90,12 @@
         <div class="field"><label>POS # / key</label><input id="n_pos" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 8011" /></div>
         <div class="field"><label>POS password</label><input id="n_pospw" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 3625388011" /></div>
       </div>
-      <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
+      <div class="row2">
+        <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
+        <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
+      </div>
       <div class="field"><label>Payroll name <span style="font-weight:400;color:var(--muted)">— first &amp; last</span></label><input id="n_payroll" type="text" autocomplete="off" placeholder="e.g. Sheuli Akhter" /></div>
-      <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
-      <div style="margin:-4px 0 12px"><a href="#" id="manageRolesLink" style="font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage roles</a></div>
+      <div style="margin:-2px 0 8px"><a href="#" id="manageRolesLink" style="font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)">Manage roles</a></div>
       <div id="rolePanel" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:12px"></div>
       <div class="row2">
         <div class="field"><label>Rate ($/hr)</label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 16.00" /></div>
@@ -233,9 +235,9 @@
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div></div>"+
         "<div class='row2'><div class='field'><label>POS # / key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
         "<div class='field'><label>POS password</label><input id='pw_"+k+"' inputmode='numeric' value='"+esc(e.posPassword)+"'/></div></div>"+
-        "<div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
+        "<div class='row2'><div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
+        "<div class='field'><label>Role / privilege</label><select id='rl_"+k+"'></select></div></div>"+
         "<div class='field'><label>Payroll name <span style='font-weight:400;color:var(--muted)'>— first &amp; last</span></label><input id='py_"+k+"' value='"+esc(e.payrollName)+"'/></div>"+
-        "<div class='field'><label>Role / privilege</label><select id='rl_"+k+"'></select></div>"+
         "<div class='row2'><div class='field'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
         "<div class='field'><label>OT rate ($/hr)</label><input id='ot_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.otRate)+"'/></div></div>"+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
