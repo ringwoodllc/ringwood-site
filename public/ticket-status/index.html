@@ -789,7 +789,7 @@
     // Two kinds of work for now: trouble (something is wrong) and standard
     // maintenance (routine). Stored as the existing Repair / Maintenance
     // categories, shown in plain words.
-    function catLabel(v){ return v==="Repair" ? "Trouble" : v==="Maintenance" ? "Standard maintenance" : v; }
+    function catLabel(v){ return v==="Repair" ? "Trouble" : v==="Maintenance" ? "Maintenance" : (v==="Buildout / Project"||v==="Project") ? "Project" : v; }
     function updateTkMeta(){
       var meta=document.getElementById("e_tkMeta"); if(!meta) return;
       var cs=document.getElementById("e_cat");
@@ -799,9 +799,10 @@
     function renderCatChips(){
       var wrap=document.getElementById("e_catChips"), cs=document.getElementById("e_cat");
       if(!wrap||!cs) return;
-      var opts=[{v:"Repair",l:"Trouble"},{v:"Maintenance",l:"Standard maintenance"}];
+      var opts=[{v:"Repair",l:"Trouble"},{v:"Maintenance",l:"Maintenance"},{v:"Buildout / Project",l:"Project"}];
+      var known=["Repair","Maintenance","Buildout / Project"];
       var cur=cs.value||"";
-      if(cur && cur!=="Repair" && cur!=="Maintenance" && cur!=="Select..." && cur.indexOf("—")<0) opts.push({v:cur,l:cur});
+      if(cur && known.indexOf(cur)<0 && cur!=="Select..." && cur.indexOf("—")<0) opts.push({v:cur,l:cur});
       wrap.innerHTML=opts.map(function(o){ return "<button type='button' class='schip"+(cur===o.v?" on":"")+"' data-v='"+esc(o.v)+"'><span class='cdot'></span>"+esc(o.l)+"</button>"; }).join("");
       Array.prototype.slice.call(wrap.querySelectorAll("button")).forEach(function(b){ b.addEventListener("click", function(){
         cs.value=b.getAttribute("data-v");
