@@ -729,8 +729,9 @@
                 "</div>"
             : "") +
             // Job cost / pricing: its own collapsed section (#5), same style as
-            // Equipment / Parts / Labor / Vendor quotes above it.
-            "<div id='e_money'></div>" +
+            // Equipment / Parts / Labor / Vendor quotes above it. The fallback
+            // link guarantees the section is visible even before renderMoney runs.
+            "<div id='e_money'><div style='margin:2px 0 12px'><a href='#' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Job cost ▾</a></div></div>" +
           "</div>"
         ) +
         "<div class='logsec'>" +
@@ -900,19 +901,20 @@
     function persistCharge(){ if(!PRICING_LOADED) return; var tot=currentTotal(); t.clientPrice=tot; if(tot!==LAST_CHARGE){ LAST_CHARGE=tot; savePricing({ clientPrice: tot }, true); } }
     function renderMoney(){
       var el=document.getElementById("e_money"); if(!el) return;
-      var cost=jobCost();
-      var mk=markupVal();
-      var markupAmt=Math.round(cost*mk/100*100)/100;
-      var fee=appliedFee();
-      var total=Math.round((cost+markupAmt+fee)*100)/100;
-      t.clientPrice=total;
-      var margin=total-cost;
-      var marginPct= total>0?Math.round(margin/total*100):0;
-      var open=MONEY_OPEN;
-      el.innerHTML =
+      // Compute defensively so the Job cost header ALWAYS renders, even if a
+      // helper hiccups. (A silent throw here used to leave the section blank.)
+      var cost=0,mk=0,markupAmt=0,fee=0,total=0,margin=0,marginPct=0,open=MONEY_OPEN;
+      try{
+        cost=jobCost(); mk=markupVal(); markupAmt=Math.round(cost*mk/100*100)/100; fee=appliedFee();
+        total=Math.round((cost+markupAmt+fee)*100)/100; t.clientPrice=total;
+        margin=total-cost; marginPct= total>0?Math.round(margin/total*100):0;
+      }catch(_ce){ if(window.console) console.error("money calc:",_ce); }
+      var html =
         "<div>"+
-          "<div style='margin:2px 0 12px'><a href='#' id='e_jobToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Job cost · "+amt0(cost)+" "+(open?"▴":"▾")+"</a></div>"+
-          "<div id='e_jobBody' style='display:"+(open?"block":"none")+";margin:0 0 6px'>"+
+          "<div style='margin:2px 0 12px'><a href='#' id='e_jobToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Job cost · "+amt0(cost)+" "+(open?"▴":"▾")+"</a></div>";
+      if(open){
+        html +=
+          "<div id='e_jobBody' style='margin:0 0 6px'>"+
             "<div style='font-size:.74rem;color:var(--muted);margin:0 0 10px'>labor "+money(laborCost())+" · parts "+money(partsCost())+(ACCEPTED_AMT?(" · vendor "+money(ACCEPTED_AMT)):"")+"</div>"+
             "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px'>"+
               "<span style='display:flex;align-items:center;gap:6px'><label style='font-size:.92rem'>Markup</label><span style='display:flex;align-items:center;gap:2px'><input id='e_markup' type='number' min='0' step='1' value='"+esc(mk)+"' style='width:54px;text-align:right' />%</span></span>"+
@@ -926,8 +928,10 @@
             "<div style='display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-top:8px;padding:8px 11px;border-radius:7px;background:"+(margin<0?"#f6e2d8":"#dff0e2")+";color:"+(margin<0?"#8a3d1c":"#1f5130")+"'><span>Margin</span><span>"+money(margin)+" · "+marginPct+"%</span></div>"+
             "<div style='margin-top:12px'><a href='/bill?id="+esc(t.id)+"' target='_blank' class='qbtn rev' style='display:inline-block;text-decoration:none'>Generate bill / estimate →</a></div>"+
             "<div style='font-size:.78rem;color:var(--muted);margin-top:8px'>Default markup and fee come from <a href='/clients' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>client setup</a>. Changes here apply to this ticket."+(PRICING_COLS_MISSING?" <b style='color:#8a3d1c'>Run supabase/client_pricing.sql once to save overrides.</b>":"")+"</div>"+
-          "</div>"+
-        "</div>";
+          "</div>";
+      }
+      html += "</div>";
+      el.innerHTML = html;
       var jt=document.getElementById("e_jobToggle");
       if(jt) jt.addEventListener("click", function(e){ e.preventDefault(); MONEY_OPEN=!MONEY_OPEN; renderMoney(); });
       var mkIn=document.getElementById("e_markup");
@@ -936,8 +940,8 @@
       if(feeOnEl) feeOnEl.addEventListener("change", function(){ SVC_FEE = feeOnEl.checked ? feeAmount() : 0; var tot=currentTotal(); LAST_CHARGE=tot; t.clientPrice=tot; savePricing({ serviceFee:SVC_FEE, clientPrice:tot }); renderMoney(); });
       var feeEdit=document.getElementById("e_feeEdit");
       if(feeEdit) feeEdit.addEventListener("click", function(e){ e.preventDefault(); var v=prompt("Service fee for this ticket ($):", feeAmount()); if(v==null) return; var n=Number(v); if(isNaN(n)||n<0) return; SVC_FEE=n; var tot=currentTotal(); LAST_CHARGE=tot; t.clientPrice=tot; savePricing({ serviceFee:n, clientPrice:tot }); renderMoney(); });
-      updateSectionTotals();
-      persistCharge();
+      try{ updateSectionTotals(); }catch(_ue){}
+      try{ persistCharge(); }catch(_pe){}
     }
     // Show each service section's running total on its collapsed header, so you
     // see Parts / Labor / Quotes amounts without opening them.

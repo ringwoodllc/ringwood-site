@@ -32,7 +32,9 @@
       var dw = Math.round(nw * s), dh = Math.round(nh * s);
 
       var ov = document.createElement("div");
-      ov.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(20,22,20,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;-webkit-user-select:none;user-select:none;touch-action:none";
+      ov.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(20,22,20,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;" +
+        "padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));" +
+        "-webkit-user-select:none;user-select:none;touch-action:none";
 
       var hint = document.createElement("div");
       hint.textContent = "Drag the box to frame the card. Drag a corner to resize.";
