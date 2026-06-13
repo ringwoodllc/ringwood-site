@@ -79,6 +79,10 @@
       <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
       <select id="showMode" style="width:auto"><option value="all">All active</option><option value="sched">Scheduled only</option></select>
     </div>
+    <label id="schedDrop" for="scanFile" style="display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:13px;text-align:center;cursor:pointer;color:#21443a;background:rgba(47,93,80,.05);margin-bottom:12px">
+      <span style="font-weight:600">Drop a schedule photo or PDF here</span>
+      <span style="font-size:.84rem;color:#5f5d52;margin-left:6px">or paste (Ctrl/Cmd+V), or tap to choose</span>
+    </label>
     <div id="setupNote" class="note" style="display:none"></div>
     <div class="msg" id="msg"></div>
     <div class="scrollx"><div id="grid"><div class="empty">Loading…</div></div></div>
@@ -122,6 +126,7 @@
     document.getElementById("uploadW").addEventListener("click",function(){ document.getElementById("scanFile").click(); });
     document.getElementById("scanCam").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
     document.getElementById("scanFile").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
+    if(window.RWUploadZone) RWUploadZone(document.getElementById("schedDrop"), function(fs){ if(fs[0]) scanSchedulePhoto(fs[0]); });
     document.getElementById("showMode").addEventListener("change",function(){ SHOWMODE=this.value; if(DATA) render(); });
     loadClients();
   }).catch(function(){});
@@ -222,6 +227,7 @@
       .catch(function(){ b.disabled=false; b.textContent="Copy previous week →"; });
   }
 </script>
+<script src="/upload-zone.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>
