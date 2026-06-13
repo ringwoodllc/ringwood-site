@@ -121,13 +121,21 @@
       </div>
     </div>
 
-    <h2>QuickBooks</h2>
-    <div class="panel" id="qboPanel">
-      <div style="font-size:.86rem;color:var(--muted);margin-bottom:8px">Connect this location to its QuickBooks company, then check the roster against the QBO employees: who is in both, who is in the app but not yet in QuickBooks (add them there), and who is in QuickBooks but not the app.</div>
-      <div id="qbo_conn" style="font-size:.88rem;margin-bottom:9px;color:var(--green-deep)">Checking QuickBooks…</div>
-      <div id="qbo_actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
-      <div class="msg" id="qbo_msg"></div>
-      <div id="qbo_out" style="margin-top:10px"></div>
+    <div class="citem" id="qboBox" style="margin-bottom:12px">
+      <div class="csum" onclick="toggleQbo()">
+        <div><span class="nm">QuickBooks</span><span id="qbo_hstat" style="color:var(--muted);font-size:.84rem"> · checking…</span></div>
+        <span style="display:flex;align-items:center;gap:8px">
+          <button class="btn sm" id="qbo_sync" type="button" style="display:none" onclick="event.stopPropagation();syncQbo()">↻ Sync</button>
+          <span class="caret">›</span>
+        </span>
+      </div>
+      <div class="cbody" id="qboBody">
+        <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">Connect this location to its QuickBooks company, then check the roster against the QBO employees: who is in both, who is in the app but not yet in QuickBooks, and who is in QuickBooks but not the app.</div>
+        <div id="qbo_conn" style="font-size:.88rem;margin-bottom:9px;color:var(--green-deep)">Checking QuickBooks…</div>
+        <div id="qbo_actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
+        <div class="msg" id="qbo_msg"></div>
+        <div id="qbo_out" style="margin-top:10px"></div>
+      </div>
     </div>
 
     <h2 id="rosterHead">Roster</h2>
@@ -405,15 +413,23 @@
   }
 
   // Per-location QuickBooks connection. Each location ties to its own QBO company.
+  window.toggleQbo=function(){ var box=document.getElementById("qboBox"), b=document.getElementById("qboBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
+  // Quick "Sync": re-read QuickBooks and refresh the roster (status, badges, and the
+  // auto-disable of anyone disabled in QuickBooks).
+  window.syncQbo=function(){ var m=document.getElementById("qbo_msg"); loadQboStatus(); enrichWithQb(); if(m){ m.className="msg"; m.style.color="var(--muted)"; m.textContent="Syncing with QuickBooks…"; setTimeout(function(){ if(m.textContent==="Syncing with QuickBooks…") m.textContent="Synced."; },900); } };
   function loadQboStatus(){
     var conn=document.getElementById("qbo_conn"), act=document.getElementById("qbo_actions"), out=document.getElementById("qbo_out");
+    var hstat=document.getElementById("qbo_hstat"), sync=document.getElementById("qbo_sync");
     if(out) out.innerHTML=""; document.getElementById("qbo_msg").textContent="";
-    if(!CLIENT_ID){ conn.textContent=""; act.innerHTML=""; return; }
-    conn.style.color="var(--muted)"; conn.textContent="Checking QuickBooks…"; act.innerHTML="";
+    if(sync) sync.style.display="none";
+    if(!CLIENT_ID){ conn.textContent=""; act.innerHTML=""; if(hstat) hstat.textContent=""; return; }
+    conn.style.color="var(--muted)"; conn.textContent="Checking QuickBooks…"; act.innerHTML=""; if(hstat) hstat.textContent=" · checking…";
     fetch("/api/qbo/status?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
-      if(!d||!d.ok){ conn.textContent="Couldn't check QuickBooks."; return; }
-      if(!d.configured){ conn.style.color="var(--muted)"; conn.innerHTML="QuickBooks isn't set up yet. An admin needs to add the QuickBooks keys (see setup)."; return; }
+      if(!d||!d.ok){ conn.textContent="Couldn't check QuickBooks."; if(hstat) hstat.textContent=" · unavailable"; return; }
+      if(!d.configured){ conn.style.color="var(--muted)"; conn.innerHTML="QuickBooks isn't set up yet. An admin needs to add the QuickBooks keys (see setup)."; if(hstat) hstat.textContent=" · not set up"; return; }
       if(d.connected){
+        if(hstat) hstat.textContent=" · "+esc(d.companyName||("company "+d.realmId));
+        if(sync) sync.style.display="";
         conn.style.color="var(--green-deep)";
         conn.innerHTML="Connected to <b>"+esc(d.companyName||("company "+d.realmId))+"</b>.";
         act.innerHTML="<button class='btn sm' id='qboBtn' type='button'>Check against QuickBooks</button>"+
@@ -423,10 +439,11 @@
         document.getElementById("qboView").addEventListener("click", viewQboDetails);
         document.getElementById("qboDisc").addEventListener("click", disconnectQbo);
       } else {
+        if(hstat) hstat.textContent=" · not connected";
         conn.style.color="var(--muted)"; conn.textContent="This location isn't connected to QuickBooks yet.";
         act.innerHTML="<a class='btn sm' id='qboConn' href='/api/qbo/connect?clientId="+encodeURIComponent(CLIENT_ID)+"' style='text-decoration:none;display:inline-block'>Connect QuickBooks</a>";
       }
-    }).catch(function(){ conn.textContent="Couldn't check QuickBooks."; });
+    }).catch(function(){ conn.textContent="Couldn't check QuickBooks."; if(hstat) hstat.textContent=" · unavailable"; });
   }
   function disconnectQbo(){
     if(!confirm("Disconnect this location from QuickBooks? You can reconnect any time.")) return;
