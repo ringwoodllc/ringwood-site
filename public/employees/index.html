@@ -47,6 +47,18 @@
   .msg{font-size:.86rem;margin-top:8px;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
   .empty{color:var(--muted)}
   .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
+  .possec{border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:9px;background:var(--bg)}
+  .poslabel{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:6px}
+  .row3{display:flex;gap:8px;flex-wrap:wrap}.row3 .field{flex:1;min-width:92px;margin-bottom:0}
+  .qbchip{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden;background:var(--bg)}
+  .qbchip.linked{border-color:rgba(44,160,28,.45)}
+  .qbchip-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;cursor:pointer}
+  .qbchip-t{font-size:.84rem;color:var(--green-deep);font-weight:600}
+  .qbchip.linked .qbchip-t{color:#2ca01c}
+  .qbchip-r{display:flex;align-items:center;gap:9px;font-size:.82rem;white-space:nowrap}
+  .qbchip-h .caret{color:var(--muted);font-size:1.05rem;transition:transform .15s}
+  .qbchip.open .caret{transform:rotate(90deg)}
+  .qbchip-b{padding:11px;border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -306,11 +318,28 @@
     var roAttr=ql?" readonly style='background:#e7e1d3;color:var(--muted);cursor:not-allowed'":"";
     var roTag=ql?" <span style='font-weight:400;font-size:.72rem;color:#2ca01c'>· from QuickBooks</span>":"";
     var fnVal=ql?(ql.first||e.name):e.name, lnVal=ql?(ql.last||e.lastName):e.lastName, adVal=ql?(ql.address||e.address):e.address;
-    // QuickBooks link control: show the link + Unlink when linked; a picker when the
-    // location is connected but this person is not yet linked.
-    var qbRow="";
-    if(ql){ qbRow="<div style='font-size:.82rem;margin:0 0 11px;color:#2ca01c'>● Linked to QuickBooks · Active ("+esc(ql.display||((ql.first+" "+ql.last).trim()))+") · <a href='#' onclick=\"event.preventDefault();setQbLink('"+esc(e.id)+"','')\" style='color:#8a3d1c;border-bottom:1px solid rgba(138,61,28,.4)'>Unlink</a></div>"; }
-    else if(QB_CONNECTED){ var opts=qbUnlinked().map(function(q){ return "<option value='"+esc(q.qboId)+"'>"+esc(q.display||((q.first+" "+q.last).trim()))+"</option>"; }).join(""); qbRow="<div class='field'><label>Link to QuickBooks</label><select onchange=\"if(this.value)setQbLink('"+esc(e.id)+"',this.value)\"><option value=''>— not linked —</option>"+opts+"</select></div>"; }
+    // Identity / QuickBooks chip: a compact, collapsed card (like the asset field).
+    // When linked, the corner action is Unlink and the QB-owned name/address sit
+    // inside, read-only. When not linked, the body holds editable name/address and
+    // a Link picker.
+    var qbName=ql?esc(ql.display||((ql.first+" "+ql.last).trim())):"";
+    var qbPicker="";
+    if(!ql && QB_CONNECTED){ var opts=qbUnlinked().map(function(q){ return "<option value='"+esc(q.qboId)+"'>"+esc(q.display||((q.first+" "+q.last).trim()))+"</option>"; }).join(""); qbPicker="<div class='field' style='margin-top:8px;margin-bottom:0'><label>Link to QuickBooks</label><select onchange=\"if(this.value)setQbLink('"+esc(e.id)+"',this.value)\"><option value=''>— not linked —</option>"+opts+"</select></div>"; }
+    var idHead=ql?("● "+qbName+" · QuickBooks"):(QB_CONNECTED?"Identity · not in QuickBooks":"Identity");
+    var corner=ql?("<a href='#' onclick=\"event.preventDefault();event.stopPropagation();setQbLink('"+esc(e.id)+"','')\" style='color:#8a3d1c;font-weight:600;border-bottom:1px solid rgba(138,61,28,.4)'>Unlink</a>"):"";
+    var qbChip=
+      "<div class='qbchip"+(ql?" linked":"")+"' id='qbc_"+k+"'>"+
+        "<div class='qbchip-h' onclick=\"toggleQb('"+k+"')\">"+
+          "<span class='qbchip-t'>"+idHead+"</span>"+
+          "<span class='qbchip-r'>"+corner+"<span class='caret'>›</span></span>"+
+        "</div>"+
+        "<div class='qbchip-b' id='qbb_"+k+"' style='display:none'>"+
+          "<div class='row2'><div class='field'><label>First name"+roTag+"</label><input id='nm_"+k+"'"+roAttr+" value='"+esc(fnVal)+"'/></div>"+
+          "<div class='field'><label>Last name"+roTag+"</label><input id='ls_"+k+"'"+roAttr+" value='"+esc(lnVal)+"'/></div></div>"+
+          "<div class='field' style='margin-bottom:0'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
+          qbPicker+
+        "</div>"+
+      "</div>";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
         "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+qbBadge(e)+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
@@ -319,16 +348,14 @@
           "<span class='caret'>›</span>"+
         "</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
-        "<div class='row2'><div class='field'><label>First name"+roTag+"</label><input id='nm_"+k+"'"+roAttr+" value='"+esc(fnVal)+"'/></div>"+
-        "<div class='field'><label>Last name"+roTag+"</label><input id='ls_"+k+"'"+roAttr+" value='"+esc(lnVal)+"'/></div></div>"+
         "<div class='row2'><div class='field'><label>Nickname (schedule)</label><input id='nk_"+k+"' value='"+esc(e.nickname)+"'/></div>"+
         "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div></div>"+
-        "<div class='field'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
-        qbRow+
-        "<div class='row2'><div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
-        "<div class='field'><label>POS # / key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div></div>"+
-        "<div class='field'><label>Role / privilege</label><select id='rl_"+k+"'></select></div>"+
+        "<div class='possec'><div class='poslabel'>POS</div>"+
+          "<div class='row3'><div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
+          "<div class='field'><label>POS Pin</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
+          "<div class='field'><label>Role</label><select id='rl_"+k+"'></select></div></div></div>"+
         "<div class='field'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
+        qbChip+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
         "<div style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
           "<button class='btn sm' id='del_"+k+"' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Delete</button></div>"+
@@ -337,6 +364,7 @@
   window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
   window.toggleAdd=function(){ var box=document.getElementById("addBox"), b=document.getElementById("addBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
   window.setQbLink=setQbLink;
+  window.toggleQb=function(k){ var c=document.getElementById("qbc_"+k), b=document.getElementById("qbb_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; c.classList.toggle("open",open); };
 
   function wire(e){
     var k=ukey(e.id);

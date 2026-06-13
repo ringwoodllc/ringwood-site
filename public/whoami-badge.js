@@ -79,6 +79,7 @@
   var css =
     ".rw-idstrip{background:var(--bg-2,#efe8d8);border-bottom:1px solid var(--line,rgba(35,40,42,.14));font-size:.8rem;color:var(--muted,#5f5d52);padding:7px 22px;padding-top:calc(7px + env(safe-area-inset-top, 0px));text-align:right;font-family:inherit}" +
     ".rw-idstrip a{color:var(--green-deep,#21443a);text-decoration:none;font-weight:600}" +
+    ".rw-idstrip a.rw-home{float:left;font-weight:700;display:inline-flex;align-items:center;gap:5px}" +
     ".rw-idstrip a:hover{text-decoration:underline}" +
     ".rw-idwrap{position:relative;display:inline-block;vertical-align:middle}" +
     ".rw-switch{display:inline-flex;align-items:center;gap:5px;background:var(--green-deep,#21443a);color:#f6f2e8;border:none;border-radius:999px;padding:2px 10px;font:inherit;font-weight:700;font-size:.74rem;cursor:pointer}" +
@@ -150,7 +151,7 @@
       idHtml = "Signed in as <a href='/account'>" + esc(w.client || w.name || "your account") + "</a>";
     }
 
-    strip.innerHTML = idHtml + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
+    strip.innerHTML = "<a class='rw-home' href='/app' aria-label='Home'>&#8962; Home</a>" + idHtml + (isMaster ? " &middot; <a href='#' id='rwRefresh'>&#8635; Refresh</a>" : "") + " &middot; <a href='#' id='rwSignout'>Sign out</a>";
     document.body.insertBefore(strip, document.body.firstChild);
 
     var so = document.getElementById("rwSignout");
