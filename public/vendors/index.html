@@ -68,19 +68,19 @@
 <main class="wrap">
   <div class="intro">
     <div class="eyebrow">Admin</div>
-    <h1>Vendors &amp; technicians</h1>
-    <div class="lead">The people and companies you assign work to. Internal is a Ringwood person; Vendor is an outside company. Build the directory once and pick from it on every ticket.</div>
+    <h1>Team &amp; vendors</h1>
+    <div class="lead">Two rosters in one place. <b>Team</b> is your Ringwood people, billed by the hour on a ticket's Labor. <b>Vendors</b> are the outside companies you get quotes from. Build each once and pick from it on every ticket.</div>
   </div>
 
   <div id="setupNote" class="note" style="display:none"></div>
 
-  <h2>Add a vendor or technician</h2>
+  <h2>Add to the directory</h2>
   <div class="panel">
     <div class="field"><label>Name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Acme Computer Repair, or John (HVAC)" /></div>
     <div class="row2">
-      <div class="field"><label>Type</label><select id="n_kind"><option value="Vendor">Vendor (outside)</option><option value="Internal">Internal (Ringwood)</option></select></div>
+      <div class="field"><label>Type</label><select id="n_kind"><option value="Vendor">Vendor (outside)</option><option value="Internal">Team (Ringwood)</option></select></div>
       <div class="field"><label>Trade <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_trade" type="text" autocomplete="off" placeholder="e.g. Computer, HVAC, Electrical" /></div>
-      <div class="field"><label>Hourly rate <span style="font-weight:400;color:var(--muted)">— for labor costing (e.g. 150)</span></label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="$/hr" /></div>
+      <div class="field" id="n_rateWrap" style="display:none"><label>Hourly rate <span style="font-weight:400;color:var(--muted)">— for labor costing (e.g. 150)</span></label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="$/hr" /></div>
     </div>
     <div class="row2">
       <div class="field"><label>Phone <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="n_phone" type="tel" autocomplete="off" /></div>
@@ -91,7 +91,6 @@
     <div class="msg" id="n_msg"></div>
   </div>
 
-  <h2>Directory</h2>
   <div id="list"><div class="lead">Loading…</div></div>
 </main>
 <script>
@@ -102,6 +101,10 @@
     if(!d||!d.ok){ location.replace("/login?next=/vendors"); return; }
     if(d.role!=="master"){ location.replace("/app"); return; }
     document.getElementById("n_add").addEventListener("click", addVendor);
+    // The hourly rate only matters for Ringwood team members (Labor costing).
+    var nk=document.getElementById("n_kind");
+    function syncRate(){ var rw=document.getElementById("n_rateWrap"); if(rw) rw.style.display = nk.value==="Internal" ? "block" : "none"; }
+    if(nk){ nk.addEventListener("change", syncRate); syncRate(); }
     load();
   }).catch(function(){});
 
@@ -119,8 +122,16 @@
 
   function render(){
     var el=document.getElementById("list");
-    if(!VENDORS.length){ el.innerHTML="<div class='empty'>No vendors yet. Add your first above.</div>"; return; }
-    el.innerHTML = VENDORS.map(renderItem).join("");
+    if(!VENDORS.length){ el.innerHTML="<div class='empty'>Nobody yet. Add your first above.</div>"; return; }
+    var team=VENDORS.filter(function(v){ return v.kind==="Internal"; });
+    var vend=VENDORS.filter(function(v){ return v.kind!=="Internal"; });
+    function section(title, sub, arr){
+      return "<h2>"+title+" <span style='font-size:.82rem;color:var(--muted);font-weight:400'>("+arr.length+")</span></h2>"+
+        "<div class='cs' style='margin:-4px 0 10px'>"+sub+"</div>"+
+        (arr.length ? arr.map(renderItem).join("") : "<div class='empty' style='margin-bottom:16px'>None yet.</div>");
+    }
+    el.innerHTML = section("Ringwood team","Your people, billed by the hour on Labor.",team)+
+                   section("Vendors","Outside companies you get quotes from.",vend);
     VENDORS.forEach(wire);
   }
   function renderItem(v){
@@ -136,7 +147,7 @@
         "<div class='row2'>"+
           "<div class='field'><label>Type</label><select id='kd_"+k+"'><option value='Vendor'"+(v.kind!=="Internal"?" selected":"")+">Vendor (outside)</option><option value='Internal'"+(v.kind==="Internal"?" selected":"")+">Internal (Ringwood)</option></select></div>"+
           "<div class='field'><label>Trade</label><input id='tr_"+k+"' value='"+esc(v.trade)+"'/></div>"+
-          "<div class='field'><label>Hourly rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(v.rate)+"'/></div>"+
+          "<div class='field' id='rtw_"+k+"'"+(v.kind==="Internal"?"":" style='display:none'")+"><label>Hourly rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(v.rate)+"'/></div>"+
         "</div>"+
         "<div class='row2'>"+
           "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(v.phone)+"'/></div>"+
@@ -152,6 +163,8 @@
 
   function wire(v){
     var k=ukey(v.id);
+    var kd=document.getElementById("kd_"+k);
+    if(kd) kd.addEventListener("change", function(){ var rw=document.getElementById("rtw_"+k); if(rw) rw.style.display = kd.value==="Internal" ? "block" : "none"; });
     document.getElementById("sv_"+k).addEventListener("click", function(){
       var b=this, m=document.getElementById("m_"+k); m.className="msg";
       var name=document.getElementById("nm_"+k).value.trim();

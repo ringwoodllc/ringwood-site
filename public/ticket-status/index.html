@@ -695,7 +695,8 @@
                 "</div>" +
                 "<input type='file' id='q_attachInput' accept='image/*' multiple style='display:none' />" +
                 "<div id='q_msg' style='font-size:.82rem;color:var(--muted);margin-top:5px'></div>" +
-                "<div style='margin-top:9px'><a href='#' id='q_newVendor' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>＋ New vendor — scan a card or quote ▾</a></div>" +
+                "<div style='display:flex;gap:14px;flex-wrap:wrap;margin-top:9px'><a href='#' id='q_newVendor' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>＋ New vendor — scan a card or quote ▾</a>" +
+                  "<a href='/vendors' target='_blank' style='font-size:.84rem;color:var(--muted);border-bottom:1px solid var(--line)'>Manage vendors</a></div>" +
                 "<div id='q_vendPanel' style='display:none;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px'>" +
                   "<div style='display:flex;gap:10px;flex-wrap:wrap;align-items:center'>" +
                     "<label class='qbtn' for='q_vfile' style='cursor:pointer'>📷 Scan card / quote / ID</label>" +
@@ -930,7 +931,8 @@
           "<input id='l_rate' type='number' min='0' step='0.01' placeholder='$/hr' style='flex:0 0 80px' title='Auto-fills from the teammate; override if needed' />"+
           "<button type='button' class='qbtn rev' id='l_add'>Add</button>"+
         "</div>"+
-        "<div id='l_msg' style='font-size:.82rem;color:#8a3d1c;margin-top:5px'></div>";
+        "<div id='l_msg' style='font-size:.82rem;color:#8a3d1c;margin-top:5px'></div>"+
+        "<div style='margin-top:6px'><a href='/vendors' target='_blank' style='font-size:.8rem;color:var(--muted);border-bottom:1px solid var(--line)'>Manage team &amp; rates</a></div>";
       var pe=document.getElementById("l_person");
       if(pe) pe.addEventListener("change", function(){
         if(pe.value==="__new"){
