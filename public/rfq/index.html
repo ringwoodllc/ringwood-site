@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#1f3d2b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ringwood" />
+<title>Ringwood · Request for Quote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#f4efe4;--bg-2:#efe8d8;--ink:#23282a;--muted:#5f5d52;--green:#2f5d50;--green-deep:#21443a;--clay:#a9633a;--line:rgba(35,40,42,.16)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk",-apple-system,sans-serif;min-height:100vh;
+    padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  .wrap{max-width:720px;margin:0 auto;padding:0 20px calc(60px + env(safe-area-inset-bottom))}
+  .bar{display:flex;align-items:center;justify-content:space-between;padding:22px 0 14px;gap:10px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;font-family:"Spectral",serif;font-size:1.2rem;font-weight:600;color:var(--green-deep)}
+  .back{font-size:.9rem;text-decoration:none;color:var(--green-deep);border-bottom:1px solid var(--clay)}
+  .panel{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .panel h2{font-family:"Spectral",serif;font-weight:500;font-size:1.05rem;color:var(--green-deep);margin-bottom:10px}
+  label{display:block;font-weight:600;font-size:.84rem;color:var(--green-deep);margin-bottom:5px}
+  .field{margin-bottom:12px}
+  input,textarea,select{width:100%;font:inherit;font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;-webkit-appearance:none;appearance:none}
+  textarea{min-height:90px;resize:vertical}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--green)}
+  .row2{display:flex;gap:12px;flex-wrap:wrap}.row2 .field{flex:1;min-width:150px}
+  .chk{display:flex;align-items:center;gap:8px;font-weight:400;color:var(--ink);font-size:.92rem;margin-bottom:8px}
+  .chk input{width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)}
+  .btn{background:var(--green);color:#f6f2e8;border:none;cursor:pointer;font-weight:600;font-size:.95rem;padding:11px 16px;border-radius:8px}
+  .btn.ghost{background:transparent;color:var(--green-deep);border:1px solid var(--line)}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+  .doc{background:#fbf8f1;border:1px solid var(--line);border-radius:12px;padding:30px 28px;box-shadow:0 6px 28px rgba(33,68,58,.07)}
+  .doc h1{font-family:"Spectral",serif;font-weight:500;font-size:1.8rem;color:var(--green-deep);line-height:1.1}
+  .doc .sub{color:var(--muted);font-size:.92rem;margin-top:4px}
+  .meta{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:18px 0 22px;font-size:.92rem}
+  .lbl{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:4px}
+  .sec{margin:18px 0}
+  .desc{white-space:pre-wrap;font-size:.96rem;line-height:1.6}
+  .eq{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:.92rem;line-height:1.6}
+  .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:8px}
+  .photos img{width:100%;height:150px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .foot{margin-top:22px;font-size:.9rem;color:var(--muted);line-height:1.6}
+  .empty{color:var(--muted)}
+  @media print{
+    body{background:#fff}
+    .bar,.controls,.actions{display:none}
+    .doc{border:none;box-shadow:none;border-radius:0;padding:0}
+    .wrap{max-width:none;padding:0}
+    .photos img{height:auto;max-height:260px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
+      Ringwood
+    </div>
+    <a class="back" id="backLink" href="/status">&larr; Back to ticket</a>
+  </div>
+
+  <div class="panel controls" id="controls" style="display:none">
+    <h2>Edit the RFQ</h2>
+    <div class="field"><label>Scope of work</label><textarea id="c_scope" placeholder="What you need the vendor to quote"></textarea></div>
+    <div class="field"><label>What we need from the vendor</label><textarea id="c_instr" style="min-height:70px"></textarea></div>
+    <div class="row2">
+      <div class="field"><label>Respond by <span style="font-weight:400;color:var(--muted)">— optional</span></label><input id="c_due" type="date" /></div>
+      <div class="field"><label>Reply to <span style="font-weight:400;color:var(--muted)">— your email/phone</span></label><input id="c_contact" type="text" placeholder="name@ringwood… / (555) 555-5555" /></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="c_photos" checked /> Include photos</label>
+    <label class="chk"><input type="checkbox" id="c_location" checked /> Include site location</label>
+    <label class="chk"><input type="checkbox" id="c_equip" checked /> Include equipment details</label>
+  </div>
+
+  <div class="actions" id="actions" style="display:none">
+    <select id="vendorPick" style="width:auto;min-width:180px"><option value="">Email to… (pick vendor)</option></select>
+    <button class="btn" id="emailBtn" type="button">Email RFQ</button>
+    <button class="btn ghost" id="printBtn" type="button">Print / Save PDF</button>
+  </div>
+  <div id="sendNote" style="display:none;font-size:.86rem;color:#8a3d1c;margin:-8px 0 14px"></div>
+
+  <div class="doc" id="doc"><div class="empty">Loading…</div></div>
+</div>
+<script>
+  function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}); }catch(e){ return s; } }
+  function qs(k){ return new URLSearchParams(location.search).get(k)||""; }
+
+  var ID=qs("id"), RFQ=null;
+  var SCOPE="", INSTR="", DUE="", CONTACT="", SHOW_PHOTOS=true, SHOW_LOC=true, SHOW_EQ=true;
+  document.getElementById("backLink").href = ID ? ("/status?id="+encodeURIComponent(ID)) : "/status";
+
+  fetch("/api/whoami").then(function(r){return r.json();}).then(function(w){
+    if(!w||!w.ok){ location.replace("/login?next="+encodeURIComponent(location.pathname+location.search)); return; }
+    if(w.role!=="master"){ location.replace("/app"); return; }
+    load();
+  }).catch(function(){ load(); });
+
+  function load(){
+    if(!ID){ document.getElementById("doc").innerHTML="<div class='empty'>No ticket.</div>"; return; }
+    fetch("/api/tickets/rfq?id="+encodeURIComponent(ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ document.getElementById("doc").innerHTML="<div class='empty'>"+esc((d&&d.error)||"Couldn't load this RFQ.")+"</div>"; return; }
+      RFQ=d;
+      SCOPE = d.ticket.description || "";
+      INSTR = "Please reply with your price, lead time, and earliest availability for the work described above. Note anything you would need from us, and any exclusions.";
+      initControls();
+      render();
+    }).catch(function(){ document.getElementById("doc").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
+  }
+
+  function initControls(){
+    document.getElementById("controls").style.display="block";
+    document.getElementById("actions").style.display="flex";
+    var sc=document.getElementById("c_scope"); sc.value=SCOPE; sc.addEventListener("input",function(){ SCOPE=sc.value; render(); });
+    var ins=document.getElementById("c_instr"); ins.value=INSTR; ins.addEventListener("input",function(){ INSTR=ins.value; render(); });
+    document.getElementById("c_due").addEventListener("change",function(){ DUE=this.value; render(); });
+    document.getElementById("c_contact").addEventListener("input",function(){ CONTACT=this.value; render(); });
+    document.getElementById("c_photos").addEventListener("change",function(){ SHOW_PHOTOS=this.checked; render(); });
+    document.getElementById("c_location").addEventListener("change",function(){ SHOW_LOC=this.checked; render(); });
+    document.getElementById("c_equip").addEventListener("change",function(){ SHOW_EQ=this.checked; render(); });
+    var vp=document.getElementById("vendorPick");
+    (RFQ.vendors||[]).forEach(function(v){ var o=document.createElement("option"); o.value=v.email; o.textContent=v.name+(v.trade?(" — "+v.trade):""); vp.appendChild(o); });
+    document.getElementById("printBtn").addEventListener("click",function(){ window.print(); });
+    document.getElementById("emailBtn").addEventListener("click", emailRfq);
+  }
+
+  function render(){
+    if(!RFQ) return;
+    var t=RFQ.ticket;
+    var h="<div style='display:flex;align-items:center;gap:11px;margin-bottom:16px'>"+
+      "<svg width='30' height='30' viewBox='0 0 26 26' aria-hidden='true'><g fill='none' stroke='#2f5d50' stroke-width='1.4'><circle cx='13' cy='13' r='3'/><circle cx='13' cy='13' r='7'/><circle cx='13' cy='13' r='11'/></g></svg>"+
+      "<div style='font-family:Spectral,serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)'>Ringwood Holding LLC</div></div>";
+    h+="<h1>Request for Quote</h1><div class='sub'>"+esc(t.title||"")+"</div>";
+    h+="<div class='meta'>"+
+      "<div><div class='lbl'>RFQ</div><div>"+(t.ref?("Ref "+esc(t.ref)):"—")+"</div></div>"+
+      "<div><div class='lbl'>Date</div><div>"+esc(fmtDate(t.created)||fmtDate(new Date().toISOString()))+"</div></div>"+
+      (DUE?("<div><div class='lbl'>Respond by</div><div>"+esc(fmtDate(DUE))+"</div></div>"):"")+
+    "</div>";
+    h+="<div class='sec'><div class='lbl'>Scope of work</div><div class='desc'>"+(SCOPE?esc(SCOPE):"<span class='empty'>(add the scope above)</span>")+"</div></div>";
+    if(SHOW_EQ && t.asset && (t.asset.name||t.asset.make||t.asset.serial)){
+      var eqbits=[]; var mm=[t.asset.make,t.asset.model].filter(Boolean).join(" · "); if(t.asset.name) eqbits.push("<b>"+esc(t.asset.name)+"</b>"); if(mm) eqbits.push(esc(mm)); if(t.asset.serial) eqbits.push("Serial: "+esc(t.asset.serial));
+      h+="<div class='sec'><div class='lbl'>Equipment</div><div class='eq'>"+eqbits.join("<br>")+"</div></div>";
+    }
+    if(SHOW_LOC && t.location){ h+="<div class='sec'><div class='lbl'>Site location</div><div>"+esc(t.location)+"</div></div>"; }
+    if(SHOW_PHOTOS && t.photos && t.photos.length){
+      h+="<div class='sec'><div class='lbl'>Photos</div><div class='photos'>"+t.photos.map(function(u){ return "<img src='"+esc(u)+"' alt='job photo' />"; }).join("")+"</div></div>";
+    }
+    h+="<div class='sec'><div class='lbl'>What we need from you</div><div class='desc'>"+(INSTR?esc(INSTR):"")+"</div></div>";
+    h+="<div class='foot'>This is a request for quote, not an order. Please send your pricing to Ringwood Holding LLC."+(CONTACT?(" Reply to: "+esc(CONTACT)+"."):"")+" Thank you.</div>";
+    document.getElementById("doc").innerHTML=h;
+  }
+
+  function emailRfq(){
+    var t=RFQ.ticket;
+    var to=document.getElementById("vendorPick").value||"";
+    var subject="Request for Quote — "+(t.title||"")+(t.ref?(" (Ref "+t.ref+")"):"");
+    var lines=[];
+    lines.push("Hello,");
+    lines.push("");
+    lines.push("Ringwood Holding LLC is requesting a quote for the following work.");
+    lines.push("");
+    lines.push("Scope of work:"); lines.push(SCOPE||"(see attached)");
+    if(SHOW_EQ && t.asset && (t.asset.name||t.asset.make)){ lines.push(""); lines.push("Equipment: "+[t.asset.name,[t.asset.make,t.asset.model].filter(Boolean).join(" "),t.asset.serial?("Serial "+t.asset.serial):""].filter(Boolean).join(", ")); }
+    if(SHOW_LOC && t.location){ lines.push(""); lines.push("Site location: "+t.location); }
+    if(DUE){ lines.push(""); lines.push("Please respond by: "+fmtDate(DUE)); }
+    lines.push(""); lines.push(INSTR||"");
+    if(t.photos && t.photos.length){ lines.push(""); lines.push("Photos of the job are attached (or available on request)."); }
+    lines.push(""); lines.push("Thank you,"); lines.push("Ringwood Holding LLC"); if(CONTACT) lines.push(CONTACT);
+    var href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(lines.join("\n"));
+    var note=document.getElementById("sendNote");
+    if(note){ note.style.display="block"; note.textContent = (t.photos&&t.photos.length) ? "Opening your email. Attach the PDF (Print / Save PDF) so the vendor gets the photos." : "Opening your email, ready to send."; }
+    window.location.href=href;
+  }
+</script>
+</body>
+</html>

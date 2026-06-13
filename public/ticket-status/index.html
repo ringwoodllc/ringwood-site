@@ -689,7 +689,10 @@
             (!IS_CLIENT ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Vendor quotes ▾</a></div>" +
               "<div id='e_quotesField' style='display:none;margin-bottom:12px'>" +
-                "<div style='display:flex;justify-content:flex-end;margin-bottom:8px'><button type='button' class='aibtn' id='q_scan'>📷 Scan card / quote</button></div>" +
+                "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px'>" +
+                  "<a href='/rfq?id=" + esc(t.id) + "' target='_blank' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>📄 Create RFQ for vendors</a>" +
+                  "<button type='button' class='aibtn' id='q_scan'>📷 Scan card / quote</button>" +
+                "</div>" +
                 "<input type='file' id='q_scanFile' accept='image/*,application/pdf' style='display:none' />" +
                 "<div id='q_scanMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:6px'></div>" +
                 "<div id='e_quotes'></div>" +

@@ -101,6 +101,7 @@ export default {
     if (url.pathname === "/api/tickets/parts/suggest" && request.method === "POST") return suggestTicketParts(request, env, session);
     if (url.pathname === "/api/tickets/parts/scan-invoice" && request.method === "POST") return scanInvoiceParts(request, env, session);
     if (url.pathname === "/api/tickets/bill" && request.method === "GET") return getTicketBill(url, env, session);
+    if (url.pathname === "/api/tickets/rfq" && request.method === "GET") return getTicketRfq(url, env, session);
     if (url.pathname === "/api/parts/list" && request.method === "GET") return listAllParts(url, env, session);
     if (url.pathname === "/api/redbook" && request.method === "GET") return listRedbook(url, env, session);
     if (url.pathname === "/api/redbook/upload" && request.method === "POST") return uploadRedbookDoc(request, env, session);
@@ -5841,6 +5842,33 @@ async function getTicketBill(url, env, session) {
     quote: quote ? { vendor: quote.vendor || "", amount: quote.amount != null ? Number(quote.amount) : null, covered: !!quote.warranty_covered } : null,
     vendorCost,
     jobCost, markupPct, markupAmt, fee, total, margin,
+  });
+}
+
+// Everything the RFQ (request for quote) builder needs: the scope, photos, and
+// equipment from the ticket, plus the vendor directory (with emails) so the RFQ
+// can be sent out. Master only — RFQs are produced by the admin for vendors.
+async function getTicketRfq(url, env, session) {
+  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  const id = url.searchParams.get("id") || "";
+  if (!id || !sbReady(env)) return json({ ok: false, error: "Not found." }, 404);
+  let trows = await sbSelect(env, `tickets?id=eq.${id}&select=ref,title,description,location,created_at,photo_urls,client_id,asset:assets(name,nickname,make,model,serial)`);
+  let t = trows && trows[0];
+  if (!t) { const t2 = await sbSelect(env, `tickets?id=eq.${id}&select=ref,title,description,location,created_at,photo_urls,client_id`); t = t2 && t2[0]; }
+  if (!t) return json({ ok: false, error: "Ticket not found." }, 404);
+  let clientName = "";
+  if (t.client_id) { const cr = await sbSelect(env, `clients?id=eq.${t.client_id}&select=name`); if (cr && cr[0]) clientName = cr[0].name || ""; }
+  const asset = t.asset || null;
+  let vrows = await sbSelect(env, "vendors?select=name,email,trade,kind,active&order=name");
+  const vendors = (vrows || []).filter((v) => v.active !== false && (v.kind || "") !== "Internal" && v.email).map((v) => ({ name: v.name || "", email: v.email || "", trade: v.trade || "" }));
+  return noStore({
+    ok: true,
+    ticket: {
+      ref: t.ref || "", title: t.title || "", description: t.description || "", location: t.location || "", created: t.created_at || "",
+      photos: Array.isArray(t.photo_urls) ? t.photo_urls : [], client: clientName,
+      asset: asset ? { name: asset.nickname || asset.name || "", make: asset.make || "", model: asset.model || "", serial: asset.serial || "" } : null,
+    },
+    vendors,
   });
 }
 
