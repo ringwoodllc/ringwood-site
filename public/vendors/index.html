@@ -76,6 +76,13 @@
 
   <h2>Add to the directory</h2>
   <div class="panel">
+    <div class="field">
+      <label>Scan a business card or quote <span style="font-weight:400;color:var(--muted)">— the AI fills the fields, you verify</span></label>
+      <label class="btn sm" for="n_cardFile" style="cursor:pointer;display:inline-block">📷 Scan card / quote</label>
+      <input type="file" id="n_cardFile" accept="image/*,application/pdf" style="display:none" />
+      <span id="scan_msg" style="font-size:.84rem;color:var(--muted);margin-left:8px"></span>
+      <div id="n_cardPrev" style="margin-top:9px"></div>
+    </div>
     <div class="field"><label>Name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Acme Computer Repair, or John (HVAC)" /></div>
     <div class="row2">
       <div class="field"><label>Type</label><select id="n_kind"><option value="Vendor">Vendor (outside)</option><option value="Internal">Team (Ringwood)</option></select></div>
@@ -99,12 +106,51 @@
   // Same phone formatting as the contact form on the main site.
   function fmtPhone(v){ var d=(v||"").replace(/\D/g,""); if(d.length>10&&d[0]==="1")d=d.slice(1); d=d.slice(0,10); if(d.length>6)return "("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6); if(d.length>3)return "("+d.slice(0,3)+") "+d.slice(3); if(d.length>0)return "("+d.slice(0,3); return v||""; }
   function phoneInput(el){ if(el) el.addEventListener("input",function(){ el.value=fmtPhone(el.value); }); }
+  // Scan a card / quote: AI fills the fields and returns a crop box; the photo
+  // is cropped to the card, shown for verification, and saved with the vendor.
+  var N_CARD=null, N_CARD_FILE=null, N_CARD_CROP=null;
+  function fileToBase64(file){ return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res(b>=0?d.slice(b+1):d); }; r.onerror=rej; r.readAsDataURL(file); }); }
+  function initialCrop(file, crop){ return new Promise(function(resolve){ var img=new Image(); img.onload=function(){ try{ resolve(window.RWCardCrop ? RWCardCrop.cropToDataUrl(img, (crop&&crop.w)?crop:{x:0,y:0,w:1,h:1}) : null); }catch(e){ resolve(null); } }; img.onerror=function(){ resolve(null); }; img.src=URL.createObjectURL(file); }); }
+  function showAddCard(durl){
+    N_CARD=(durl||"").split(",")[1]||null;
+    var prev=document.getElementById("n_cardPrev"); if(!prev) return;
+    prev.innerHTML="<div style='font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:4px'>Card — saved for verification</div>"+
+      "<img src='"+durl+"' alt='business card' style='max-width:160px;border-radius:7px;border:1px solid var(--line)' />"+
+      "<div style='display:flex;gap:14px;margin-top:6px'>"+
+        (N_CARD_FILE?"<a href='#' id='n_cardAdjust' style='font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Adjust crop</a>":"")+
+        "<a href='#' id='n_cardRescan' style='font-size:.82rem;color:var(--muted);border-bottom:1px solid var(--line)'>Re-scan</a>"+
+      "</div>";
+    var adj=document.getElementById("n_cardAdjust");
+    if(adj) adj.addEventListener("click", function(e){ e.preventDefault(); if(window.RWCardCrop && N_CARD_FILE) RWCardCrop.open(N_CARD_FILE, N_CARD_CROP, function(d2,fr){ N_CARD_CROP=fr; showAddCard(d2); }); });
+    var res=document.getElementById("n_cardRescan");
+    if(res) res.addEventListener("click", function(e){ e.preventDefault(); var fi=document.getElementById("n_cardFile"); if(fi) fi.click(); });
+  }
+  function scanCard(file){
+    if(!file) return;
+    var msg=document.getElementById("scan_msg"); msg.style.color="var(--muted)"; msg.textContent="Reading…";
+    var isPdf=/pdf/i.test(file.type||"");
+    fileToBase64(file).then(function(b64){
+      return fetch("/api/vendors/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ base64:b64, contentType:isPdf?"application/pdf":(file.type||"image/jpeg") })});
+    }).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok){ msg.style.color="#8a3d1c"; msg.textContent=(d&&d.error)||"Couldn't read that."; return; }
+      if(d.company) document.getElementById("n_name").value=d.company;
+      if(d.phone) document.getElementById("n_phone").value=fmtPhone(d.phone);
+      if(d.email) document.getElementById("n_email").value=d.email;
+      if(d.trade) document.getElementById("n_trade").value=d.trade;
+      var bits=[]; if(d.person) bits.push("Contact: "+d.person); if(d.notes) bits.push(d.notes);
+      if(bits.length){ var ne=document.getElementById("n_notes"); ne.value=ne.value?(ne.value+" · "+bits.join(" · ")):bits.join(" · "); }
+      msg.style.color="var(--green-deep)"; msg.textContent="Read. Check the fields and Add.";
+      if(!isPdf){ N_CARD_FILE=file; N_CARD_CROP=d.crop||{x:0,y:0,w:1,h:1}; initialCrop(file,d.crop).then(function(durl){ if(durl) showAddCard(durl); }); }
+    }).catch(function(){ msg.style.color="#8a3d1c"; msg.textContent="Couldn't read that."; });
+  }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/vendors"); return; }
     if(d.role!=="master"){ location.replace("/app"); return; }
     document.getElementById("n_add").addEventListener("click", addVendor);
     phoneInput(document.getElementById("n_phone"));
+    var cf=document.getElementById("n_cardFile");
+    if(cf) cf.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanCard(f); });
     // The hourly rate only matters for Ringwood team members (Labor costing).
     var nk=document.getElementById("n_kind");
     function syncRate(){ var rw=document.getElementById("n_rateWrap"); if(rw) rw.style.display = nk.value==="Internal" ? "block" : "none"; }
@@ -197,14 +243,15 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    var payload={ name:name, kind:document.getElementById("n_kind").value, trade:document.getElementById("n_trade").value, rate:document.getElementById("n_rate").value, phone:document.getElementById("n_phone").value, email:document.getElementById("n_email").value, notes:document.getElementById("n_notes").value };
+    var payload={ name:name, kind:document.getElementById("n_kind").value, trade:document.getElementById("n_trade").value, rate:document.getElementById("n_rate").value, phone:document.getElementById("n_phone").value, email:document.getElementById("n_email").value, notes:document.getElementById("n_notes").value, cardBase64:N_CARD||"" };
     fetch("/api/admin/vendor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_trade","n_rate","n_phone","n_email","n_notes"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_trade","n_rate","n_phone","n_email","n_notes"].forEach(function(i){document.getElementById(i).value="";}); N_CARD=null; N_CARD_FILE=null; N_CARD_CROP=null; var ncp=document.getElementById("n_cardPrev"); if(ncp) ncp.innerHTML=""; var sm=document.getElementById("scan_msg"); if(sm) sm.textContent=""; load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
 </script>
+<script src="/card-crop.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

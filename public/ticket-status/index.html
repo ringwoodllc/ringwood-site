@@ -1194,8 +1194,23 @@
     // New vendor straight from the quote flow: scan a card/quote/ID, the AI
     var qnv=document.getElementById("q_newVendor");
     if(qnv) qnv.addEventListener("click", function(e){ e.preventDefault(); var pn=document.getElementById("q_vendPanel"); var open=pn.style.display!=="none"; pn.style.display=open?"none":"block"; qnv.textContent="＋ New vendor — scan a card or quote "+(open?"▾":"▴"); });
-    // The AI-cropped card image, pending until the vendor is saved.
-    var VENDOR_CARD=null;
+    // The AI-cropped card image (base64), the original file, and the current
+    // crop box — pending until the vendor is saved.
+    var VENDOR_CARD=null, VENDOR_CARD_FILE=null, VENDOR_CARD_CROP=null;
+    function showCardPreview(durl){
+      VENDOR_CARD = (durl||"").split(",")[1]||null;
+      var prev=document.getElementById("v_cardPrev"); if(!prev) return;
+      prev.innerHTML="<div style='font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:4px'>Card — saved for verification</div>"+
+        "<img class='zoomable' src='"+durl+"' alt='business card' style='max-width:150px;border-radius:7px;border:1px solid var(--line);cursor:zoom-in' />"+
+        "<div style='display:flex;gap:14px;margin-top:6px'>"+
+          (VENDOR_CARD_FILE?"<a href='#' id='v_cardAdjust' style='font-size:.82rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Adjust crop</a>":"")+
+          "<a href='#' id='v_cardRescan' style='font-size:.82rem;color:var(--muted);border-bottom:1px solid var(--line)'>Re-scan</a>"+
+        "</div>";
+      var adj=document.getElementById("v_cardAdjust");
+      if(adj) adj.addEventListener("click", function(e){ e.preventDefault(); if(window.RWCardCrop && VENDOR_CARD_FILE) RWCardCrop.open(VENDOR_CARD_FILE, VENDOR_CARD_CROP, function(d2,fr){ VENDOR_CARD_CROP=fr; showCardPreview(d2); }); });
+      var res=document.getElementById("v_cardRescan");
+      if(res) res.addEventListener("click", function(e){ e.preventDefault(); var fi=document.getElementById("q_vfile"); if(fi) fi.click(); });
+    }
     // Crop the original photo to the AI's bounding box (fractions 0..1) on a
     // canvas, capped to a sensible size. Kept on the vendor for verification.
     function cropCardImage(file, crop){
@@ -1236,11 +1251,10 @@
         var bits=[]; if(d.person) bits.push("Contact: "+d.person); if(d.notes) bits.push(d.notes);
         if(bits.length){ var ne=document.getElementById("v_notes"); ne.value = ne.value ? (ne.value+" · "+bits.join(" · ")) : bits.join(" · "); }
         vm.style.color="var(--green-deep)"; vm.textContent="Read. Check the fields and Save.";
-        // Crop the card and show it for human verification; saved with the vendor.
+        // Crop the card and show it for verification (adjustable); saved with the vendor.
         var prev=document.getElementById("v_cardPrev");
-        if(!isPdf){ cropCardImage(f, d.crop).then(function(durl){ if(!durl) return; VENDOR_CARD=durl.split(",")[1]||null;
-          if(prev) prev.innerHTML="<div style='font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);font-weight:600;margin-bottom:4px'>Card — saved for verification</div><img class='zoomable' src='"+durl+"' alt='business card' style='max-width:150px;border-radius:7px;border:1px solid var(--line);cursor:zoom-in' />"; }); }
-        else if(prev && d.fileUrl){ VENDOR_CARD=null; prev.innerHTML="<a href='"+esc(d.fileUrl)+"' target='_blank' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>View the scanned document</a>"; }
+        if(!isPdf){ VENDOR_CARD_FILE=f; VENDOR_CARD_CROP=d.crop||{x:0,y:0,w:1,h:1}; cropCardImage(f, d.crop).then(function(durl){ if(durl) showCardPreview(durl); }); }
+        else if(prev && d.fileUrl){ VENDOR_CARD=null; VENDOR_CARD_FILE=null; prev.innerHTML="<a href='"+esc(d.fileUrl)+"' target='_blank' style='font-size:.84rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>View the scanned document</a>"; }
       }).catch(function(){ vm.style.color="#8a3d1c"; vm.textContent="Couldn't read that."; });
     }
     // Auto-format the vendor phone as you type, same as the site's contact form.
@@ -1278,7 +1292,7 @@
             var dl=document.getElementById("qvendlist"); if(dl) dl.innerHTML=outsideVendors().map(function(v){ return "<option value='"+esc(v.name)+"'>"; }).join("");
             document.getElementById("q_vendor").value=name;
             ["v_name","v_phone","v_email","v_trade","v_notes"].forEach(function(id){ document.getElementById(id).value=""; });
-            VENDOR_CARD=null; var cp2=document.getElementById("v_cardPrev"); if(cp2) cp2.innerHTML="";
+            VENDOR_CARD=null; VENDOR_CARD_FILE=null; VENDOR_CARD_CROP=null; var cp2=document.getElementById("v_cardPrev"); if(cp2) cp2.innerHTML="";
             document.getElementById("q_vendPanel").style.display="none";
             if(qnv) qnv.textContent="＋ New vendor — scan a card or quote ▾";
             vm.style.color="var(--green-deep)"; vm.textContent="";
@@ -2000,6 +2014,7 @@
 </script>
 <script src="/lightbox.js"></script>
 <script src="/native-camera.js"></script>
+<script src="/card-crop.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>
