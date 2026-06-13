@@ -5687,7 +5687,10 @@ async function listTicketParts(url, env, session) {
   if (!id || !sbReady(env)) return json([]);
   let rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,photo_urls,created_at&order=created_at.asc`);
   if (rows === null) rows = await sbSelect(env, `ticket_parts?ticket_id=eq.${id}&select=id,item,quantity,unit,status,est_cost,source,notes,created_at&order=created_at.asc`);
-  if (rows === null) return json([]); // table not added yet
+  // Table not added yet: say so explicitly (like labor and quotes do) so the
+  // page can prompt to run the migration instead of showing a silent empty box
+  // that also can't save.
+  if (rows === null) return noStore({ missing: true, parts: [] });
   return noStore((rows || []).map((r) => ({ id: r.id, item: r.item || "", quantity: r.quantity, unit: r.unit || "", status: r.status || "Needed", estCost: r.est_cost, source: r.source || "", notes: r.notes || "", photos: r.photo_urls || [] })));
 }
 

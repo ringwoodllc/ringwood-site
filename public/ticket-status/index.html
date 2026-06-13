@@ -629,7 +629,7 @@
               "<div class='field'><label>Client</label><select id='e_client'>" + clientOpts + "</select></div>" +
               "<div class='field'>" +
                 "<div class='lblrow'><label>Asset" + (t.assetId?(" <a href='/a/?id=" + esc(t.assetId) + "' style='font-weight:400;font-size:.85rem'>view</a>"):"") + "</label>" +
-                  (IS_MASTER ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
+                  (!IS_CLIENT ? "<button type='button' class='aibtn' id='e_assetSuggest'>✨ Suggest</button>" : "") + "</div>" +
                 "<select id='e_asset'>" + assetOpts + "</select>" +
                 "<input id='e_newasset' type='text' placeholder='New asset name' style='display:none;margin-top:8px' />" +
                 "<div id='e_assetSuggMsg' style='font-size:.85rem;color:var(--green-deep);margin-top:8px'></div></div>" +
@@ -668,13 +668,13 @@
             // The asset's vitals live on the ticket, so a dispatch call doesn't
             // mean a trip back to Assets. No asset yet: a small arrow to tag one.
             (t.assetId ? "<div id='e_equip' style='margin:0 0 12px'></div>" : "") +
-            (IS_MASTER ?
+            (!IS_CLIENT ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
               "<div id='e_partsField' style='display:none;margin-bottom:12px'><div style='display:flex;justify-content:flex-end;margin-bottom:6px'><button type='button' class='aibtn' id='p_suggest'>✨ Suggest from the ticket</button></div><div id='e_parts'></div></div>" +
               "<div style='margin:2px 0 12px'><a href='#' id='e_laborToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Labor ▾</a></div>" +
               "<div id='e_laborField' style='display:none;margin-bottom:12px'><div id='e_labor'></div></div>"
             : "") +
-            (IS_MASTER ?
+            (!IS_CLIENT ?
               "<div style='margin:2px 0 12px'><a href='#' id='e_quotesToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Quotes ▾</a></div>" +
               "<div id='e_quotesField' style='display:none;margin-bottom:12px'>" +
                 "<div id='e_quotes'></div>" +
@@ -1390,9 +1390,10 @@
     if(foldKeep) foldKeep.addEventListener("click", function(){ document.getElementById("e_foldWrap").style.display="none"; });
 
     // ---- Parts & materials needed (admin-only) ----
-    if (IS_MASTER && document.getElementById("e_parts")){
-      var partsEl=document.getElementById("e_parts"), PARTS=[], SUGG=[];
+    if (!IS_CLIENT && document.getElementById("e_parts")){
+      var partsEl=document.getElementById("e_parts"), PARTS=[], SUGG=[], PARTS_MISSING=false;
       function renderParts(){
+        if(PARTS_MISSING){ partsEl.innerHTML="<div style='font-size:.84rem;color:var(--muted)'>Run supabase/ticket_parts.sql once, then parts save here.</div>"; return; }
         var rows = PARTS.map(function(p){
           if(EDIT_PART_ID===p.id){
             return "<div class='prow' data-id='"+esc(p.id)+"' style='gap:6px;flex-wrap:wrap'>"+
@@ -1509,13 +1510,17 @@
       function loadParts(){
         var dg=document.getElementById("e_svcdiag");
         fetch("/api/tickets/parts?id="+encodeURIComponent(t.id),{cache:"no-store"}).then(function(r){
-          if(!r.ok){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts API "+r.status+".</span>"; PARTS=[]; safeRenderParts(); return null; }
+          if(!r.ok){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts API "+r.status+".</span>"; PARTS=[]; PARTS_MISSING=false; safeRenderParts(); return null; }
           return r.json().then(function(rows){
-            PARTS=Array.isArray(rows)?rows:[];
-            if(dg){ if(rows && rows.offline) dg.innerHTML="<span style='color:#8a3d1c'>offline.</span>"; else dg.textContent="parts ok ("+PARTS.length+")"; }
+            // Bare array when the table exists; {missing:true} when ticket_parts
+            // hasn't been created yet; {offline:true} from the service worker.
+            if(rows && rows.missing){ PARTS=[]; PARTS_MISSING=true; if(dg) dg.textContent=""; safeRenderParts(); if(typeof renderMoney==="function"){ try{ renderMoney(); }catch(e){} } return; }
+            if(rows && rows.offline){ PARTS=[]; PARTS_MISSING=false; if(dg) dg.innerHTML="<span style='color:#8a3d1c'>offline.</span>"; safeRenderParts(); return; }
+            PARTS=Array.isArray(rows)?rows:[]; PARTS_MISSING=false;
+            if(dg) dg.textContent="";
             safeRenderParts(); if(typeof renderMoney==="function"){ try{ renderMoney(); }catch(e){ if(dg) dg.innerHTML="<span style=\'color:#8a3d1c\'>money render error: "+esc((e&&e.message)||(""+e))+"</span>"; } }
           });
-        }).catch(function(err){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>network: "+esc((err&&err.message)||(""+err))+"</span>"; PARTS=[]; safeRenderParts(); }); }
+        }).catch(function(err){ if(dg) dg.innerHTML="<span style='color:#8a3d1c'>network: "+esc((err&&err.message)||(""+err))+"</span>"; PARTS=[]; PARTS_MISSING=false; safeRenderParts(); }); }
       function safeRenderParts(){ try{ renderParts(); }catch(e){ var dg=document.getElementById("e_svcdiag"); if(dg) dg.innerHTML="<span style='color:#8a3d1c'>parts render error: "+esc((e&&e.message)||(""+e))+"</span>"; } }
       var sgBtn=document.getElementById("p_suggest"); if(sgBtn) sgBtn.addEventListener("click", suggestParts);
       loadParts();
@@ -1613,9 +1618,9 @@
         if (hasPhotos) bits += "<button type='button' class='lgbtn' data-act='promote' data-cid='" + esc(c.id) + "'>&uarr; Add to main photos</button>";
         // Flip a staff note's visibility after the fact: work it out internally,
         // then hand the finished detail to the customer with one tap.
-        if (IS_MASTER && c.role !== "client" && (c.kind === "internal" || c.kind === "note"))
+        if (!IS_CLIENT && c.role !== "client" && (c.kind === "internal" || c.kind === "note"))
           bits += "<button type='button' class='lgbtn' data-act='vis' data-cid='" + esc(c.id) + "'>" + (c.kind === "internal" ? "Share with client" : "Make internal") + "</button>";
-        if (IS_MASTER) bits += "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button><button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
+        if (!IS_CLIENT) bits += "<button type='button' class='lgbtn' data-act='edit' data-cid='" + esc(c.id) + "'>Edit</button><button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>";
         var ctrls = bits ? "<span class='lgctrl'>" + bits + "</span>" : "";
         var photos = hasPhotos ? "<div class='photos'>" + c.photos.map(function(u){ return "<img class='zoomable' loading='lazy' decoding='async' src='" + esc(u) + "' alt='note photo' />"; }).join("") + "</div>" : "";
         return "<div class='lg note' data-cid='" + esc(c.id) + "'>" +
@@ -1628,7 +1633,7 @@
         var brief = c.body || "", detail = "";
         if (brief.indexOf("\n⋮\n") >= 0){ var pp = brief.split("\n⋮\n"); brief = pp[0]; detail = pp.slice(1).join("\n⋮\n"); }
         var moreBtn = detail ? "<button type='button' class='lgmore' data-cid='" + esc(c.id) + "'>+</button>" : "";
-        var del = IS_MASTER ? "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" : "";
+        var del = !IS_CLIENT ? "<button type='button' class='lgbtn del' data-act='del' data-cid='" + esc(c.id) + "'>Delete</button>" : "";
         var detailDiv = detail ? "<div class='evdetail' id='ev_" + esc(c.id) + "' style='display:none'>" + esc(detail) + "</div>" : "";
         var ico = c.role === "agent" ? "" : "<span class='evico'>&#9998;</span>";
         return "<div class='lg event" + (c.role==="agent"?" agent":"") + "' data-cid='" + esc(c.id) + "'>" +
