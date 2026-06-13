@@ -105,6 +105,14 @@
       <div class="msg" id="n_msg"></div>
     </div>
 
+    <h2>QuickBooks</h2>
+    <div class="panel" id="qboPanel">
+      <div style="font-size:.86rem;color:var(--muted);margin-bottom:8px">Check this roster against your QuickBooks employees: who is in both, who is in the app but not yet in QuickBooks (add them there), and who is in QuickBooks but not the app.</div>
+      <button class="btn sm" id="qboBtn" type="button">Check against QuickBooks</button>
+      <div class="msg" id="qbo_msg"></div>
+      <div id="qbo_out" style="margin-top:10px"></div>
+    </div>
+
     <h2 id="rosterHead">Roster</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
       <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: First name A–Z</option><option value="last">Sort: Last name A–Z</option><option value="manual">Sort: Custom order</option></select>
@@ -164,6 +172,7 @@
     document.getElementById("sortBy").addEventListener("change",function(){ SORT=this.value; render(); });
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
+    var qb=document.getElementById("qboBtn"); if(qb) qb.addEventListener("click", reconcileQbo);
     loadClients();
   }).catch(function(){});
 
@@ -304,6 +313,39 @@
         if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_last","n_phone","n_pos","n_pospw","n_crew","n_role","n_rate","n_ot"].forEach(function(i){document.getElementById(i).value="";}); load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add employee"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
+
+  // Reconcile the roster against QuickBooks. Read-only: it never changes QBO.
+  function qboGroup(title, names, color, note){
+    if(!names.length) return "";
+    var rows=names.map(function(x){ return "<li style='padding:3px 0'>"+esc(typeof x==="string"?x:(x.app+"  →  "+x.qbo))+"</li>"; }).join("");
+    return "<div style='margin-top:10px'><div style='font-weight:600;color:"+color+";font-size:.9rem'>"+esc(title)+" ("+names.length+")</div>"+
+      (note?"<div style='font-size:.8rem;color:var(--muted);margin:1px 0 3px'>"+esc(note)+"</div>":"")+
+      "<ul style='list-style:none;margin:4px 0 0;font-size:.9rem'>"+rows+"</ul></div>";
+  }
+  function reconcileQbo(){
+    var b=document.getElementById("qboBtn"), m=document.getElementById("qbo_msg"), out=document.getElementById("qbo_out");
+    m.className="msg"; out.innerHTML="";
+    if(!CLIENT_ID){ m.className="msg err"; m.textContent="Pick a location first."; return; }
+    b.disabled=true; b.textContent="Checking…"; m.style.color="var(--muted)"; m.textContent="Reading QuickBooks…";
+    fetch("/api/qbo/reconcile?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      b.disabled=false; b.textContent="Check against QuickBooks";
+      if(!d||!d.ok){
+        m.className="msg err";
+        m.innerHTML=(d&&d.error)||"Couldn't check.";
+        if(d&&/not connected/i.test(d.error||"")) m.innerHTML="QuickBooks isn't connected. Connect it in <a href='/admin' style='color:#8a3d1c'>Admin</a> first.";
+        return;
+      }
+      var c=d.counts;
+      m.className="msg"; m.style.color="var(--muted)";
+      m.textContent=c.matched+" matched · "+c.appOnly+" only in app · "+c.qboOnly+" only in QuickBooks"+(c.possible?(" · "+c.possible+" to review"):"");
+      out.innerHTML =
+        qboGroup("In both", d.matched, "var(--green-deep)") +
+        qboGroup("Review: likely the same person, spelled differently", d.possible, "#8a5a12", "Same last name, different first/spelling. Fix one side so they match.") +
+        qboGroup("In the app, not in QuickBooks", d.appOnly, "#8a3d1c", "Add these people in QuickBooks (payroll employees are created there, not from the app).") +
+        qboGroup("In QuickBooks, not in the app", d.qboOnly, "var(--muted)", "Add to the roster above, or ignore if they don't work this location.") ||
+        "<div style='color:var(--green-deep);font-size:.9rem'>Everything lines up.</div>";
+    }).catch(function(){ b.disabled=false; b.textContent="Check against QuickBooks"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
 </script>
 <script src="/whoami-badge.js"></script>

@@ -176,6 +176,11 @@ export default {
     if (url.pathname === "/api/google/callback" && request.method === "GET") return googleCallback(request, env);
     if (url.pathname === "/api/google/disconnect" && request.method === "POST") return googleDisconnect(request, env);
     if (url.pathname === "/api/gmail/draft" && request.method === "POST") return gmailCreateDraft(request, env);
+    if (url.pathname === "/api/qbo/status" && request.method === "GET") return qboStatus(request, env);
+    if (url.pathname === "/api/qbo/connect" && request.method === "GET") return qboConnect(request, env);
+    if (url.pathname === "/api/qbo/callback" && request.method === "GET") return qboCallback(request, env);
+    if (url.pathname === "/api/qbo/disconnect" && request.method === "POST") return qboDisconnect(request, env);
+    if (url.pathname === "/api/qbo/reconcile" && request.method === "GET") return qboReconcile(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "GET") return listEmployees(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
@@ -1179,6 +1184,192 @@ async function getGoogleAccessToken(env) {
     await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.google`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify({ access_token: tok.access_token, expires_at, updated_at: new Date().toISOString() }) });
     return tok.access_token;
   } catch { return null; }
+}
+
+/* ===================== QuickBooks Online (OAuth, read-only) ===================== */
+// One org-wide QuickBooks connection, stored in app_oauth (provider 'qbo') with
+// the company id in realm_id. Used READ-ONLY to reconcile the roster against the
+// QBO employee list. Needs QBO_CLIENT_ID and QBO_CLIENT_SECRET as Cloudflare
+// Worker secrets. Scope is accounting (the Employee entity); creating payroll
+// employees is not available to third parties through the Intuit API, so the app
+// flags who to add and you add them in QuickBooks.
+const QBO_SCOPES = "com.intuit.quickbooks.accounting";
+const QBO_API_BASE = "https://quickbooks.api.intuit.com";
+function qboRedirectUri(request) { return new URL(request.url).origin + "/api/qbo/callback"; }
+function qboBasicAuth(env) { return "Basic " + btoa(env.QBO_CLIENT_ID + ":" + env.QBO_CLIENT_SECRET); }
+
+async function qboStatus(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const configured = !!(env.QBO_CLIENT_ID && env.QBO_CLIENT_SECRET);
+  let connected = false, realmId = "";
+  if (configured) {
+    const rows = await sbSelect(env, "app_oauth?provider=eq.qbo&select=refresh_token,realm_id");
+    const row = rows && rows[0];
+    connected = !!(row && row.refresh_token && row.realm_id); realmId = (row && row.realm_id) || "";
+  }
+  return noStore({ ok: true, configured, connected, realmId });
+}
+
+async function qboConnect(request, env) {
+  if (!(await requireMaster(request, env))) return new Response("Master only.", { status: 403 });
+  if (!env.QBO_CLIENT_ID || !env.QBO_CLIENT_SECRET) return new Response("QuickBooks is not configured. Add QBO_CLIENT_ID and QBO_CLIENT_SECRET in Cloudflare.", { status: 503 });
+  const state = randomToken();
+  const u = new URL("https://appcenter.intuit.com/connect/oauth2");
+  u.searchParams.set("client_id", env.QBO_CLIENT_ID);
+  u.searchParams.set("redirect_uri", qboRedirectUri(request));
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("scope", QBO_SCOPES);
+  u.searchParams.set("state", state);
+  return new Response(null, { status: 302, headers: { Location: u.toString(), "Set-Cookie": `rw_qoauth=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600` } });
+}
+
+async function qboCallback(request, env) {
+  const master = await requireMaster(request, env);
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code") || "";
+  const state = url.searchParams.get("state") || "";
+  const realmId = url.searchParams.get("realmId") || "";
+  const cookieState = getCookie(request, "rw_qoauth") || "";
+  const back = (msg) => new Response(null, { status: 302, headers: { Location: "/admin?qbo=" + msg, "Set-Cookie": "rw_qoauth=; Path=/; Max-Age=0" } });
+  if (!master) return new Response("Master only.", { status: 403 });
+  if (!code || !state || state !== cookieState || !realmId) return back("error");
+  let tok;
+  try {
+    const r = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", Accept: "application/json", Authorization: qboBasicAuth(env) },
+      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: qboRedirectUri(request) }),
+    });
+    tok = await r.json();
+    if (!r.ok || !tok.access_token || !tok.refresh_token) return back("error");
+  } catch { return back("error"); }
+  const expires_at = new Date(Date.now() + ((tok.expires_in || 3600) - 60) * 1000).toISOString();
+  const patch = { provider: "qbo", realm_id: realmId, access_token: tok.access_token, refresh_token: tok.refresh_token, expires_at, updated_at: new Date().toISOString() };
+  const existing = await sbSelect(env, "app_oauth?provider=eq.qbo&select=provider");
+  if (existing && existing.length) {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.qbo`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
+  } else {
+    await sbInsert(env, "app_oauth", patch);
+  }
+  return back("connected");
+}
+
+async function qboDisconnect(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.qbo`, { method: "DELETE", headers: sbHeaders(env) });
+  return json({ ok: true });
+}
+
+// Fresh access token plus the realm id. Intuit rotates the refresh token on every
+// refresh, so the new one is stored back. Returns null when not connected.
+async function getQboAuth(env) {
+  if (!env.QBO_CLIENT_ID || !env.QBO_CLIENT_SECRET) return null;
+  const rows = await sbSelect(env, "app_oauth?provider=eq.qbo&select=access_token,refresh_token,expires_at,realm_id");
+  const row = rows && rows[0];
+  if (!row || !row.refresh_token || !row.realm_id) return null;
+  if (row.access_token && row.expires_at && new Date(row.expires_at).getTime() > Date.now() + 30000) {
+    return { token: row.access_token, realmId: row.realm_id };
+  }
+  try {
+    const r = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", Accept: "application/json", Authorization: qboBasicAuth(env) },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: row.refresh_token }),
+    });
+    const tok = await r.json();
+    if (!r.ok || !tok.access_token) return null;
+    const expires_at = new Date(Date.now() + ((tok.expires_in || 3600) - 60) * 1000).toISOString();
+    const patch = { access_token: tok.access_token, expires_at, updated_at: new Date().toISOString() };
+    if (tok.refresh_token) patch.refresh_token = tok.refresh_token;
+    await fetch(`${env.SUPABASE_URL}/rest/v1/app_oauth?provider=eq.qbo`, { method: "PATCH", headers: sbHeaders(env, { Prefer: "return=minimal" }), body: JSON.stringify(patch) });
+    return { token: tok.access_token, realmId: row.realm_id };
+  } catch { return null; }
+}
+
+// Pull the QBO employee list via the Accounting query API. Returns an array of
+// { first, last, display, active } or null on failure.
+async function qboFetchEmployees(env, auth) {
+  const out = [];
+  let start = 1; const page = 100;
+  for (let guard = 0; guard < 20; guard++) {
+    const q = `select * from Employee startposition ${start} maxresults ${page}`;
+    const u = `${QBO_API_BASE}/v3/company/${auth.realmId}/query?query=${encodeURIComponent(q)}&minorversion=70`;
+    let r;
+    try { r = await fetch(u, { headers: { Authorization: "Bearer " + auth.token, Accept: "application/json" } }); }
+    catch { return null; }
+    if (!r.ok) return null;
+    let data; try { data = await r.json(); } catch { return null; }
+    const list = (data && data.QueryResponse && data.QueryResponse.Employee) || [];
+    list.forEach((e) => out.push({
+      first: (e.GivenName || "").trim(), last: (e.FamilyName || "").trim(),
+      display: (e.DisplayName || "").trim(), active: e.Active !== false,
+    }));
+    if (list.length < page) break;
+    start += page;
+  }
+  return out;
+}
+
+// Normalize a name to a comparison key: lowercase, letters only, "first last".
+function nmeKey(first, last) {
+  const s = ((first || "") + " " + (last || "")).toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  return s.split(" ").sort().join(" "); // order-independent so "first last" == "last first"
+}
+function lastKey(last) { return (last || "").toLowerCase().replace(/[^a-z]/g, ""); }
+// Split a payroll name like "Alam, Mohammed" into { first, last }.
+function splitPayroll(p) {
+  p = (p || "").trim(); if (!p) return null;
+  if (p.indexOf(",") >= 0) { const a = p.split(","); return { last: a[0].trim(), first: (a[1] || "").trim() }; }
+  const a = p.split(/\s+/); return a.length > 1 ? { first: a.slice(0, -1).join(" "), last: a[a.length - 1] } : { first: p, last: "" };
+}
+
+// Reconcile the app roster for a client against the QBO employee list. Reports
+// who is in both, who is only in the app (add them in QBO), who is only in QBO,
+// and likely same-person matches whose names are spelled differently.
+async function qboReconcile(url, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  const auth = await getQboAuth(env);
+  if (!auth) return json({ ok: false, error: "QuickBooks is not connected." }, 409);
+  const clientId = url.searchParams.get("clientId") || "";
+  if (!clientId || !sbReady(env)) return json({ ok: false, error: "Pick a location first." }, 400);
+
+  const qboEmps = await qboFetchEmployees(env, auth);
+  if (qboEmps === null) return json({ ok: false, error: "Couldn't read QuickBooks. Reconnect and try again." }, 502);
+
+  let rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=name,last_name,payroll_name,active&order=sort.asc`);
+  if (rows === null) rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=name,payroll_name,active&order=sort.asc`);
+  const appEmps = (rows || []).filter((e) => e.active !== false).map((e) => {
+    const pr = splitPayroll(e.payroll_name);
+    const first = e.name || (pr && pr.first) || "";
+    const last = (e.last_name || "").trim() || (pr && pr.last) || "";
+    return { name: ((first + " " + last).trim()) || (e.payroll_name || ""), first, last };
+  }).filter((e) => e.name);
+
+  // Index QBO by full-name key and by last-name key.
+  const qboByKey = {}, qboByLast = {};
+  const qboLeft = qboEmps.filter((q) => q.active).map((q, i) => ({ ...q, _i: i, used: false }));
+  qboLeft.forEach((q) => {
+    const k = nmeKey(q.first, q.last) || nmeKey(q.display, "");
+    (qboByKey[k] = qboByKey[k] || []).push(q);
+    const lk = lastKey(q.last) || lastKey((q.display.split(/\s+/).pop()) || "");
+    if (lk) (qboByLast[lk] = qboByLast[lk] || []).push(q);
+  });
+
+  const matched = [], possible = [], appOnly = [];
+  appEmps.forEach((a) => {
+    const k = nmeKey(a.first, a.last);
+    const exact = (qboByKey[k] || []).find((q) => !q.used);
+    if (exact) { exact.used = true; matched.push({ app: a.name, qbo: (exact.display || (exact.first + " " + exact.last)).trim() }); return; }
+    const lk = lastKey(a.last);
+    const near = lk && (qboByLast[lk] || []).find((q) => !q.used);
+    if (near) { near.used = true; possible.push({ app: a.name, qbo: (near.display || (near.first + " " + near.last)).trim() }); return; }
+    appOnly.push(a.name);
+  });
+  const qboOnly = qboLeft.filter((q) => !q.used).map((q) => (q.display || (q.first + " " + q.last)).trim()).filter(Boolean);
+
+  return noStore({
+    ok: true,
+    counts: { app: appEmps.length, qbo: qboLeft.length, matched: matched.length, possible: possible.length, appOnly: appOnly.length, qboOnly: qboOnly.length },
+    matched, possible, appOnly, qboOnly,
+  });
 }
 
 // UTF-8 safe base64url (for the raw RFC822 message).

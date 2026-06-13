@@ -92,6 +92,24 @@ Change the passwords from **Account** (footer link in the hub) after first sign-
 
 ---
 
+## QuickBooks (optional, read-only roster reconcile)
+
+Lets the employee setup page check the roster against your QuickBooks employees.
+It is read-only: the app never changes QuickBooks, and it does not create payroll
+employees (Intuit does not allow third parties to do that by API, so you add new
+people in QuickBooks by hand).
+
+1. In Supabase, run `supabase/qbo_oauth.sql` once.
+2. At the Intuit developer dashboard (developer.intuit.com), open your app, set the
+   redirect URI to `https://app.ringwood.ai/api/qbo/callback`, and copy the
+   **Client ID** and **Client Secret** (use the Production keys for live data).
+3. In Cloudflare → ringwood-site → Settings → Variables, add two secrets:
+   `QBO_CLIENT_ID` and `QBO_CLIENT_SECRET`.
+4. Reload **Admin**, click **Connect QuickBooks**, and approve. Then open
+   **Employee setup** and use **Check against QuickBooks**.
+
+---
+
 ## GitHub / deploys
 
 - The repo auto-deploys: a push to `main` builds and ships the Worker.
