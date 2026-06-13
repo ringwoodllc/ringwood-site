@@ -134,12 +134,13 @@
     if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood Holding LLC."); lines.push(""); }
     lines.push("Thank you,");
     lines.push("Ringwood Holding LLC");
-    var href = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
-    if(!to){
-      var note=document.getElementById("sendNote");
-      if(note){ note.textContent="No email on file for "+(b.ticket.client||"this client")+". Opening a blank draft — add their address, or set it in client setup."; note.style.display="block"; }
-    }
-    window.location.href = href;
+    var note=document.getElementById("sendNote");
+    if(note){ note.style.display="block"; note.textContent = to
+      ? "Opening a Gmail draft for "+(b.ticket.client||"the client")+", ready to review and send."
+      : "No email on file for "+(b.ticket.client||"this client")+". Opening a blank Gmail draft — add their address, or set it in client setup."; }
+    // Open a Gmail compose window with the estimate/invoice filled in (a draft).
+    var url = "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(to) + "&su=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
+    window.open(url, "_blank");
   }
   document.getElementById("seg_internal").addEventListener("click", function(){ setMode("internal"); });
   document.getElementById("seg_client").addEventListener("click", function(){ setMode("client"); });

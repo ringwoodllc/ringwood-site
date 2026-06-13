@@ -171,10 +171,18 @@
     lines.push(""); lines.push(INSTR||"");
     if(t.photos && t.photos.length){ lines.push(""); lines.push("Photos of the job are attached (or available on request)."); }
     lines.push(""); lines.push("Thank you,"); lines.push("Ringwood Holding LLC"); if(CONTACT) lines.push(CONTACT);
-    var href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(lines.join("\n"));
+    var body=lines.join("\n");
+    var vendor=(RFQ.vendors||[]).filter(function(v){return v.email===to;})[0];
     var note=document.getElementById("sendNote");
-    if(note){ note.style.display="block"; note.textContent = (t.photos&&t.photos.length) ? "Opening your email. Attach the PDF (Print / Save PDF) so the vendor gets the photos." : "Opening your email, ready to send."; }
-    window.location.href=href;
+    // Pre-create a pending quote for this vendor on the ticket, so you can fill
+    // in their price when they reply.
+    if(vendor){
+      fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:ID, vendor:vendor.name })}).catch(function(){});
+    }
+    if(note){ note.style.display="block"; note.textContent=(vendor?("Added a pending quote for "+vendor.name+" on the ticket. "):"")+"Opening a Gmail draft"+((t.photos&&t.photos.length)?" — attach the PDF (Print / Save PDF) so the vendor gets the photos.":"."); }
+    // Open a Gmail compose window with everything filled in (a ready draft).
+    var url="https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(to)+"&su="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+    window.open(url,"_blank");
   }
 </script>
 </body>
