@@ -72,6 +72,8 @@
       <button class="nb" id="nextW" type="button">Next ›</button>
       <button class="nb" id="thisW" type="button">This week</button>
       <button class="btn ghost" id="copyW" type="button">Copy previous week →</button>
+      <button class="btn" id="scanW" type="button">📷 Scan schedule</button>
+      <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
     </div>
     <div id="setupNote" class="note" style="display:none"></div>
     <div class="msg" id="msg"></div>
@@ -97,8 +99,28 @@
     document.getElementById("nextW").addEventListener("click",function(){ START=addDays(START,7); load(); });
     document.getElementById("thisW").addEventListener("click",function(){ START=sundayOf(new Date()); load(); });
     document.getElementById("copyW").addEventListener("click", copyPrev);
+    document.getElementById("scanW").addEventListener("click",function(){ var fi=document.getElementById("scanFile"); if(fi) fi.click(); });
+    document.getElementById("scanFile").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
     loadClients();
   }).catch(function(){});
+
+  function fileToScaledBase64(file){
+    return new Promise(function(res){
+      if(/pdf/i.test(file.type||"")){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res({base64:b>=0?d.slice(b+1):d, contentType:"application/pdf"}); }; r.onerror=function(){res(null);}; r.readAsDataURL(file); return; }
+      var img=new Image(); img.onload=function(){ var max=2000, s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight)); var w=Math.max(1,Math.round(img.naturalWidth*s)), h=Math.max(1,Math.round(img.naturalHeight*s)); var c=document.createElement("canvas"); c.width=w; c.height=h; c.getContext("2d").drawImage(img,0,0,w,h); res({base64:c.toDataURL("image/jpeg",0.85).split(",")[1]||"", contentType:"image/jpeg"}); }; img.onerror=function(){res(null);}; img.src=URL.createObjectURL(file);
+    });
+  }
+  function scanSchedulePhoto(file){
+    if(!file||!CLIENT_ID) return;
+    var m=document.getElementById("msg"); m.className="msg"; m.style.color="var(--muted)"; m.textContent="Reading the schedule into "+document.getElementById("range").textContent+"…";
+    var b=document.getElementById("scanW"); b.disabled=true;
+    fileToScaledBase64(file).then(function(p){ if(!p) throw new Error("Couldn't read the file.");
+      return fetch("/api/schedule/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, start:ymd(START), base64:p.base64, contentType:p.contentType})});
+    }).then(function(r){return r.json();}).then(function(d){ b.disabled=false;
+      if(d&&d.ok){ m.className="msg ok"; m.textContent="Imported "+d.shifts+" shift"+(d.shifts===1?"":"s")+" into this week."+((d.unmatched&&d.unmatched.length)?(" Not matched to the roster: "+d.unmatched.join(", ")+"."):""); load(); }
+      else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't read that."; }
+    }).catch(function(e){ b.disabled=false; m.className="msg err"; m.textContent=(e&&e.message)||"Couldn't reach the server."; });
+  }
 
   function loadClients(){
     fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){

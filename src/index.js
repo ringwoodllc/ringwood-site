@@ -183,6 +183,7 @@ export default {
     if (url.pathname === "/api/schedule" && request.method === "GET") return getSchedule(url, env, session);
     if (url.pathname === "/api/schedule/shift" && request.method === "POST") return saveScheduleShift(request, env, session);
     if (url.pathname === "/api/schedule/copy" && request.method === "POST") return copyScheduleWeek(request, env, session);
+    if (url.pathname === "/api/schedule/scan" && request.method === "POST") return scanSchedule(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
@@ -837,7 +838,7 @@ async function scanEmployees(request, env, session) {
   const prompt =
     "You are reading either a single ID / passport / driver's license (one person), or a roster / list / spreadsheet of food-service employees (many people). Extract every person you can see. For each:\n" +
     "- name: the person's everyday first name (or the name on the ID). This is the 'Name' column.\n" +
-    "- payrollName: the full legal name as payroll would show it (for example 'Chowdhury, Dilara' or 'Dilara Chowdhury') if visible, else empty.\n" +
+    "- payrollName: the person's full legal name as First then Last (for example 'Dilara Chowdhury'). If the sheet shows 'Last, First', return it as 'First Last'. Empty if not visible.\n" +
     "- posKey: the SHORT POS number / login key / 'Short pin' / 'POS #', usually 3 to 5 digits (e.g. 8011), if shown, else empty.\n" +
     "- posPassword: the LONGER 'Full pin' / 'POS password' number (e.g. 3625388011) if a distinct column is shown, else empty. Never put the short posKey here.\n" +
     "- crewNo: the crew label from 'System ID' / 'POS Name' / 'Crew #' (e.g. 'Crew 3'), else empty.\n" +
@@ -863,6 +864,9 @@ async function scanEmployees(request, env, session) {
   } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
   list = list.slice(0, 200);
   const c = (v) => (v == null ? "" : v.toString().trim());
+  // "Last, First" -> "First Last"; format a 10-digit phone the Ringwood way.
+  const firstLast = (s) => { s = c(s); if (!s) return ""; if (s.indexOf(",") >= 0) { const p = s.split(","); return (c(p[1]) + " " + c(p[0])).trim(); } return s; };
+  const fmtPhoneSrv = (s) => { let d = c(s).replace(/\D/g, ""); if (d.length > 10 && d[0] === "1") d = d.slice(1); if (d.length === 10) return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); return c(s); };
   let added = 0;
   for (const e of list) {
     const name = c(e.name).slice(0, 120);
@@ -870,12 +874,12 @@ async function scanEmployees(request, env, session) {
     const rn = Number(e.rate);
     const row = {
       client_id: clientId, name, active: e.active === false ? false : true,
-      payroll_name: c(e.payrollName).slice(0, 160) || null,
+      payroll_name: firstLast(e.payrollName).slice(0, 160) || null,
       pos_key: c(e.posKey).slice(0, 40) || null,
       pos_password: c(e.posPassword).slice(0, 60) || null,
       crew_no: c(e.crewNo).slice(0, 40) || null,
       role: c(e.role).slice(0, 120) || null,
-      phone: c(e.phone).slice(0, 40) || null,
+      phone: fmtPhoneSrv(e.phone).slice(0, 40) || null,
       rate: !isNaN(rn) && rn > 0 ? rn : null,
     };
     let res = await sbInsert(env, "employees", row);
@@ -955,6 +959,70 @@ async function copyScheduleWeek(request, env, session) {
     copied++;
   }
   return json({ ok: true, copied });
+}
+
+// AI: read a photo of a weekly schedule (Sun..Sat columns, employee rows with
+// In/Out per day) and fill the selected week's grid, matching rows to the
+// roster by name.
+async function scanSchedule(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const start = (body.start || "").toString().trim();
+  const base64 = (body.base64 || "").toString();
+  if (!clientId || !start) return json({ ok: false, error: "Pick a location and week." }, 400);
+  if (!base64) return json({ ok: false, error: "No photo to read." }, 400);
+  const ct = (body.contentType || "image/jpeg").toString();
+  const isPdf = ct.indexOf("pdf") >= 0;
+  const src = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
+  const blk = isPdf ? { type: "document", source: src } : { type: "image", source: src };
+  const prompt =
+    "You are reading a weekly employee work schedule. The columns are the seven days Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday (in that order). Each row is one employee. For each employee return:\n" +
+    "- name: the employee's name exactly as written in the name column.\n" +
+    "- days: an array of exactly 7 objects, one per day Sunday..Saturday in order. Each object has 'in' and 'out' as 24-hour times 'HH:MM' (e.g. '05:00', '14:00', '21:00'). If the employee is off that day, use empty strings for both.\n" +
+    "Convert any AM/PM times to 24-hour HH:MM. Read only what is visible; do not invent shifts.";
+  const dayObj = { type: "object", properties: { in: { type: "string" }, out: { type: "string" } }, required: ["in", "out"], additionalProperties: false };
+  const schema = { type: "object", properties: { rows: { type: "array", items: { type: "object", properties: { name: { type: "string" }, days: { type: "array", items: dayObj } }, required: ["name", "days"], additionalProperties: false } } }, required: ["rows"], additionalProperties: false };
+  let rows = [];
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 6000, messages: [{ role: "user", content: [blk, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that schedule." }, 502);
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return json({ ok: false, error: "The assistant couldn't read that schedule." }, 502);
+    let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read that." }, 502); }
+    rows = Array.isArray(out.rows) ? out.rows : [];
+  } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
+  // Match rows to employees by name (case-insensitive).
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name`);
+  if (emps === null) return json({ ok: false, error: "No employees here yet — add them first." }, 400);
+  const byName = {};
+  (emps || []).forEach((e) => { byName[(e.name || "").trim().toLowerCase()] = e.id; });
+  const t = (v) => (v == null ? "" : v.toString().trim());
+  let shifts = 0; const unmatched = [];
+  for (const r of rows) {
+    const nm = t(r.name); const empId = byName[nm.toLowerCase()];
+    if (!empId) { if (nm) unmatched.push(nm); continue; }
+    const days = Array.isArray(r.days) ? r.days : [];
+    for (let i = 0; i < 7 && i < days.length; i++) {
+      const inT = t(days[i] && days[i].in) || null, outT = t(days[i] && days[i].out) || null;
+      if (!inT && !outT) continue;
+      const date = addDaysYmd(start, i);
+      const ex = await sbSelect(env, `schedule_shifts?employee_id=eq.${empId}&work_date=eq.${date}&select=id`);
+      if (ex === null) return json({ ok: false, error: "Run supabase/schedule_shifts.sql once." }, 502);
+      if (ex && ex[0]) await sbUpdate(env, "schedule_shifts", ex[0].id, { in_time: inT, out_time: outT });
+      else await sbInsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT });
+      shifts++;
+    }
+  }
+  return json({ ok: true, shifts, unmatched });
 }
 
 /* ===================== Google / Gmail (OAuth) ===================== */

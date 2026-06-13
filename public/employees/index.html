@@ -40,7 +40,7 @@
   .csum:hover{background:rgba(33,68,58,.04)}
   .nm{font-weight:600;color:var(--green-deep)}
   .cs{color:var(--muted);font-size:.84rem;margin-top:2px}
-  .key{font-family:ui-monospace,monospace;background:#e3efe7;color:var(--green-deep);border-radius:5px;padding:2px 8px;font-size:.82rem;font-weight:700}
+  .key{font-family:ui-monospace,monospace;background:#e7e0d0;border-radius:5px;padding:2px 8px;font-size:.82rem;font-weight:700}
   .caret{color:var(--muted);font-size:1.1rem;transition:transform .15s}
   .citem.open .caret{transform:rotate(90deg)}
   .cbody{padding:14px 15px 16px;border-top:1px solid var(--line);display:none}
@@ -83,7 +83,7 @@
     <h2>Add an employee</h2>
     <div class="panel">
       <div class="row2">
-        <div class="field"><label>Name</label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Sheuli" /></div>
+        <div class="field"><label>Name <span style="font-weight:400;color:var(--muted)">— nickname</span></label><input id="n_name" type="text" autocomplete="off" placeholder="e.g. Sheuli" /></div>
         <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
       </div>
       <div class="row2">
@@ -91,8 +91,8 @@
         <div class="field"><label>POS password</label><input id="n_pospw" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 3625388011" /></div>
       </div>
       <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
-      <div class="field"><label>Payroll name <span style="font-weight:400;color:var(--muted)">— as it reads in payroll</span></label><input id="n_payroll" type="text" autocomplete="off" placeholder="e.g. Akhter, Sheuli" /></div>
-      <div class="field"><label>Role / privilege</label><input id="n_role" type="text" autocomplete="off" placeholder="e.g. Crew Plus / DD Shift" /></div>
+      <div class="field"><label>Payroll name <span style="font-weight:400;color:var(--muted)">— first &amp; last</span></label><input id="n_payroll" type="text" autocomplete="off" placeholder="e.g. Sheuli Akhter" /></div>
+      <div class="field"><label>Role / privilege</label><select id="n_role"></select></div>
       <div class="row2">
         <div class="field"><label>Rate ($/hr)</label><input id="n_rate" type="number" min="0" step="0.01" autocomplete="off" placeholder="e.g. 16.00" /></div>
         <div class="field"><label>OT rate ($/hr)</label><input id="n_ot" type="number" min="0" step="0.01" autocomplete="off" placeholder="optional" /></div>
@@ -102,6 +102,10 @@
     </div>
 
     <h2 id="rosterHead">Roster</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: Nickname A–Z</option><option value="last">Sort: Last name A–Z</option></select>
+      <select id="filt" style="width:auto;min-width:120px"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select>
+    </div>
     <div id="list"><div class="lead">Loading…</div></div>
   </div>
 </main>
@@ -110,8 +114,28 @@
   function ukey(id){ return (id||"").toString().replace(/[^a-zA-Z0-9]/g,""); }
   function fmtPhone(v){ var d=(v||"").replace(/\D/g,""); if(d.length>10&&d[0]==="1")d=d.slice(1); d=d.slice(0,10); if(d.length>6)return "("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6); if(d.length>3)return "("+d.slice(0,3)+") "+d.slice(3); if(d.length>0)return "("+d.slice(0,3); return v||""; }
   function phoneInput(el){ if(el) el.addEventListener("input",function(){ el.value=fmtPhone(el.value); }); }
+  // POS number: dim the standard 362538 prefix, show the short part in the accent
+  // color so it's easy to spot. If the prefix isn't there, the whole number is accent.
+  var POS_STD="362538";
+  function posChip(num){ num=(num||"").toString(); if(!num) return ""; var html; if(num.indexOf(POS_STD)===0 && num.length>POS_STD.length){ html="<span style='color:var(--muted);font-weight:600'>"+esc(POS_STD)+"</span><span style='color:var(--green-deep);font-weight:800'>"+esc(num.slice(POS_STD.length))+"</span>"; } else { html="<span style='color:var(--green-deep);font-weight:800'>"+esc(num)+"</span>"; } return "<span class='key'>"+html+"</span> "; }
+  // Roles: a small managed list per location (kept in this browser), merged with
+  // whatever roles are already in use. Typically just a few.
+  function roleKey(){ return "rw_roles:"+CLIENT_ID; }
+  function clientRoles(){ var set={}; try{ (JSON.parse(localStorage.getItem(roleKey())||"[]")||[]).forEach(function(r){ if(r) set[r]=1; }); }catch(e){} EMP.forEach(function(e){ if(e.role) set[e.role]=1; }); return Object.keys(set).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());}); }
+  function saveRole(name){ name=(name||"").trim(); if(!name) return; var arr=clientRoles(); if(arr.indexOf(name)<0) arr.push(name); try{ localStorage.setItem(roleKey(), JSON.stringify(arr)); }catch(e){} }
+  function removeRole(name){ var arr=clientRoles().filter(function(r){return r!==name;}); try{ localStorage.setItem(roleKey(), JSON.stringify(arr)); }catch(e){} }
+  function fillRoleSelect(sel, selected){
+    if(!sel) return;
+    var roles=clientRoles();
+    var opts="<option value=''>— none —</option>"+roles.map(function(r){ return "<option"+(r===selected?" selected":"")+">"+esc(r)+"</option>"; }).join("");
+    if(selected && roles.indexOf(selected)<0) opts="<option value=''>— none —</option><option selected>"+esc(selected)+"</option>"+roles.map(function(r){ return "<option>"+esc(r)+"</option>"; }).join("");
+    opts+="<option value='__new'>+ New role…</option>";
+    sel.innerHTML=opts;
+    sel.onchange=function(){ if(sel.value==="__new"){ var nm=(prompt("New role / privilege (e.g. Crew Plus / DD Shift):")||"").trim(); if(nm){ saveRole(nm); fillRoleSelect(sel, nm); } else { sel.value=selected||""; } } };
+  }
+  function lastName(e){ var src=((e.payrollName||"").trim())||(e.name||""); var p=src.split(/\s+/); return p[p.length-1]||""; }
 
-  var CLIENT_ID="", EMP=[];
+  var CLIENT_ID="", EMP=[], SORT="nick", FILT="active";
   var CKEY="rw_emp_client";
 
   function labAllowed(d){ return d && d.ok && (d.role==="master" || (d.perms && d.perms.foodSafety==="edit")); }
@@ -122,6 +146,8 @@
     document.getElementById("n_add").addEventListener("click", addEmployee);
     var sb=document.getElementById("scanBtn"); if(sb) sb.addEventListener("click",function(){ var fi=document.getElementById("scanFile"); if(fi) fi.click(); });
     var sf=document.getElementById("scanFile"); if(sf) sf.addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanRoster(f); });
+    document.getElementById("sortBy").addEventListener("change",function(){ SORT=this.value; render(); });
+    document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     loadClients();
   }).catch(function(){});
 
@@ -167,28 +193,35 @@
     }).catch(function(){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
+  function viewList(){
+    var list=EMP.filter(function(e){ return FILT==="all"?true:(FILT==="active"?e.active:!e.active); });
+    list.sort(function(a,b){ return SORT==="last" ? lastName(a).toLowerCase().localeCompare(lastName(b).toLowerCase()) : (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); });
+    return list;
+  }
   function render(){
     document.getElementById("rosterHead").textContent="Roster ("+EMP.length+")";
     var el=document.getElementById("list");
+    var nrole=document.getElementById("n_role"); if(nrole) fillRoleSelect(nrole, nrole.value);
     if(!EMP.length){ el.innerHTML="<div class='empty'>No employees yet. Add the first above.</div>"; return; }
-    el.innerHTML=EMP.map(renderItem).join("");
-    EMP.forEach(wire);
+    var list=viewList();
+    el.innerHTML = list.length ? list.map(renderItem).join("") : "<div class='empty'>None match this filter.</div>";
+    list.forEach(wire);
   }
   function renderItem(e){
     var k=ukey(e.id);
-    var sub=[e.crewNo,e.role,e.phone].filter(Boolean).map(esc).join(" · ")||"No details yet";
+    var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
-        "<div>"+(e.posKey?("<span class='key'>"+esc(e.posKey)+"</span> "):"")+"<span class='nm'>"+esc(e.name)+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
+        "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(e.name)+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
         "<span class='caret'>›</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
-        "<div class='row2'><div class='field'><label>Name</label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
-        "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(e.phone)+"'/></div></div>"+
+        "<div class='row2'><div class='field'><label>Name <span style='font-weight:400;color:var(--muted)'>— nickname</span></label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
+        "<div class='field'><label>Phone</label><input id='ph_"+k+"' type='tel' value='"+esc(fmtPhone(e.phone))+"'/></div></div>"+
         "<div class='row2'><div class='field'><label>POS # / key</label><input id='ps_"+k+"' inputmode='numeric' value='"+esc(e.posKey)+"'/></div>"+
         "<div class='field'><label>POS password</label><input id='pw_"+k+"' inputmode='numeric' value='"+esc(e.posPassword)+"'/></div></div>"+
         "<div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
-        "<div class='field'><label>Payroll name</label><input id='py_"+k+"' value='"+esc(e.payrollName)+"'/></div>"+
-        "<div class='field'><label>Role / privilege</label><input id='rl_"+k+"' value='"+esc(e.role)+"'/></div>"+
+        "<div class='field'><label>Payroll name <span style='font-weight:400;color:var(--muted)'>— first &amp; last</span></label><input id='py_"+k+"' value='"+esc(e.payrollName)+"'/></div>"+
+        "<div class='field'><label>Role / privilege</label><select id='rl_"+k+"'></select></div>"+
         "<div class='row2'><div class='field'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
         "<div class='field'><label>OT rate ($/hr)</label><input id='ot_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.otRate)+"'/></div></div>"+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
@@ -201,6 +234,7 @@
   function wire(e){
     var k=ukey(e.id);
     phoneInput(document.getElementById("ph_"+k));
+    fillRoleSelect(document.getElementById("rl_"+k), e.role);
     document.getElementById("sv_"+k).addEventListener("click", function(){
       var b=this, m=document.getElementById("m_"+k); m.className="msg";
       var name=document.getElementById("nm_"+k).value.trim();
