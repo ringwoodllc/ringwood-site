@@ -857,6 +857,12 @@ function rfc2047(s) {
   let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return "=?UTF-8?B?" + btoa(bin) + "?=";
 }
+// Standard (not url-safe) base64 of UTF-8 text, for MIME part bodies.
+function b64stdUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
 
 async function gmailCreateDraft(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
@@ -865,14 +871,44 @@ async function gmailCreateDraft(request, env) {
   const to = (body.to || "").toString().trim();
   const subject = (body.subject || "").toString();
   const text = (body.body || "").toString();
+  const att = body.attachment && body.attachment.base64 ? body.attachment : null;
   const token = await getGoogleAccessToken(env);
   if (!token) return json({ ok: false, error: "Gmail is not connected." }, 409);
-  const headers = [];
-  if (to) headers.push("To: " + to);
-  headers.push("Subject: " + rfc2047(subject));
-  headers.push("MIME-Version: 1.0");
-  headers.push("Content-Type: text/plain; charset=UTF-8");
-  const raw = headers.join("\r\n") + "\r\n\r\n" + text;
+  let raw;
+  if (att) {
+    // multipart/mixed: a text part plus the (PDF) attachment, both base64.
+    const boundary = "rwb_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const attB64 = (att.base64 || "").replace(/\s+/g, "");
+    const attWrapped = (attB64.match(/.{1,76}/g) || []).join("\r\n");
+    const textWrapped = (b64stdUtf8(text).match(/.{1,76}/g) || []).join("\r\n");
+    const fn = (att.filename || "document.pdf").replace(/["\r\n]/g, "");
+    const lines = [];
+    if (to) lines.push("To: " + to);
+    lines.push("Subject: " + rfc2047(subject));
+    lines.push("MIME-Version: 1.0");
+    lines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+    lines.push("");
+    lines.push("--" + boundary);
+    lines.push("Content-Type: text/plain; charset=UTF-8");
+    lines.push("Content-Transfer-Encoding: base64");
+    lines.push("");
+    lines.push(textWrapped);
+    lines.push("--" + boundary);
+    lines.push("Content-Type: " + (att.contentType || "application/pdf") + '; name="' + fn + '"');
+    lines.push("Content-Transfer-Encoding: base64");
+    lines.push('Content-Disposition: attachment; filename="' + fn + '"');
+    lines.push("");
+    lines.push(attWrapped);
+    lines.push("--" + boundary + "--");
+    raw = lines.join("\r\n");
+  } else {
+    const h = [];
+    if (to) h.push("To: " + to);
+    h.push("Subject: " + rfc2047(subject));
+    h.push("MIME-Version: 1.0");
+    h.push("Content-Type: text/plain; charset=UTF-8");
+    raw = h.join("\r\n") + "\r\n\r\n" + text;
+  }
   try {
     const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
       method: "POST", headers: { Authorization: "Bearer " + token, "content-type": "application/json" },

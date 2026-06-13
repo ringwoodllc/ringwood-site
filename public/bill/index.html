@@ -80,8 +80,36 @@
   <div id="sendNote" style="display:none;font-size:.86rem;color:#8a3d1c;margin:-8px 0 14px"></div>
   <div class="doc" id="doc"><div class="empty">Loading…</div></div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  // Concentric Ringwood rings, drawn as vector circles in the PDF.
+  function pdfRings(doc,x,y,r){ doc.setDrawColor(47,93,80); doc.setLineWidth(0.9); doc.circle(x,y,r*0.27); doc.circle(x,y,r*0.62); doc.circle(x,y,r); }
+  // The client-facing estimate/invoice as a clean vector PDF (for the email
+  // attachment). Returns base64, or null if the PDF library didn't load.
+  function buildClientPdf(b){
+    var JS=window.jspdf&&window.jspdf.jsPDF; if(!JS) return null;
+    var doc=new JS({unit:"pt",format:"letter"});
+    var W=doc.internal.pageSize.getWidth(), M=56, y=70;
+    pdfRings(doc,M+10,y-4,11);
+    doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58);
+    doc.text("Ringwood Holding LLC", M+30, y); y+=34;
+    doc.setFontSize(24); doc.text(DOCTYPE, M, y); y+=10;
+    doc.setDrawColor(210); doc.setLineWidth(0.8); doc.line(M,y,W-M,y); y+=24;
+    function lbl(t,x){ doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(169,99,58); doc.text(t,x,y); }
+    function val(t,x){ doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(40,40,40); doc.text(String(t||""),x,y+15); }
+    lbl("BILL TO",M); lbl("DATE",W/2); val(b.ticket.client||"—",M); val(fmtDate(b.ticket.created)||fmtDate(new Date().toISOString()),W/2); y+=34;
+    lbl("JOB",M); var job=(b.ticket.title||"")+(b.ticket.ref?(" · Ref "+b.ticket.ref):""); doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(40,40,40); var jl=doc.splitTextToSize(job,W-2*M); doc.text(jl,M,y+15); y+=15+jl.length*14+14;
+    if(b.ticket.description){ doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(169,99,58); doc.text("SCOPE OF WORK",M,y); y+=15; doc.setFont("helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(40,40,40); var sc=doc.splitTextToSize(b.ticket.description,W-2*M); doc.text(sc,M,y); y+=sc.length*14+14; }
+    if(SHOW_ITEMS){ var labMat=Math.round((b.jobCost+b.markupAmt)*100)/100; doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(40,40,40);
+      doc.text("Labor and materials",M,y); doc.text(money(labMat),W-M,y,{align:"right"}); y+=18;
+      if(b.fee){ doc.text("Service fee",M,y); doc.text(money(b.fee),W-M,y,{align:"right"}); y+=18; } y+=4; }
+    doc.setDrawColor(33,68,58); doc.setLineWidth(1.4); doc.line(M,y,W-M,y); y+=20;
+    doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(33,68,58);
+    doc.text(DOCTYPE==="Invoice"?"Amount due":"Estimated total",M,y); doc.text(money(b.total),W-M,y,{align:"right"}); y+=28;
+    if(DOCTYPE==="Invoice"){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(95,93,82); doc.text("Thank you for your business. Please remit payment to Ringwood Holding LLC.",M,y); }
+    return doc.output("datauristring").split(",")[1];
+  }
   function money(n){ return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function fmtDate(s){ if(!s) return ""; try{ var d=new Date(s); return d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}); }catch(e){ return s; } }
   function qs(k){ return new URLSearchParams(location.search).get(k)||""; }
@@ -139,10 +167,11 @@
     // If Gmail is connected, create the draft server-side (it lands in your
     // Gmail automatically). Otherwise open a pre-filled Gmail compose window.
     if(GMAIL_CONNECTED){
-      if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent="Creating a Gmail draft…"; }
-      fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:bodyV})})
+      if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent="Creating a Gmail draft with the PDF…"; }
+      var att=null; try{ var p=buildClientPdf(b); if(p) att={ filename:(DOCTYPE+" "+(b.ticket.ref||"Ringwood")+".pdf").replace(/[^A-Za-z0-9 ._-]/g,""), base64:p, contentType:"application/pdf" }; }catch(e){}
+      fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:bodyV,attachment:att})})
         .then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML="Draft created in your Gmail. <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>"+(to?"":" — add the client's address."); } }
+          if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML="Draft created in your Gmail"+(att?" with the PDF attached":"")+". <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>"+(to?"":" — add the client's address."); } }
           else if(note){ note.style.color="#8a3d1c"; note.textContent=(d&&d.error)||"Couldn't create the draft."; }
         }).catch(function(){ if(note){ note.style.color="#8a3d1c"; note.textContent="Couldn't reach Gmail."; } });
       return;

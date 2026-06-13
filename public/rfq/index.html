@@ -86,9 +86,32 @@
 
   <div class="doc" id="doc"><div class="empty">Loading…</div></div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function fmtDate(s){ if(!s) return ""; try{ return new Date(s).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"}); }catch(e){ return s; } }
+  function pdfRings(doc,x,y,r){ doc.setDrawColor(47,93,80); doc.setLineWidth(0.9); doc.circle(x,y,r*0.27); doc.circle(x,y,r*0.62); doc.circle(x,y,r); }
+  // Load a (cross-origin) image URL to a dataURL + natural size, for the PDF.
+  function imgToData(url){ return new Promise(function(res){ var img=new Image(); img.crossOrigin="anonymous"; img.onload=function(){ try{ var c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext("2d").drawImage(img,0,0); res({ data:c.toDataURL("image/jpeg",0.82), w:img.naturalWidth, h:img.naturalHeight }); }catch(e){ res(null); } }; img.onerror=function(){ res(null); }; img.src=url; }); }
+  // The RFQ as a branded PDF, with the job photos. Async (photos load). Returns base64 or null.
+  function buildRfqPdf(){
+    var JS=window.jspdf&&window.jspdf.jsPDF; if(!JS) return Promise.resolve(null);
+    var t=RFQ.ticket, doc=new JS({unit:"pt",format:"letter"});
+    var W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=56, y=70;
+    function need(h){ if(y+h>H-50){ doc.addPage(); y=60; } }
+    pdfRings(doc,M+10,y-4,11); doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58); doc.text("Ringwood Holding LLC",M+30,y); y+=34;
+    doc.setFontSize(22); doc.text("Request for Quote",M,y); y+=8; doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(95,93,82); doc.text(t.title||"",M,y+14); y+=24;
+    doc.setDrawColor(210); doc.setLineWidth(0.8); doc.line(M,y,W-M,y); y+=22;
+    function sec(label,body){ need(40); doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(169,99,58); doc.text(label,M,y); y+=14; doc.setFont("helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(40,40,40); var ls=doc.splitTextToSize(body,W-2*M); need(ls.length*14); doc.text(ls,M,y); y+=ls.length*14+14; }
+    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(95,93,82); doc.text((t.ref?("Ref "+t.ref+"   "):"")+(fmtDate(t.created)||fmtDate(new Date().toISOString()))+(DUE?("   Respond by "+fmtDate(DUE)):""),M,y); y+=20;
+    if(SCOPE) sec("SCOPE OF WORK",SCOPE);
+    if(SHOW_EQ && t.asset && (t.asset.name||t.asset.make||t.asset.serial)) sec("EQUIPMENT",[t.asset.name,[t.asset.make,t.asset.model].filter(Boolean).join(" "),t.asset.serial?("Serial "+t.asset.serial):""].filter(Boolean).join("  ·  "));
+    if(SHOW_LOC && t.location) sec("SITE LOCATION",t.location);
+    if(INSTR) sec("WHAT WE NEED FROM YOU",INSTR);
+    var photos=(SHOW_PHOTOS&&t.photos)?t.photos.slice(0,8):[];
+    return photos.reduce(function(chain,u){ return chain.then(function(){ return imgToData(u).then(function(im){ if(!im) return; var maxW=W-2*M, w=maxW, h=im.h*(w/im.w); if(h>300){ h=300; w=im.w*(h/im.h); } need(h+10); try{ doc.addImage(im.data,"JPEG",M,y,w,h); }catch(e){} y+=h+10; }); }); }, Promise.resolve())
+      .then(function(){ return doc.output("datauristring").split(",")[1]; });
+  }
   function qs(k){ return new URLSearchParams(location.search).get(k)||""; }
 
   var ID=qs("id"), RFQ=null, GMAIL_CONNECTED=false;
@@ -181,17 +204,20 @@
       fetch("/api/tickets/quote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ ticketId:ID, vendor:vendor.name })}).catch(function(){});
     }
     var pre=(vendor?("Added a pending quote for "+vendor.name+" on the ticket. "):"");
-    var photoTail=(t.photos&&t.photos.length)?" Attach the PDF (Print / Save PDF) so the vendor gets the photos.":"";
-    // If Gmail is connected, create the draft server-side; else open a compose window.
+    // If Gmail is connected, build the RFQ PDF (with photos) and create the draft
+    // with it attached. Otherwise open a pre-filled compose window.
     if(GMAIL_CONNECTED){
-      if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent=pre+"Creating a Gmail draft…"; }
-      fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:body})})
-        .then(function(r){return r.json();}).then(function(d){
-          if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML=pre+"Draft created in your Gmail. <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>."+photoTail; } }
+      if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent=pre+"Building the RFQ PDF and Gmail draft…"; }
+      buildRfqPdf().then(function(p){
+        var att=p ? { filename:("RFQ "+(t.ref||"Ringwood")+".pdf").replace(/[^A-Za-z0-9 ._-]/g,""), base64:p, contentType:"application/pdf" } : null;
+        return fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:body,attachment:att})}).then(function(r){return r.json();}).then(function(d){
+          if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML=pre+"Draft created in your Gmail"+(att?" with the RFQ PDF attached":"")+". <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>."; } }
           else if(note){ note.style.color="#8a3d1c"; note.textContent=(d&&d.error)||"Couldn't create the draft."; }
-        }).catch(function(){ if(note){ note.style.color="#8a3d1c"; note.textContent="Couldn't reach Gmail."; } });
+        });
+      }).catch(function(){ if(note){ note.style.color="#8a3d1c"; note.textContent="Couldn't create the draft."; } });
       return;
     }
+    var photoTail=(t.photos&&t.photos.length)?" Attach the PDF (Print / Save PDF) so the vendor gets the photos.":"";
     if(note){ note.style.display="block"; note.style.color="#8a3d1c"; note.textContent=pre+"Opening a Gmail draft."+photoTail; }
     var url="https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(to)+"&su="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
     window.open(url,"_blank");
