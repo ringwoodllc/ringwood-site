@@ -181,6 +181,7 @@ export default {
     if (url.pathname === "/api/qbo/callback" && request.method === "GET") return qboCallback(request, env);
     if (url.pathname === "/api/qbo/disconnect" && request.method === "POST") return qboDisconnect(request, env);
     if (url.pathname === "/api/qbo/reconcile" && request.method === "GET") return qboReconcile(url, env, session);
+    if (url.pathname === "/api/qbo/employees" && request.method === "GET") return qboEmployees(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "GET") return listEmployees(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
@@ -1336,10 +1337,22 @@ async function qboFetchEmployees(env, auth) {
     if (!r.ok) return null;
     let data; try { data = await r.json(); } catch { return null; }
     const list = (data && data.QueryResponse && data.QueryResponse.Employee) || [];
-    list.forEach((e) => out.push({
-      first: (e.GivenName || "").trim(), last: (e.FamilyName || "").trim(),
-      display: (e.DisplayName || "").trim(), active: e.Active !== false,
-    }));
+    list.forEach((e) => {
+      const a = e.PrimaryAddr || {};
+      out.push({
+        first: (e.GivenName || "").trim(), last: (e.FamilyName || "").trim(),
+        display: (e.DisplayName || "").trim(), active: e.Active !== false,
+        phone: (e.PrimaryPhone && e.PrimaryPhone.FreeFormNumber) || "",
+        mobile: (e.Mobile && e.Mobile.FreeFormNumber) || "",
+        email: (e.PrimaryEmailAddr && e.PrimaryEmailAddr.Address) || "",
+        address: [a.Line1, a.Line2, a.City, a.CountrySubDivisionCode, a.PostalCode].filter(Boolean).join(", "),
+        hired: e.HiredDate || "", released: e.ReleasedDate || "",
+        number: e.EmployeeNumber || "", title: e.Title || "",
+        // BillRate/CostRate are time-tracking rates, not the payroll wage (which
+        // the Accounting API does not expose). Surface them if present.
+        billRate: e.BillRate != null ? e.BillRate : "", costRate: e.CostRate != null ? e.CostRate : "",
+      });
+    });
     if (list.length < page) break;
     start += page;
   }
@@ -1408,6 +1421,20 @@ async function qboReconcile(url, env, session) {
     counts: { app: appEmps.length, qbo: qboLeft.length, matched: matched.length, possible: possible.length, appOnly: appOnly.length, qboOnly: qboOnly.length },
     matched, possible, appOnly, qboOnly,
   });
+}
+
+// The full readable detail for each QBO employee (name, contact, address, hire
+// date, title, time-tracking rate). Read-only. The payroll wage is not part of
+// the Accounting API, so it is not here.
+async function qboEmployees(url, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  const clientId = url.searchParams.get("clientId") || "";
+  if (!clientId || !sbReady(env)) return json({ ok: false, error: "Pick a location first." }, 400);
+  const auth = await getQboAuth(env, clientId);
+  if (!auth) return json({ ok: false, error: "This location is not connected to QuickBooks." }, 409);
+  const emps = await qboFetchEmployees(env, auth);
+  if (emps === null) return json({ ok: false, error: "Couldn't read QuickBooks. Reconnect and try again." }, 502);
+  return noStore({ ok: true, employees: emps });
 }
 
 // UTF-8 safe base64url (for the raw RFC822 message).

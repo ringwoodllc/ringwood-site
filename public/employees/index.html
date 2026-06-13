@@ -329,8 +329,10 @@
         conn.style.color="var(--green-deep)";
         conn.innerHTML="Connected to <b>"+esc(d.companyName||("company "+d.realmId))+"</b>.";
         act.innerHTML="<button class='btn sm' id='qboBtn' type='button'>Check against QuickBooks</button>"+
+          "<button class='btn sm' id='qboView' type='button' style='background:transparent;color:var(--green-deep);border:1px solid var(--green)'>View QuickBooks details</button>"+
           "<button class='btn sm' id='qboDisc' type='button' style='background:transparent;color:#8a3d1c;border:1px solid rgba(138,61,28,.4)'>Disconnect</button>";
         document.getElementById("qboBtn").addEventListener("click", reconcileQbo);
+        document.getElementById("qboView").addEventListener("click", viewQboDetails);
         document.getElementById("qboDisc").addEventListener("click", disconnectQbo);
       } else {
         conn.style.color="var(--muted)"; conn.textContent="This location isn't connected to QuickBooks yet.";
@@ -349,6 +351,30 @@
     if(p==="connected"){ m.className="msg ok"; m.textContent="QuickBooks connected for this location."; }
     else if(p==="error"){ m.className="msg err"; m.textContent="Couldn't connect QuickBooks. Check the keys and redirect URL, then try again."; }
   })();
+
+  // Show every field the QuickBooks Accounting API returns for each employee, so
+  // you can see exactly what is readable for this company. Read-only.
+  function viewQboDetails(){
+    var b=this, out=document.getElementById("qbo_out"), m=document.getElementById("qbo_msg");
+    m.className="msg"; out.innerHTML="";
+    b.disabled=true; b.textContent="Reading…"; m.style.color="var(--muted)"; m.textContent="Reading QuickBooks…";
+    fetch("/api/qbo/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      b.disabled=false; b.textContent="View QuickBooks details";
+      if(!d||!d.ok){ m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't read."; return; }
+      var emps=d.employees||[];
+      m.className="msg"; m.style.color="var(--muted)"; m.textContent=emps.length+" employee"+(emps.length===1?"":"s")+" in QuickBooks.";
+      function row(lab,val){ return "<div><b style='color:var(--ink);font-weight:600'>"+lab+":</b> "+esc(val||"—")+"</div>"; }
+      out.innerHTML = emps.map(function(e){
+        var rate = e.billRate!==""&&e.billRate!=null ? ("$"+e.billRate+" (bill rate)") : (e.costRate!==""&&e.costRate!=null ? ("$"+e.costRate+" (cost rate)") : "not provided by QuickBooks API");
+        return "<div style='border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px'>"+
+          "<div style='font-weight:600;color:var(--green-deep)'>"+esc(e.display||((e.first+" "+e.last).trim()))+(e.active?"":" <span style=\"color:#8a5a36;font-size:.8rem\">(inactive)</span>")+"</div>"+
+          "<div style='font-size:.85rem;color:var(--muted);margin-top:5px;display:grid;gap:2px'>"+
+            row("Phone", e.phone||e.mobile)+row("Email", e.email)+row("Address", e.address)+
+            row("Hired", e.hired)+row("Title", e.title)+row("Employee #", e.number)+row("Pay rate", rate)+
+          "</div></div>";
+      }).join("") || "<div class='empty'>No employees returned.</div>";
+    }).catch(function(){ b.disabled=false; b.textContent="View QuickBooks details"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
 
   // Reconcile the roster against QuickBooks. Read-only: it never changes QBO.
   function qboGroup(title, names, color, note){
