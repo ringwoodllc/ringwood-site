@@ -92,7 +92,22 @@
   function startColor(inT){ if(!inT) return ""; var h=+inT.split(":")[0]; if(h<8) return "#cfeaf2"; if(h>=15) return "#e6dcf0"; return ""; }
   var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-  var CLIENT_ID="", START=sundayOf(new Date()), DATA=null, CKEY="rw_emp_client", SHOWMODE="all";
+  var CLIENT_ID="", START=sundayOf(new Date()), DATA=null, CKEY="rw_emp_client", SHOWMODE="all", CUR_EMPS=[], CUR_DATES=[];
+  // Daily rollups (the standard view): total hours, head count, and how many are
+  // on a morning / afternoon / evening shift, by shift start time.
+  function bucketOf(sh){ var t=(sh&&(sh.in||sh.out))||""; if(!t) return null; var h=+t.split(":")[0]; return h<12?"m":(h<17?"a":"e"); }
+  function shOf(e,d){ return (DATA.shifts[e.id]&&DATA.shifts[e.id][ymd(d)])||{}; }
+  function footerInner(){
+    var emps=CUR_EMPS, dates=CUR_DATES;
+    function cells(fn){ var s=""; dates.forEach(function(d){ s+="<td>"+fn(d)+"</td>"; }); return s; }
+    var weekTot=0, hrsCells="";
+    dates.forEach(function(d){ var t=0; emps.forEach(function(e){ var sh=shOf(e,d); t+=shiftHrs(sh.in,sh.out); }); weekTot+=t; hrsCells+="<td>"+(t?t.toFixed(1):"")+"</td>"; });
+    var rows="<tr><td class='emp'>Total hrs</td>"+hrsCells+"<td>"+weekTot.toFixed(1)+"</td></tr>";
+    rows+="<tr><td class='emp'>Workers</td>"+cells(function(d){ var n=0; emps.forEach(function(e){ var sh=shOf(e,d); if(sh.in||sh.out) n++; }); return n||""; })+"<td></td></tr>";
+    var L={m:"Morning",a:"Afternoon",e:"Evening"};
+    ["m","a","e"].forEach(function(bk){ rows+="<tr><td class='emp'>"+L[bk]+"</td>"+cells(function(d){ var n=0; emps.forEach(function(e){ var sh=shOf(e,d); if((sh.in||sh.out)&&bucketOf(sh)===bk) n++; }); return n||""; })+"<td></td></tr>"; });
+    return rows;
+  }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/schedule"); return; }
@@ -171,9 +186,8 @@
       });
       h+="<td class='hrs' id='hrs_"+esc(e.id)+"'>"+rowHrs(e.id,dates).toFixed(1)+"</td></tr>";
     });
-    h+="</tbody><tfoot><tr><td class='emp'>Total</td>";
-    dates.forEach(function(){ h+="<td></td>"; });
-    h+="<td id='grandHrs'>"+grandHrs(dates).toFixed(1)+"</td></tr></tfoot></table>";
+    CUR_EMPS=emps; CUR_DATES=dates;
+    h+="</tbody><tfoot id='sfoot'>"+footerInner()+"</tfoot></table>";
     g.innerHTML=h;
     g.querySelectorAll(".ti").forEach(function(inp){ inp.addEventListener("change", onCell); });
   }
@@ -188,7 +202,7 @@
     DATA.shifts[emp]=DATA.shifts[emp]||{}; DATA.shifts[emp][date]={in:inT,out:outT};
     var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
     var hc=document.getElementById("hrs_"+emp); if(hc) hc.textContent=rowHrs(emp,dates).toFixed(1);
-    var gh=document.getElementById("grandHrs"); if(gh) gh.textContent=grandHrs(dates).toFixed(1);
+    var sf=document.getElementById("sfoot"); if(sf) sf.innerHTML=footerInner();
     var m=document.getElementById("msg"); m.className="msg";
     fetch("/api/schedule/shift",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({employeeId:emp,date:date,in:inT,out:outT})})
       .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved ✓"; setTimeout(function(){ if(m.textContent==="Saved ✓") m.textContent=""; },1200); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't save."; } })
