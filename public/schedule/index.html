@@ -92,7 +92,7 @@
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/schedule"); return; }
-    if(d.role!=="master"){ location.replace("/app"); return; }
+    if(!(d.role==="master" || (d.perms && d.perms.foodSafety==="edit"))){ location.replace("/app"); return; }
     document.getElementById("prevW").addEventListener("click",function(){ START=addDays(START,-7); load(); });
     document.getElementById("nextW").addEventListener("click",function(){ START=addDays(START,7); load(); });
     document.getElementById("thisW").addEventListener("click",function(){ START=sundayOf(new Date()); load(); });

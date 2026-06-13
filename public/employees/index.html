@@ -72,6 +72,14 @@
   <div id="setupNote" class="note" style="display:none"></div>
 
   <div id="body" style="display:none">
+    <h2>Import from a photo</h2>
+    <div class="panel">
+      <div style="font-size:.9rem;color:var(--muted);margin-bottom:10px">Snap an ID, passport, or your completed crew list / roster and the assistant adds everyone it can read. You review and edit after.</div>
+      <button class="btn sm" id="scanBtn" type="button">📷 Scan ID / list</button>
+      <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
+      <div class="msg" id="scan_msg"></div>
+    </div>
+
     <h2>Add an employee</h2>
     <div class="panel">
       <div class="row2">
@@ -105,13 +113,37 @@
   var CLIENT_ID="", EMP=[];
   var CKEY="rw_emp_client";
 
+  function labAllowed(d){ return d && d.ok && (d.role==="master" || (d.perms && d.perms.foodSafety==="edit")); }
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok){ location.replace("/login?next=/employees"); return; }
-    if(d.role!=="master"){ location.replace("/app"); return; }
+    if(!labAllowed(d)){ location.replace("/app"); return; }
     phoneInput(document.getElementById("n_phone"));
     document.getElementById("n_add").addEventListener("click", addEmployee);
+    var sb=document.getElementById("scanBtn"); if(sb) sb.addEventListener("click",function(){ var fi=document.getElementById("scanFile"); if(fi) fi.click(); });
+    var sf=document.getElementById("scanFile"); if(sf) sf.addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanRoster(f); });
     loadClients();
   }).catch(function(){});
+
+  // Read a file, downscale images to keep the upload small, and hand back base64.
+  function fileToScaledBase64(file){
+    return new Promise(function(res){
+      if(/pdf/i.test(file.type||"")){ var r=new FileReader(); r.onload=function(){ var d=String(r.result||""); var b=d.indexOf(","); res({base64:b>=0?d.slice(b+1):d, contentType:"application/pdf"}); }; r.onerror=function(){res(null);}; r.readAsDataURL(file); return; }
+      var img=new Image(); img.onload=function(){ var max=1800, s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight)); var w=Math.max(1,Math.round(img.naturalWidth*s)), h=Math.max(1,Math.round(img.naturalHeight*s)); var c=document.createElement("canvas"); c.width=w; c.height=h; c.getContext("2d").drawImage(img,0,0,w,h); var durl=c.toDataURL("image/jpeg",0.85); res({base64:durl.split(",")[1]||"", contentType:"image/jpeg"}); }; img.onerror=function(){res(null);}; img.src=URL.createObjectURL(file);
+    });
+  }
+  function scanRoster(file){
+    if(!file) return;
+    var msg=document.getElementById("scan_msg"); msg.className="msg";
+    if(!CLIENT_ID){ msg.className="msg err"; msg.textContent="Pick a location first."; return; }
+    msg.style.color="var(--muted)"; msg.textContent="Reading the photo…";
+    var btn=document.getElementById("scanBtn"); btn.disabled=true;
+    fileToScaledBase64(file).then(function(p){ if(!p) throw new Error("Couldn't read the file.");
+      return fetch("/api/employees/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, base64:p.base64, contentType:p.contentType})});
+    }).then(function(r){return r.json();}).then(function(d){ btn.disabled=false;
+      if(d&&d.ok){ msg.className="msg ok"; msg.textContent="Added "+d.added+" employee"+(d.added===1?"":"s")+". Review and edit below."; load(); }
+      else { msg.className="msg err"; msg.textContent=(d&&d.error)||"Couldn't read that."; }
+    }).catch(function(e){ btn.disabled=false; msg.className="msg err"; msg.textContent=(e&&e.message)||"Couldn't reach the server."; });
+  }
 
   function loadClients(){
     fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){

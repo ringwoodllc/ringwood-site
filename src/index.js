@@ -179,6 +179,7 @@ export default {
     if (url.pathname === "/api/employees" && request.method === "GET") return listEmployees(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
+    if (url.pathname === "/api/employees/scan" && request.method === "POST") return scanEmployees(request, env, session);
     if (url.pathname === "/api/schedule" && request.method === "GET") return getSchedule(url, env, session);
     if (url.pathname === "/api/schedule/shift" && request.method === "POST") return saveScheduleShift(request, env, session);
     if (url.pathname === "/api/schedule/copy" && request.method === "POST") return copyScheduleWeek(request, env, session);
@@ -758,7 +759,7 @@ async function deleteVendor(request, env) {
 /* ===================== Employees (food-service crew) ===================== */
 // The roster behind the schedule and payroll tools. Admin-only, per client.
 async function listEmployees(url, env, session) {
-  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
   const rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at&order=sort.asc,created_at.asc`);
@@ -773,7 +774,7 @@ async function listEmployees(url, env, session) {
 }
 
 async function saveEmployee(request, env, session) {
-  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const c = (v) => (v == null ? "" : v.toString().trim());
@@ -802,7 +803,7 @@ async function saveEmployee(request, env, session) {
 }
 
 async function deleteEmployee(request, env, session) {
-  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const id = (body.id || "").toString().trim();
@@ -812,12 +813,76 @@ async function deleteEmployee(request, env, session) {
   return json({ ok: true });
 }
 
+// AI: read a photo of an ID/passport (one person) or a roster/list/spreadsheet
+// (many people) and add the employees to the roster. The admin reviews after.
+async function scanEmployees(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const base64 = (body.base64 || "").toString();
+  if (!clientId) return json({ ok: false, error: "Pick a location first." }, 400);
+  if (!base64) return json({ ok: false, error: "No photo to read." }, 400);
+  const ct = (body.contentType || "image/jpeg").toString();
+  const isPdf = ct.indexOf("pdf") >= 0;
+  const src = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
+  const block = isPdf ? { type: "document", source: src } : { type: "image", source: src };
+  const prompt =
+    "You are reading either a single ID / passport / driver's license (one person), or a roster / list / spreadsheet of food-service employees (many people). Extract every person you can see. For each:\n" +
+    "- name: the person's everyday first name (or the name on the ID).\n" +
+    "- payrollName: the full legal name as payroll would show it (for example 'Akhter, Sheuli' or 'Sheuli Akhter') if visible, else empty.\n" +
+    "- posKey: the POS login key / employee number (digits) if shown, else empty.\n" +
+    "- crewNo: a crew label or number if shown (e.g. 'Crew 3'), else empty.\n" +
+    "- role: the role, privilege, or title if shown (e.g. 'Crew Plus / DD Shift', 'Manager'), else empty.\n" +
+    "- phone: a phone number if shown, else empty.\n" +
+    "- rate: an hourly pay rate as a number if shown, else 0.\n" +
+    "Read only what is actually visible. Do not invent names, numbers, or rates. Return everyone you find.";
+  const schema = { type: "object", properties: { employees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, payrollName: { type: "string" }, posKey: { type: "string" }, crewNo: { type: "string" }, role: { type: "string" }, phone: { type: "string" }, rate: { type: "number" } }, required: ["name", "payrollName", "posKey", "crewNo", "role", "phone", "rate"], additionalProperties: false } } }, required: ["employees"], additionalProperties: false };
+  let list = [];
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 4000, messages: [{ role: "user", content: [block, { type: "text", text: prompt }] }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that." }, 502);
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return json({ ok: false, error: "The assistant couldn't read that." }, 502);
+    let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read that." }, 502); }
+    list = Array.isArray(out.employees) ? out.employees : [];
+  } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
+  list = list.slice(0, 200);
+  const c = (v) => (v == null ? "" : v.toString().trim());
+  let added = 0;
+  for (const e of list) {
+    const name = c(e.name).slice(0, 120);
+    if (!name) continue;
+    const rn = Number(e.rate);
+    const row = {
+      client_id: clientId, name, active: true,
+      payroll_name: c(e.payrollName).slice(0, 160) || null,
+      pos_key: c(e.posKey).slice(0, 40) || null,
+      crew_no: c(e.crewNo).slice(0, 40) || null,
+      role: c(e.role).slice(0, 120) || null,
+      phone: c(e.phone).slice(0, 40) || null,
+      rate: !isNaN(rn) && rn > 0 ? rn : null,
+    };
+    const res = await sbInsert(env, "employees", row);
+    if (res.ok) added++;
+  }
+  if (!added) return json({ ok: false, error: list.length ? "Couldn't save. Run supabase/employees.sql once." : "No employees found in that photo." }, list.length ? 502 : 200);
+  return json({ ok: true, added });
+}
+
 /* ===================== Weekly schedule ===================== */
 function addDaysYmd(ymd, n) { const d = new Date(ymd + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function diffDaysYmd(a, b) { return Math.round((new Date(a + "T00:00:00Z") - new Date(b + "T00:00:00Z")) / 86400000); }
 
 async function getSchedule(url, env, session) {
-  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   const clientId = url.searchParams.get("clientId") || "";
   const start = url.searchParams.get("start") || "";
   const end = url.searchParams.get("end") || "";
@@ -836,7 +901,7 @@ async function getSchedule(url, env, session) {
 }
 
 async function saveScheduleShift(request, env, session) {
-  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const c = (v) => (v == null ? "" : v.toString().trim());
@@ -857,7 +922,7 @@ async function saveScheduleShift(request, env, session) {
 }
 
 async function copyScheduleWeek(request, env, session) {
-  if (!session || session.role !== "master") return json({ ok: false, error: "Master only." }, 403);
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
   const clientId = (body.clientId || "").toString().trim();
