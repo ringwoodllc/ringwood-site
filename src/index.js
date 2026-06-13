@@ -237,6 +237,7 @@ export default {
       "/hotholding": "/hotholding/",
       "/inventory": "/inventory/",
       "/privacy": "/privacy/",
+      "/terms": "/terms/",
       "/support": "/support/",
     };
     const cleanPath = url.pathname !== "/" ? url.pathname.replace(/\/+$/, "") : "/";
@@ -278,6 +279,7 @@ function isPublic(url, sub) {
   if (p === "/api/contact") return true;
   // Public legal/support pages (App Store requires reachable URLs without login).
   if (p === "/privacy" || p === "/privacy/" || p === "/support" || p === "/support/") return true;
+  if (p === "/terms" || p === "/terms/") return true;
   if (p === "/manifest.json" || p === "/sw.js" || p === "/install-prompt.js" || p.startsWith("/icons/")) return true;
   if (p.startsWith("/downloads/")) return true; // public app downloads (APK)
   if (sub === "talk" || sub === "contact") return true; // public contact form
