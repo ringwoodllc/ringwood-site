@@ -777,7 +777,8 @@ async function listEmployees(url, env, session) {
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
   const sel = (cols) => sbSelect(env, `employees?client_id=eq.${clientId}&select=${cols}&order=sort.asc,created_at.asc`);
-  let rows = await sel("id,name,last_name,address,qbo_id,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  let rows = await sel("id,name,nickname,last_name,address,qbo_id,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  if (rows === null) rows = await sel("id,name,last_name,address,qbo_id,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
   if (rows === null) rows = await sel("id,name,last_name,address,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
   if (rows === null) rows = await sel("id,name,last_name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
   if (rows === null) rows = await sel("id,name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
@@ -787,7 +788,7 @@ async function listEmployees(url, env, session) {
   return noStore({
     ok: true,
     employees: (rows || []).map((e) => ({
-      id: e.id, name: e.name || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "", qboId: e.qbo_id || "",
+      id: e.id, name: e.name || "", nickname: e.nickname || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "", qboId: e.qbo_id || "",
       phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
       role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
     })),
@@ -802,6 +803,7 @@ async function saveEmployee(request, env, session) {
   const id = c(body.id);
   const patch = {};
   if ("name" in body) patch.name = c(body.name);
+  if ("nickname" in body) patch.nickname = c(body.nickname) || null;
   if ("lastName" in body) patch.last_name = c(body.lastName) || null;
   if ("address" in body) patch.address = c(body.address) || null;
   if ("qboId" in body) patch.qbo_id = c(body.qboId) || null;
@@ -973,7 +975,8 @@ async function getSchedule(url, env, session) {
   const start = url.searchParams.get("start") || "";
   const end = url.searchParams.get("end") || "";
   if (!clientId || !start || !end || !sbReady(env)) return json({ ok: true, employees: [], shifts: {} });
-  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,payroll_name,rate&order=sort.asc,created_at.asc`);
+  let emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,nickname,payroll_name,rate&order=sort.asc,created_at.asc`);
+  if (emps === null) emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,payroll_name,rate&order=sort.asc,created_at.asc`);
   if (emps === null) return noStore({ ok: true, employees: [], shifts: {}, missing: true });
   const ids = (emps || []).map((e) => e.id);
   const shifts = {};
@@ -983,7 +986,7 @@ async function getSchedule(url, env, session) {
     if (rows === null) scheduleMissing = true;
     else (rows || []).forEach((s) => { (shifts[s.employee_id] = shifts[s.employee_id] || {})[s.work_date] = { in: s.in_time || "", out: s.out_time || "" }; });
   }
-  return noStore({ ok: true, scheduleMissing, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "" })), shifts });
+  return noStore({ ok: true, scheduleMissing, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "" })), shifts });
 }
 
 async function saveScheduleShift(request, env, session) {

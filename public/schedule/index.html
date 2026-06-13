@@ -74,6 +74,8 @@
       <button class="nb" id="thisW" type="button">This week</button>
       <button class="btn ghost" id="copyW" type="button">Copy previous week →</button>
       <button class="btn" id="scanW" type="button">📷 Scan schedule</button>
+      <button class="btn ghost" id="uploadW" type="button">⬆ Upload</button>
+      <input type="file" id="scanCam" accept="image/*" capture="environment" style="display:none" />
       <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
       <select id="showMode" style="width:auto"><option value="all">All active</option><option value="sched">Scheduled only</option></select>
     </div>
@@ -116,7 +118,9 @@
     document.getElementById("nextW").addEventListener("click",function(){ START=addDays(START,7); load(); });
     document.getElementById("thisW").addEventListener("click",function(){ START=sundayOf(new Date()); load(); });
     document.getElementById("copyW").addEventListener("click", copyPrev);
-    document.getElementById("scanW").addEventListener("click",function(){ var fi=document.getElementById("scanFile"); if(fi) fi.click(); });
+    document.getElementById("scanW").addEventListener("click",function(){ document.getElementById("scanCam").click(); });
+    document.getElementById("uploadW").addEventListener("click",function(){ document.getElementById("scanFile").click(); });
+    document.getElementById("scanCam").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
     document.getElementById("scanFile").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
     document.getElementById("showMode").addEventListener("change",function(){ SHOWMODE=this.value; if(DATA) render(); });
     loadClients();
@@ -176,7 +180,7 @@
     dates.forEach(function(d,i){ h+="<th>"+DAYS[i]+"<div class='dnum'>"+fmtMD(d)+"</div></th>"; });
     h+="<th>Hrs</th></tr></thead><tbody>";
     emps.forEach(function(e){
-      h+="<tr><td class='emp'><a href='/payroll?client="+encodeURIComponent(CLIENT_ID)+"&emp="+encodeURIComponent(e.id)+"' title='Open in Payroll'>"+esc(e.name)+"</a></td>";
+      h+="<tr><td class='emp'><a href='/payroll?client="+encodeURIComponent(CLIENT_ID)+"&emp="+encodeURIComponent(e.id)+"' title='Open in Payroll'>"+esc(e.nickname||e.name)+"</a></td>";
       dates.forEach(function(d){
         var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
         h+="<td class='day'>"+
