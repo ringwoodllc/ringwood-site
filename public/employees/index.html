@@ -107,7 +107,7 @@
 
     <h2 id="rosterHead">Roster</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-      <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: Nickname A–Z</option><option value="last">Sort: Last name A–Z</option></select>
+      <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: First name A–Z</option><option value="last">Sort: Last name A–Z</option><option value="manual">Sort: Custom order</option></select>
       <select id="filt" style="width:auto;min-width:120px"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select>
     </div>
     <div id="list"><div class="lead">Loading…</div></div>
@@ -217,10 +217,21 @@
   }
 
   function viewList(){
+    if(SORT==="manual") return EMP.slice(); // server (sort) order, unfiltered, for reordering
     var list=EMP.filter(function(e){ return FILT==="all"?true:(FILT==="active"?e.active:!e.active); });
     list.sort(function(a,b){ return SORT==="last" ? lastName(a).toLowerCase().localeCompare(lastName(b).toLowerCase()) : (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); });
     return list;
   }
+  // Reorder the roster (the schedule follows this order). Optimistic UI, saved
+  // in the background.
+  function reorderEmp(id, dir){
+    if(SORT!=="manual") return;
+    var i=-1; for(var x=0;x<EMP.length;x++){ if(EMP[x].id===id){ i=x; break; } }
+    if(i<0) return; var t=i+dir; if(t<0||t>=EMP.length) return;
+    var tmp=EMP[i]; EMP[i]=EMP[t]; EMP[t]=tmp; render();
+    fetch("/api/employees/reorder",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({order:EMP.map(function(e){return e.id;})})}).catch(function(){});
+  }
+  window.mv=reorderEmp;
   function render(){
     document.getElementById("rosterHead").textContent="Roster ("+EMP.length+")";
     var el=document.getElementById("list");
@@ -236,7 +247,10 @@
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
         "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+"</span>"+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
-        "<span class='caret'>›</span></div>"+
+        "<span style='display:flex;align-items:center;gap:6px'>"+
+          (SORT==="manual" ? "<span style='display:flex;flex-direction:column;line-height:.9'><button type='button' onclick=\"event.stopPropagation();mv('"+esc(e.id)+"',-1)\" style='background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;padding:0 4px'>▲</button><button type='button' onclick=\"event.stopPropagation();mv('"+esc(e.id)+"',1)\" style='background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;padding:0 4px'>▼</button></span>" : "")+
+          "<span class='caret'>›</span>"+
+        "</span></div>"+
       "<div class='cbody' id='b_"+k+"'>"+
         "<div class='row2'><div class='field'><label>First name</label><input id='nm_"+k+"' value='"+esc(e.name)+"'/></div>"+
         "<div class='field'><label>Last name</label><input id='ls_"+k+"' value='"+esc(e.lastName)+"'/></div></div>"+

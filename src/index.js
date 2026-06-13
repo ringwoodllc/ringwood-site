@@ -179,6 +179,7 @@ export default {
     if (url.pathname === "/api/employees" && request.method === "GET") return listEmployees(url, env, session);
     if (url.pathname === "/api/employees" && request.method === "POST") return saveEmployee(request, env, session);
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
+    if (url.pathname === "/api/employees/reorder" && request.method === "POST") return reorderEmployees(request, env, session);
     if (url.pathname === "/api/employees/scan" && request.method === "POST") return scanEmployees(request, env, session);
     if (url.pathname === "/api/employees/roles" && request.method === "GET") return listEmployeeRoles(url, env, session);
     if (url.pathname === "/api/employees/role" && request.method === "POST") return addEmployeeRole(request, env, session);
@@ -821,6 +822,17 @@ async function deleteEmployee(request, env, session) {
   if (!id) return json({ ok: false, error: "No id." }, 400);
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/employees?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
   if (!r.ok) return json({ ok: false, error: "Could not delete." }, 502);
+  return json({ ok: true });
+}
+
+// Persist a new roster order (the schedule follows employees.sort).
+async function reorderEmployees(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const order = Array.isArray(body.order) ? body.order : [];
+  let i = 0;
+  for (const raw of order) { const eid = (raw || "").toString().trim(); if (!eid) continue; await sbUpdate(env, "employees", eid, { sort: i * 10 }); i++; }
   return json({ ok: true });
 }
 
