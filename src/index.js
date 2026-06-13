@@ -236,6 +236,7 @@ export default {
       "/receiving": "/receiving/",
       "/hotholding": "/hotholding/",
       "/inventory": "/inventory/",
+      "/payroll": "/employees/",
       "/privacy": "/privacy/",
       "/terms": "/terms/",
       "/support": "/support/",
@@ -1248,7 +1249,7 @@ async function qboCallback(request, env) {
   const cookieState = getCookie(request, "rw_qoauth") || "";
   const clientId = getCookie(request, "rw_qclient") || "";
   const back = (msg) => {
-    const h = new Headers({ Location: "/employees?qbo=" + msg + (clientId ? "&client=" + encodeURIComponent(clientId) : "") });
+    const h = new Headers({ Location: "/payroll?qbo=" + msg + (clientId ? "&client=" + encodeURIComponent(clientId) : "") });
     h.append("Set-Cookie", "rw_qoauth=; Path=/; Max-Age=0");
     h.append("Set-Cookie", "rw_qclient=; Path=/; Max-Age=0");
     return new Response(null, { status: 302, headers: h });

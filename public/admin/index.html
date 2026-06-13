@@ -165,7 +165,7 @@
       if(!d||!d.ok){ st.textContent="Couldn't check the connection."; return; }
       if(!d.configured){ st.innerHTML="Not set up yet. Add <b>QBO_CLIENT_ID</b> and <b>QBO_CLIENT_SECRET</b> as Cloudflare Worker secrets (see setup), then reload."; return; }
       var n=d.connectedCount||0;
-      st.innerHTML="QuickBooks is set up. "+(n?("<b>"+n+"</b> location"+(n===1?"":"s")+" connected."):"No locations connected yet.")+" Connect each location from <a href='/employees' style='color:var(--green-deep)'>Employee setup</a> (pick the location, then Connect QuickBooks). New payroll employees are still added in QuickBooks by hand.";
+      st.innerHTML="QuickBooks is set up. "+(n?("<b>"+n+"</b> location"+(n===1?"":"s")+" connected."):"No locations connected yet.")+" Connect each location from <a href='/payroll' style='color:var(--green-deep)'>Payroll</a> (pick the location, then Connect QuickBooks). New payroll employees are still added in QuickBooks by hand.";
     }).catch(function(){ st.textContent="Couldn't check the connection."; });
   }
   (function(){ var p=new URLSearchParams(location.search).get("qbo"); var m=document.getElementById("qboMsg"); if(!p||!m) return;

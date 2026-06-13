@@ -57,7 +57,7 @@
       <svg width="22" height="22" viewBox="0 0 26 26" aria-hidden="true"><g fill="none" stroke="#2f5d50" stroke-width="1.4"><circle cx="13" cy="13" r="3"/><circle cx="13" cy="13" r="7"/><circle cx="13" cy="13" r="11"/></g></svg>
       Ringwood
     </div>
-    <a class="back" href="/employees">Employee setup</a>
+    <a class="back" href="/payroll">Payroll</a>
   </div>
 </header>
 <main class="wrap">
@@ -158,7 +158,7 @@
     fetch("/api/schedule?clientId="+encodeURIComponent(CLIENT_ID)+"&start="+ymd(START)+"&end="+ymd(end),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var note=document.getElementById("setupNote");
       if(!d||!d.ok){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
-      if(d.missing){ note.style.display="block"; note.textContent="No employees here yet — add them in Employee setup first."; }
+      if(d.missing){ note.style.display="block"; note.textContent="No employees here yet — add them in Payroll first."; }
       else if(d.scheduleMissing){ note.style.display="block"; note.textContent="The schedule table isn't set up yet. Run supabase/schedule_shifts.sql once, then reload."; }
       else note.style.display="none";
       DATA=d; render();
@@ -176,7 +176,7 @@
     dates.forEach(function(d,i){ h+="<th>"+DAYS[i]+"<div class='dnum'>"+fmtMD(d)+"</div></th>"; });
     h+="<th>Hrs</th></tr></thead><tbody>";
     emps.forEach(function(e){
-      h+="<tr><td class='emp'><a href='/employees?client="+encodeURIComponent(CLIENT_ID)+"&emp="+encodeURIComponent(e.id)+"' title='Open in Employee setup'>"+esc(e.name)+"</a></td>";
+      h+="<tr><td class='emp'><a href='/payroll?client="+encodeURIComponent(CLIENT_ID)+"&emp="+encodeURIComponent(e.id)+"' title='Open in Payroll'>"+esc(e.name)+"</a></td>";
       dates.forEach(function(d){
         var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
         h+="<td class='day'>"+
