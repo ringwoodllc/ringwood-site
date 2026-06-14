@@ -467,7 +467,10 @@
       docs = "<div class='card' id='docCard'>"+
         "<div style='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px'>"+
           "<div style='font-weight:600;color:var(--green-deep)'>Troubleshoot · source files</div>"+
-          "<label class='btn ghost' for='docAdd' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem;margin:0'>📄 Add files</label>"+
+          "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
+            (items?"<button type='button' id='docTidyAll' class='btn ghost' style='padding:8px 13px;border-radius:999px;font-size:.84rem'>✨ Tidy titles</button>":"")+
+            "<label class='btn ghost' for='docAdd' style='display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 13px;border-radius:999px;font-size:.84rem;margin:0'>📄 Add files</label>"+
+          "</div>"+
         "</div>"+
         "<div class='hint' style='color:var(--muted);margin-bottom:10px'>Admin only. Files, screenshots, photos, and manuals (PDF) kept for reference. Drop them, paste, or tap to choose.</div>"+
         "<input type='file' id='docAdd' accept='image/*,application/pdf' multiple style='display:none' />"+
@@ -579,13 +582,15 @@
       ["dragleave","dragend"].forEach(function(ev){ docCard.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); docCard.style.outline=""; }); });
       docCard.addEventListener("drop", function(e){ e.preventDefault(); e.stopPropagation(); docCard.style.outline=""; addDocFiles(Array.prototype.slice.call((e.dataTransfer&&e.dataTransfer.files)||[])); });
     }
-    // Paste a screen capture while the asset (read view) is on screen.
+    // Paste a screen capture while the asset (read view) is on screen. The global
+    // listener always calls the current uploader so it never goes stale on re-render.
+    window.__assetAddDocFiles = addDocFiles;
     if(!window.__docPaste){
       window.__docPaste=function(e){
-        if(!document.getElementById("docMsg")) return;   // only on the read view
+        if(!document.getElementById("docMsg") || !window.__assetAddDocFiles) return;   // only on the read view
         var items=(e.clipboardData&&e.clipboardData.items)||[], fs=[];
         for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f) fs.push(f); } }
-        if(fs.length){ e.preventDefault(); addDocFiles(fs); }
+        if(fs.length){ e.preventDefault(); window.__assetAddDocFiles(fs); }
       };
       document.addEventListener("paste", window.__docPaste);
     }
@@ -594,6 +599,27 @@
       fetch("/api/asset/docs/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, url:b.getAttribute("data-url") })})
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); } });
     }); });
+    // Tidy all titles at once: AI-clean every file name and apply.
+    var dta=document.getElementById("docTidyAll");
+    if(dta) dta.addEventListener("click", function(){
+      var rows=Array.prototype.slice.call(document.querySelectorAll(".docrow"));
+      if(!rows.length) return;
+      dta.disabled=true; var ot=dta.textContent; dta.textContent="Tidying…";
+      var i=0;
+      function next(){
+        if(i>=rows.length){ dta.disabled=false; dta.textContent=ot; renderRead(curAsset); return; }
+        var ed=rows[i++].querySelector(".docedit"); if(!ed){ next(); return; }
+        var url=ed.getAttribute("data-url"), name=ed.getAttribute("data-name")||"";
+        if(!name){ next(); return; }
+        fetch("/api/asset/docs/tidy",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ title:name })})
+          .then(function(r){return r.json();}).then(function(d){
+            if(d&&d.ok&&d.title&&d.title!==name){
+              return fetch("/api/asset/docs/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, url:url, name:d.title })}).then(function(r2){return r2.json();}).then(function(d2){ if(d2&&d2.ok) curAsset.adminDocs=d2.docs; });
+            }
+          }).catch(function(){}).then(next);
+      }
+      next();
+    });
     // Rename a troubleshoot file: inline edit with a Save, an AI ✨ Tidy suggestion, and Cancel.
     Array.prototype.slice.call(document.querySelectorAll(".docedit")).forEach(function(b){ b.addEventListener("click", function(){
       var row=b.closest(".docrow"); if(!row || row.querySelector(".docedit-wrap")) return;
