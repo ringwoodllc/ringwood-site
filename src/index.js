@@ -279,7 +279,7 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v199";
+const APP_VERSION = "rw-v200";
 const SCHEMA_VERSION = 5;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
@@ -998,13 +998,29 @@ async function scanPayrollEmployees(request, env, session) {
   const keyOf = (s) => (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" ");
   const splitName = (p) => { p = (p || "").toString().trim(); if (!p) return { first: "", last: "" }; if (p.indexOf(",") >= 0) { const a = p.split(","); return { last: a[0].trim(), first: a.slice(1).join(",").trim() }; } const a = p.split(/\s+/); return a.length >= 2 ? { first: a.slice(0, -1).join(" "), last: a[a.length - 1] } : { first: p, last: "" }; };
   const cleanPhone = (p) => { let d = (p || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); if (d.length === 10) return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); return (p || "").toString().trim(); };
-  const byKey = {}; const addKey = (k, e) => { if (k && !byKey[k]) byKey[k] = e; };
-  (emps || []).forEach((e) => { addKey(keyOf((e.name || "") + " " + (e.last_name || "")), e); addKey(keyOf(e.payroll_name), e); addKey(keyOf(e.name), e); });
+  // Match forgivingly. Beyond the exact word-set, index the first+last word only
+  // (ignoring middle names/initials) and the bare first name, so QuickBooks
+  // "Hasan, Mehedi" matches a roster entry stored as just "Mehedi", and
+  // "Fahriya R Chowdhury" matches "Chowdhury, Fahriya".
+  const words = (s) => (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  const flKey = (s) => { const w = words(s); return w.length >= 2 ? [w[0], w[w.length - 1]].sort().join(" ") : (w[0] || ""); };
+  const firstWord = (s) => { const w = words(s); return w[0] || ""; };
+  const byKey = {}; const addKey = (k, e) => { if (k && !(k in byKey)) byKey[k] = e; };
+  const firstCount = {}, firstMap = {};
+  (emps || []).forEach((e) => {
+    const full = ((e.name || "") + " " + (e.last_name || "")).trim();
+    addKey(keyOf(full), e); addKey(keyOf(e.payroll_name), e); addKey(keyOf(e.name), e); addKey(keyOf(e.nickname), e);
+    addKey(flKey(full), e); addKey(flKey(e.payroll_name), e);
+    const f = firstWord(e.name) || firstWord(e.nickname);
+    if (f) { firstCount[f] = (firstCount[f] || 0) + 1; firstMap[f] = e; }
+  });
+  const usedIds = {};
   let synced = 0; const unmatched = []; const applied = [];
   for (const r of list) {
     const nm = splitName(r.name);
-    const e = byKey[keyOf(r.name)] || byKey[keyOf(nm.first + " " + nm.last)];
-    if (!e) { unmatched.push(r.name); continue; }
+    let e = byKey[keyOf(r.name)] || byKey[keyOf(nm.first + " " + nm.last)] || byKey[flKey(r.name)] || byKey[flKey(nm.first + " " + nm.last)];
+    if (!e) { const f = firstWord(nm.first) || firstWord(r.name); if (f && firstCount[f] === 1) e = firstMap[f]; }
+    if (!e || usedIds[e.id]) { unmatched.push(r.name); continue; }
     const patch = { payroll_name: r.name, qb_synced: true };
     if (nm.first) patch.name = nm.first;
     if (nm.last) patch.last_name = nm.last;
@@ -1013,7 +1029,7 @@ async function scanPayrollEmployees(request, env, session) {
     if (r.active === false && e.active !== false) patch.active = false;
     let res2 = await sbUpdate(env, "employees", e.id, patch);
     for (let g = 0; !res2.ok && g < 4; g++) { const m = /'([a-zA-Z_]+)' column|column "?([a-zA-Z_]+)"? (?:of|does not)/.exec(res2.error || ""); const col = m && (m[1] || m[2]); if (col && (col in patch)) { delete patch[col]; res2 = await sbUpdate(env, "employees", e.id, patch); } else break; }
-    if (res2.ok) { synced++; applied.push({ name: ((nm.first + " " + nm.last).trim()) || r.name, rate: patch.rate != null ? patch.rate : (e.rate != null ? e.rate : null) }); delete byKey[keyOf(r.name)]; delete byKey[keyOf(nm.first + " " + nm.last)]; }
+    if (res2.ok) { synced++; usedIds[e.id] = true; applied.push({ name: ((nm.first + " " + nm.last).trim()) || r.name, rate: patch.rate != null ? patch.rate : (e.rate != null ? e.rate : null) }); }
   }
   return json({ ok: true, synced, unmatched, applied });
 }
@@ -1171,7 +1187,10 @@ async function getSchedule(url, env, session) {
   const shifts = {};
   let scheduleMissing = false;
   if (ids.length) {
-    const rows = await sbSelect(env, `schedule_shifts?employee_id=in.(${ids.join(",")})&work_date=gte.${start}&work_date=lte.${end}&select=employee_id,work_date,in_time,out_time`);
+    let rows = await sbSelect(env, `schedule_shifts?employee_id=in.(${ids.join(",")})&work_date=gte.${start}&work_date=lte.${end}&select=employee_id,work_date,in_time,out_time`);
+    // Self-heal: if the schedule table isn't there yet, apply migrations and retry,
+    // so the user never has to run SQL by hand.
+    if (rows === null) { await runMigrations(env, true); rows = await sbSelect(env, `schedule_shifts?employee_id=in.(${ids.join(",")})&work_date=gte.${start}&work_date=lte.${end}&select=employee_id,work_date,in_time,out_time`); }
     if (rows === null) scheduleMissing = true;
     else (rows || []).forEach((s) => { (shifts[s.employee_id] = shifts[s.employee_id] || {})[s.work_date] = { in: s.in_time || "", out: s.out_time || "" }; });
   }
@@ -1286,6 +1305,10 @@ async function scanSchedule(request, env, session) {
   // last name), so index nickname, first name, last name, and full name.
   const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=*`);
   if (emps === null) return json({ ok: false, error: "No employees here yet — add them first." }, 400);
+  // Self-heal: ensure the schedule table exists before saving, so a scan never aborts
+  // with "run SQL" partway through.
+  const probe = await sbSelect(env, `schedule_shifts?select=id&limit=1`);
+  if (probe === null) await runMigrations(env, true);
   const byName = {};
   const addKey = (k, id) => { k = (k || "").toString().trim().toLowerCase(); if (k && !(k in byName)) byName[k] = id; };
   (emps || []).forEach((e) => {

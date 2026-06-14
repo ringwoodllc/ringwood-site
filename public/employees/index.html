@@ -220,7 +220,7 @@
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
     var bb=document.getElementById("bulkBtn"); if(bb) bb.addEventListener("click", bulkFill);
-    var pf=document.getElementById("payFile"); if(pf) pf.addEventListener("change", function(e){ var fs=e.target.files; e.target.value=""; syncPayFiles(fs); });
+    var pf=document.getElementById("payFile"); if(pf) pf.addEventListener("change", function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; syncPayFiles(fs); });
     // Payroll drop-zone: self-contained drag / drop / paste so it never depends on
     // another script loading first.
     (function(){
@@ -372,7 +372,11 @@
     list.forEach(wire);
   }
   // A small QuickBooks badge (QB green) when this person is linked to a QBO record.
-  function qbBadge(e){ return (e.qb||e.qbSynced) ? " <span title='Synced from QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
+  function qbBadge(e){
+    var out=(e.qb||e.qbSynced) ? " <span title='Synced from QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : "";
+    if(e.rate!==""&&e.rate!=null) out+=" <span title='Pay rate set from QuickBooks' style='color:#2ca01c;font-weight:800;vertical-align:middle'>$</span>";
+    return out;
+  }
   function renderItem(e){
     var k=ukey(e.id);
     var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
