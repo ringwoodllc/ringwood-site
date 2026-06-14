@@ -107,7 +107,7 @@
     doc.setDrawColor(33,68,58); doc.setLineWidth(1.4); doc.line(M,y,W-M,y); y+=20;
     doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(33,68,58);
     doc.text(DOCTYPE==="Invoice"?"Amount due":"Estimated total",M,y); doc.text(money(b.total),W-M,y,{align:"right"}); y+=28;
-    if(DOCTYPE==="Invoice"){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(95,93,82); doc.text("Thank you for your business. Please remit payment to Ringwood.",M,y); }
+    if(DOCTYPE==="Invoice"){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(95,93,82); doc.text("Thank you for your business. Please remit payment to Ringwood Holding LLC.",M,y); }
     return doc.output("datauristring").split(",")[1];
   }
   function money(n){ return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -160,7 +160,7 @@
     lines.push("");
     lines.push((DOCTYPE==="Invoice"?"Amount due: ":"Estimated total: ") + money(b.total));
     lines.push("");
-    if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood."); lines.push(""); }
+    if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood Holding LLC."); lines.push(""); }
     lines.push("Thank you,");
     lines.push("Ringwood");
     var note=document.getElementById("sendNote"), bodyV=lines.join("\n");
@@ -244,7 +244,7 @@
       h+="</table>";
     }
     h+="<div class='line big'><span>"+(DOCTYPE==="Invoice"?"Amount due":"Estimated total")+"</span><span>"+money(b.total)+"</span></div>";
-    if(DOCTYPE==="Invoice") h+="<div class='foot'>Thank you for your business. Please remit payment to Ringwood.</div>";
+    if(DOCTYPE==="Invoice") h+="<div class='foot'>Thank you for your business. Please remit payment to Ringwood Holding LLC.</div>";
     return h;
   }
 
