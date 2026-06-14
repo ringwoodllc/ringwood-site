@@ -563,7 +563,7 @@
       fs=(fs||[]).filter(function(f){ return /pdf/i.test(f.type||"")||/^image\//.test(f.type||""); });
       if(!fs.length) return;
       var dm=document.getElementById("docMsg"); if(dm){ dm.style.color="var(--muted)"; dm.textContent="Saving "+fs.length+" file"+(fs.length===1?"":"s")+"…"; }
-      Promise.all(fs.map(readWarrantyFile)).then(function(parts){
+      Promise.all(fs.map(function(f){ return readWarrantyFile(f).then(function(p){ p.name=(f.name||"").toString(); return p; }); })).then(function(parts){
         return fetch("/api/asset/docs/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, files:parts })});
       }).then(function(r){return r.json();}).then(function(d){
         if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); }

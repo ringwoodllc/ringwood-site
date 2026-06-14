@@ -4238,7 +4238,7 @@ async function appendAdminDocs(env, id, files) {
     if (!f || !f.base64) continue;
     const isPdf = (f.contentType || "").indexOf("pdf") >= 0;
     const u = await uploadToStorage(env, `assets/${id}/docs/${ts}-${i}.${isPdf ? "pdf" : "jpg"}`, f.base64, isPdf ? "application/pdf" : (f.contentType || "image/jpeg"));
-    if (u) docs.push({ url: u, name: (f.name || (isPdf ? "Invoice.pdf" : "Screenshot")).toString().slice(0, 120), type: isPdf ? "pdf" : "image", at: new Date().toISOString() });
+    if (u) docs.push({ url: u, name: (f.name || (isPdf ? "Document.pdf" : "Screenshot")).toString().slice(0, 120), type: isPdf ? "pdf" : "image", at: new Date().toISOString() });
   }
   const res = await sbUpdate(env, "assets", id, { admin_docs: docs });
   return res && res.ok ? docs : null;
