@@ -187,6 +187,7 @@ export default {
     if (url.pathname === "/api/employees/delete" && request.method === "POST") return deleteEmployee(request, env, session);
     if (url.pathname === "/api/employees/reorder" && request.method === "POST") return reorderEmployees(request, env, session);
     if (url.pathname === "/api/employees/scan" && request.method === "POST") return scanEmployees(request, env, session);
+    if (url.pathname === "/api/employees/bulk-fill" && request.method === "POST") return bulkFillEmployees(request, env, session);
     if (url.pathname === "/api/employees/roles" && request.method === "GET") return listEmployeeRoles(url, env, session);
     if (url.pathname === "/api/employees/role" && request.method === "POST") return addEmployeeRole(request, env, session);
     if (url.pathname === "/api/employees/role/delete" && request.method === "POST") return deleteEmployeeRole(request, env, session);
@@ -776,13 +777,9 @@ async function listEmployees(url, env, session) {
   if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
   const clientId = url.searchParams.get("clientId") || "";
   if (!clientId || !sbReady(env)) return json({ ok: true, employees: [] });
-  const sel = (cols) => sbSelect(env, `employees?client_id=eq.${clientId}&select=${cols}&order=sort.asc,created_at.asc`);
-  let rows = await sel("id,name,nickname,last_name,address,qbo_id,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
-  if (rows === null) rows = await sel("id,name,last_name,address,qbo_id,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
-  if (rows === null) rows = await sel("id,name,last_name,address,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
-  if (rows === null) rows = await sel("id,name,last_name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
-  if (rows === null) rows = await sel("id,name,phone,pos_key,pos_password,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
-  if (rows === null) rows = await sel("id,name,phone,pos_key,payroll_name,role,crew_no,rate,ot_rate,active,sort,created_at");
+  // Pull every column that exists (select=*), so a not-yet-migrated column (e.g.
+  // address/qbo_id) never causes nickname or anything else to drop out of the read.
+  const rows = await sbSelect(env, `employees?client_id=eq.${clientId}&select=*&order=sort.asc,created_at.asc`);
   if (rows === null) return noStore({ ok: true, employees: [], missing: true });
   const lastFromPayroll = (p) => { p = (p || "").trim(); if (!p) return ""; const parts = p.split(/\s+/); return parts.length > 1 ? parts[parts.length - 1] : ""; };
   return noStore({
@@ -834,6 +831,43 @@ async function saveEmployee(request, env, session) {
   }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "Run supabase/employees.sql once.")).slice(0, 200) }, 502);
   return json({ ok: true });
+}
+
+// Bulk-fill nickname, payroll name, and phone onto the existing roster from a
+// pasted list. Each row is matched to a current employee by name (order
+// independent), so the user does not re-key everyone. Unmatched rows are reported.
+async function bulkFillEmployees(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body; try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString();
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  if (!clientId || !sbReady(env)) return json({ ok: false, error: "Pick a location first." }, 400);
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,last_name,payroll_name`);
+  if (emps === null) return json({ ok: false, error: "Couldn't read the roster." }, 502);
+  const keyOf = (s) => (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" ");
+  const byKey = {};
+  (emps || []).forEach((e) => {
+    const k1 = keyOf((e.name || "") + " " + (e.last_name || "")); if (k1 && !byKey[k1]) byKey[k1] = e;
+    const k2 = keyOf(e.payroll_name); if (k2 && !byKey[k2]) byKey[k2] = e;
+  });
+  const cleanPhone = (p) => { let d = (p || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); if (d.length === 10) return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); return (p || "").toString().trim(); };
+  let updated = 0; const unmatched = [];
+  for (const r of rows) {
+    const nick = (r.nickname || "").toString().trim();
+    const payroll = (r.payrollName || "").toString().trim();
+    const phone = cleanPhone(r.phone);
+    const e = byKey[keyOf(payroll)] || byKey[keyOf(nick)];
+    if (!e) { unmatched.push(payroll || nick); continue; }
+    const patch = {};
+    if (nick) patch.nickname = nick;
+    if (payroll) patch.payroll_name = payroll;
+    if (phone) patch.phone = phone;
+    if (!Object.keys(patch).length) continue;
+    let res = await sbUpdate(env, "employees", e.id, patch);
+    for (let g = 0; !res.ok && g < 4; g++) { const m = /'([a-zA-Z_]+)' column|column "?([a-zA-Z_]+)"? (?:of|does not)/.exec(res.error || ""); const col = m && (m[1] || m[2]); if (col && (col in patch)) { delete patch[col]; res = await sbUpdate(env, "employees", e.id, patch); } else break; }
+    if (res.ok) { updated++; delete byKey[keyOf(payroll)]; delete byKey[keyOf(nick)]; }
+  }
+  return json({ ok: true, updated, unmatched });
 }
 
 async function deleteEmployee(request, env, session) {

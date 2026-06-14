@@ -138,6 +138,20 @@
       </div>
     </div>
 
+    <div class="citem" id="bulkBox" style="margin-bottom:12px">
+      <div class="csum" onclick="toggleBulk()">
+        <div><span class="nm">Bulk fill from a list</span><div class="cs">Paste Name / Payroll Name / Phone to fill the whole roster at once.</div></div>
+        <span class="caret">›</span>
+      </div>
+      <div class="cbody" id="bulkBody">
+        <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">Copy the three columns (Name, Payroll Name, Phone) from your sheet and paste below. Each row is matched to the roster by name, then the nickname, payroll name, and phone are filled in. POS pins, roles, and rates are left as they are.</div>
+        <textarea id="bulkText" rows="6" style="width:100%;font:inherit;font-size:.9rem;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg)" placeholder="Dilara&#9;Chowdhury, Dilara&#9;347-615-8265"></textarea>
+        <div style="margin-top:8px"><button class="btn sm" id="bulkBtn" type="button">Match &amp; fill</button></div>
+        <div class="msg" id="bulk_msg"></div>
+        <div id="bulk_out" style="margin-top:8px"></div>
+      </div>
+    </div>
+
     <h2 id="rosterHead">Roster</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
       <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: First name A–Z</option><option value="last">Sort: Last name A–Z</option><option value="manual">Sort: Custom order</option></select>
@@ -197,6 +211,7 @@
     document.getElementById("sortBy").addEventListener("change",function(){ SORT=this.value; render(); });
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
+    var bb=document.getElementById("bulkBtn"); if(bb) bb.addEventListener("click", bulkFill);
     loadClients();
   }).catch(function(){});
 
@@ -350,17 +365,22 @@
           qbPicker+
         "</div>"+
       "</div>";
-    // POS Pin: show the standard prefix dim, the short part highlighted (a space
-    // between). No prefix? the whole number sits in the highlighted box.
+    // POS Pin depends on role. Crew (and any non-manager) is always the standard
+    // prefix 362538 + a 4-digit pin, shown dim prefix + highlighted pin. A Manager
+    // can be any number, so it's a plain highlighted box with no forced prefix.
+    var isMgr=/manager/i.test(e.role||"");
     var pk=(e.posKey||"").toString();
-    var posPrefix=(pk.indexOf(POS_STD)===0 && pk.length>POS_STD.length)?POS_STD:"";
-    var posSuffix=posPrefix?pk.slice(POS_STD.length):pk;
-    var posField=
-      "<div class='field'><label>POS Pin</label>"+
+    var posField;
+    if(isMgr){
+      posField="<div class='field'><label>POS Pin</label><input id='ps_"+k+"' inputmode='numeric' data-prefix='' value='"+esc(pk)+"' style='background:#e7e0d0;font-weight:800;color:var(--green-deep)'/></div>";
+    } else {
+      var pin=(pk.indexOf(POS_STD)===0)?pk.slice(POS_STD.length):pk;
+      posField="<div class='field'><label>POS Pin</label>"+
         "<div style='display:flex;align-items:center;gap:6px'>"+
-          (posPrefix?"<span style='color:var(--muted);font-weight:600;font-family:ui-monospace,monospace'>"+esc(POS_STD)+"</span>":"")+
-          "<input id='ps_"+k+"' inputmode='numeric' data-prefix='"+(posPrefix?POS_STD:"")+"' value='"+esc(posSuffix)+"' style='flex:1;min-width:0;background:#e7e0d0;font-weight:800;color:var(--green-deep)'/>"+
+          "<span style='color:var(--muted);font-weight:600;font-family:ui-monospace,monospace'>"+esc(POS_STD)+"</span>"+
+          "<input id='ps_"+k+"' inputmode='numeric' maxlength='4' data-prefix='"+POS_STD+"' value='"+esc(pin)+"' style='flex:1;min-width:0;background:#e7e0d0;font-weight:800;color:var(--green-deep)'/>"+
         "</div></div>";
+    }
     return "<div class='citem' id='it_"+k+"'>"+
       "<div class='csum' onclick=\"tog('"+k+"')\">"+
         "<div>"+posChip(e.posKey)+"<span class='nm'>"+esc(fullName(e))+(e.nickname?(" ("+esc(e.nickname)+")"):"")+"</span>"+qbBadge(e)+(e.active?"":" <span style='color:#8a5a36;font-size:.8rem'>(inactive)</span>")+"<div class='cs'>"+sub+"</div></div>"+
@@ -383,6 +403,28 @@
   }
   window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
   window.toggleAdd=function(){ var box=document.getElementById("addBox"), b=document.getElementById("addBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
+  window.toggleBulk=function(){ var box=document.getElementById("bulkBox"), b=document.getElementById("bulkBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
+  // Paste rows (Name [tab] Payroll Name [tab] Phone) and fill the roster in one go.
+  function parseBulk(text){
+    return (text||"").split(/\r?\n/).map(function(line){ return line.split("\t"); })
+      .filter(function(c){ return (c[0]||c[1]) && !/^name$/i.test((c[0]||"").trim()); })
+      .map(function(c){ return { nickname:(c[0]||"").trim(), payrollName:(c[1]||"").trim(), phone:(c[2]||"").trim() }; });
+  }
+  function bulkFill(){
+    var b=document.getElementById("bulkBtn"), m=document.getElementById("bulk_msg"), out=document.getElementById("bulk_out");
+    m.className="msg"; out.innerHTML="";
+    if(!CLIENT_ID){ m.className="msg err"; m.textContent="Pick a location first."; return; }
+    var rows=parseBulk(document.getElementById("bulkText").value);
+    if(!rows.length){ m.className="msg err"; m.textContent="Paste the rows first — copy the Name, Payroll Name, and Phone columns from your sheet."; return; }
+    b.disabled=true; b.textContent="Filling…"; m.style.color="var(--muted)"; m.textContent="Matching "+rows.length+" row"+(rows.length===1?"":"s")+"…";
+    fetch("/api/employees/bulk-fill",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, rows:rows})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Match & fill";
+        if(!d||!d.ok){ m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't fill."; return; }
+        m.className="msg ok"; m.textContent="Filled "+d.updated+" employee"+(d.updated===1?"":"s")+"."+((d.unmatched&&d.unmatched.length)?(" "+d.unmatched.length+" not matched."):"");
+        if(d.unmatched&&d.unmatched.length){ out.innerHTML="<div style='font-size:.85rem;color:#8a3d1c'>Not matched (check the spelling, or add them first): "+d.unmatched.map(esc).join(", ")+"</div>"; }
+        load();
+      }).catch(function(){ b.disabled=false; b.textContent="Match & fill"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
   window.setQbLink=setQbLink;
   window.toggleQb=function(k){ var c=document.getElementById("qbc_"+k), b=document.getElementById("qbb_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; c.classList.toggle("open",open); };
 
