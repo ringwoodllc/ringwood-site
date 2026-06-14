@@ -285,57 +285,48 @@
     window.print();
   }
 
-  // The filled weekly schedule as a clean, centered, single-page landscape PDF.
-  function fmtShort(v){ if(!v) return ""; var p=v.split(":"); var Hh=+p[0],mm=+p[1]||0; var ap=Hh>=12?"p":"a"; var h=Hh%12; if(h===0)h=12; return h+(mm?(":"+(mm<10?"0":"")+mm):"")+ap; }
+  // The filled weekly schedule as a clean landscape PDF: each day split into In | Out
+  // columns (not stacked), full "5:00 AM" times, no hours, natural row height.
   function buildSchedulePdf(){
     var JS=window.jspdf&&window.jspdf.jsPDF; if(!JS||!DATA||!DATA.employees) return null;
     var doc=new JS({unit:"pt",format:"letter",orientation:"landscape"});
-    var W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=28;
+    var W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=24;
     var sel=document.getElementById("clientPick"); var loc=(sel&&sel.options[sel.selectedIndex])?sel.options[sel.selectedIndex].textContent:"";
     var range=document.getElementById("range").textContent;
     var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
     var emps=(CUR_EMPS&&CUR_EMPS.length)?CUR_EMPS:DATA.employees;
     var showPhone=document.getElementById("auditPhone")&&document.getElementById("auditPhone").checked;
     var note=(document.getElementById("schedComment")||{}).value||"";
-    // Centered title + week range.
     doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58);
     doc.text((loc?loc+" — ":"")+"Weekly Schedule", W/2, 30, {align:"center"});
     doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(95,93,82);
-    doc.text(range, W/2, 48, {align:"center"});
-    // Geometry — size rows so everything fits on ONE page.
-    var top=60, headH=24, noteH=note?40:0, bottom=18;
-    var nameW=Math.min(118, Math.max(72, W*0.13)), hrsW=34, dayW=(W-2*M-nameW-hrsW)/7;
+    doc.text(range, W/2, 47, {align:"center"});
+    var top=58, headH=26, noteH=note?40:0, bottom=18;
+    var nameW=Math.min(110, Math.max(64, W*0.12)), dayW=(W-2*M-nameW)/7, subW=dayW/2;
     var n=emps.length||1;
-    var rowH=Math.min(30, (H-top-headH-noteH-bottom)/n);
-    var fs=Math.max(5.5, Math.min(9, rowH*0.4)), twoLine=rowH>=15;
-    function colX(i){ return M+nameW+i*dayW; }
+    var rowH=Math.min(20, (H-top-headH-noteH-bottom)/n);
+    var fs=Math.max(5.5, Math.min(8, rowH*0.46));
+    function dayX(i){ return M+nameW+i*dayW; }
     var y=top;
-    // Header band.
-    doc.setFillColor(231,224,208); doc.rect(M, y, W-2*M, headH, "F");
-    doc.setTextColor(33,68,58);
-    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Name", M+nameW/2, y+15, {align:"center"});
-    dates.forEach(function(d,i){ var cx=colX(i)+dayW/2; doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text(DAYS[d.getDay()], cx, y+10, {align:"center"}); doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.text(fmtMD(d), cx, y+20, {align:"center"}); });
-    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Hrs", M+nameW+7*dayW+hrsW/2, y+15, {align:"center"});
+    // Header: Day + Date on top, In / Out beneath.
+    doc.setFillColor(231,224,208); doc.rect(M,y,W-2*M,headH,"F");
+    doc.setTextColor(33,68,58); doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Name", M+nameW/2, y+15, {align:"center"});
+    dates.forEach(function(d,i){ var cx=dayX(i)+dayW/2; doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(33,68,58); doc.text(DAYS[d.getDay()]+" "+fmtMD(d), cx, y+11, {align:"center"}); doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(95,93,82); doc.text("In", dayX(i)+subW/2, y+21, {align:"center"}); doc.text("Out", dayX(i)+subW+subW/2, y+21, {align:"center"}); });
     y+=headH;
-    // Rows.
     doc.setFont("helvetica","normal");
-    emps.forEach(function(e, idx){
-      if(idx%2===1){ doc.setFillColor(247,243,236); doc.rect(M, y, W-2*M, rowH, "F"); }
-      var ry=y+rowH/2;
-      doc.setTextColor(20,20,20); doc.setFontSize(Math.min(8.5, fs+0.5));
-      doc.text((e.nickname||e.name||""), M+5, ry+((showPhone&&e.phone)?-2:2.5));
-      if(showPhone&&e.phone){ doc.setTextColor(120,120,120); doc.setFontSize(Math.max(5,fs-1.5)); doc.text(String(e.phone), M+5, ry+7.5); }
+    emps.forEach(function(e,idx){
+      if(idx%2===1){ doc.setFillColor(247,243,236); doc.rect(M,y,W-2*M,rowH,"F"); }
+      var ry=y+rowH/2+fs*0.34;
+      doc.setTextColor(20,20,20); doc.setFontSize(Math.min(8, fs+0.5));
+      doc.text((e.nickname||e.name||"")+((showPhone&&e.phone)?("  "+e.phone):""), M+4, ry);
       doc.setFontSize(fs);
-      dates.forEach(function(d,i){ var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ymd(d)])||{}; var cx=colX(i)+dayW/2; if(!(sh.in||sh.out)) return; if(twoLine){ if(sh.in){ doc.setTextColor(20,20,20); doc.text(fmtShort(sh.in), cx, ry-1, {align:"center"}); } if(sh.out){ doc.setTextColor(110,110,110); doc.text(fmtShort(sh.out), cx, ry+7.5, {align:"center"}); } } else { doc.setTextColor(20,20,20); doc.text((sh.in?fmtShort(sh.in):"")+(sh.out?"-"+fmtShort(sh.out):""), cx, ry+2.5, {align:"center"}); } });
-      doc.setTextColor(20,20,20); doc.setFontSize(fs); doc.text(rowHrs(e.id,dates).toFixed(1), M+nameW+7*dayW+hrsW/2, ry+2.5, {align:"center"});
+      dates.forEach(function(d,i){ var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ymd(d)])||{}; if(sh.in) doc.text(fmtTime12(sh.in), dayX(i)+subW/2, ry, {align:"center"}); if(sh.out) doc.text(fmtTime12(sh.out), dayX(i)+subW+subW/2, ry, {align:"center"}); });
       y+=rowH;
     });
-    // Grid lines.
-    doc.setDrawColor(120,120,120); doc.setLineWidth(0.6); doc.rect(M, top, W-2*M, y-top);
-    doc.setLineWidth(0.4);
-    for(var c=0;c<=7;c++){ var vx=M+nameW+c*dayW; doc.line(vx, top, vx, y); }
-    doc.line(M, top+headH, W-M, top+headH);
-    // Notes.
+    // Grid lines: outer, under header, after name, day boundaries (solid) + In|Out (light).
+    doc.setDrawColor(120,120,120); doc.setLineWidth(0.6); doc.rect(M,top,W-2*M,y-top);
+    doc.line(M, top+headH, W-M, top+headH); doc.line(M+nameW, top, M+nameW, y);
+    for(var c=0;c<7;c++){ var dx=dayX(c); doc.setDrawColor(120,120,120); doc.setLineWidth(0.6); doc.line(dx+dayW, top, dx+dayW, y); doc.setDrawColor(195,195,195); doc.setLineWidth(0.25); doc.line(dx+subW, top+headH, dx+subW, y); }
     if(note){ var ny=y+15; doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(33,68,58); doc.text("Notes:", M, ny); doc.setFont("helvetica","normal"); doc.setTextColor(40,40,40); doc.text(doc.splitTextToSize(note, W-2*M-40), M+34, ny); }
     return doc;
   }

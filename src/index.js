@@ -284,7 +284,7 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v209";
+const APP_VERSION = "rw-v210";
 const SCHEMA_VERSION = 8;
 const MIGRATIONS = [
   // Per-client expected hours by day-of-week (universal across weeks).
