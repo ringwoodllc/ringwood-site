@@ -439,11 +439,18 @@
   // Paste rows (Name [tab] Payroll Name [tab] Phone) and fill the roster in one go.
   function parseBulk(text){
     return (text||"").split(/\r?\n/).map(function(line){
-      // Accept tab-separated (pasted from a sheet) or pipe-separated columns.
-      return line.indexOf("\t")>=0 ? line.split("\t") : (line.indexOf("|")>=0 ? line.split("|") : [line]);
+      // Tab-separated (pasted from a sheet) or pipe-separated; drop empty cells.
+      var cells = line.indexOf("\t")>=0 ? line.split("\t") : (line.indexOf("|")>=0 ? line.split("|") : [line]);
+      return cells.map(function(c){ return (c||"").trim(); }).filter(function(c){ return c!==""; });
     })
-      .filter(function(c){ return (c[0]||c[1]) && !/^name$/i.test((c[0]||"").trim()); })
-      .map(function(c){ return { nickname:(c[0]||"").trim(), payrollName:(c[1]||"").trim(), phone:(c[2]||"").trim() }; });
+      .filter(function(c){ return c.length && !/^name$/i.test(c[0]); })
+      .map(function(cells){
+        // Find the phone (a cell with 7+ digits); the rest are name / payroll name.
+        // This handles both "Name, Payroll, Phone" and "Name, Phone".
+        var phone="", rest=[];
+        cells.forEach(function(c){ if(!phone && c.replace(/\D/g,"").length>=7) phone=c; else rest.push(c); });
+        return { nickname:(rest[0]||""), payrollName:(rest[1]||""), phone:phone };
+      });
   }
   function bulkFill(){
     var b=document.getElementById("bulkBtn"), m=document.getElementById("bulk_msg"), out=document.getElementById("bulk_out");

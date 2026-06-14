@@ -195,6 +195,7 @@ export default {
     if (url.pathname === "/api/schedule" && request.method === "GET") return getSchedule(url, env, session);
     if (url.pathname === "/api/schedule/shift" && request.method === "POST") return saveScheduleShift(request, env, session);
     if (url.pathname === "/api/schedule/copy" && request.method === "POST") return copyScheduleWeek(request, env, session);
+    if (url.pathname === "/api/schedule/clear" && request.method === "POST") return clearScheduleWeek(request, env, session);
     if (url.pathname === "/api/schedule/scan" && request.method === "POST") return scanSchedule(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
@@ -860,7 +861,9 @@ async function bulkFillEmployees(request, env, session) {
   (emps || []).forEach((e) => {
     addKey(keyOf((e.name || "") + " " + (e.last_name || "")), e);
     addKey(keyOf(e.payroll_name), e);
-    addKey(keyOf(e.name), e);  // first name alone — current records often have name = nickname
+    addKey(keyOf(e.name), e);       // first name alone
+    addKey(keyOf(e.last_name), e);  // last name alone (sheets often use it)
+    addKey(keyOf(e.nickname), e);   // the schedule/short name
   });
   const cleanPhone = (p) => { let d = (p || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); if (d.length === 10) return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); return (p || "").toString().trim(); };
   let updated = 0; const unmatched = [];
@@ -1156,6 +1159,23 @@ async function copyScheduleWeek(request, env, session) {
   return json({ ok: true, copied });
 }
 
+// Clear the whole week's shifts for a location (every employee, Sun..Sat).
+async function clearScheduleWeek(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const start = (body.start || "").toString().trim();
+  if (!clientId || !start) return json({ ok: false, error: "Missing dates." }, 400);
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id`);
+  const ids = (emps || []).map((e) => e.id);
+  if (!ids.length) return json({ ok: true, cleared: 0 });
+  const end = addDaysYmd(start, 6);
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/schedule_shifts?employee_id=in.(${ids.join(",")})&work_date=gte.${start}&work_date=lte.${end}`, { method: "DELETE", headers: sbHeaders(env, { Prefer: "return=minimal" }) });
+  if (!r.ok) return json({ ok: false, error: "Couldn't clear. Run supabase/schedule_shifts.sql once." }, 502);
+  return json({ ok: true });
+}
+
 // AI: read a photo of a weekly schedule (Sun..Sat columns, employee rows with
 // In/Out per day) and fill the selected week's grid, matching rows to the
 // roster by name.
@@ -1195,11 +1215,18 @@ async function scanSchedule(request, env, session) {
     let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read that." }, 502); }
     rows = Array.isArray(out.rows) ? out.rows : [];
   } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
-  // Match rows to employees by name (case-insensitive).
-  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name`);
+  // Match rows to employees by name. The schedule sheet uses the short/nickname (or
+  // last name), so index nickname, first name, last name, and full name.
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=*`);
   if (emps === null) return json({ ok: false, error: "No employees here yet — add them first." }, 400);
   const byName = {};
-  (emps || []).forEach((e) => { byName[(e.name || "").trim().toLowerCase()] = e.id; });
+  const addKey = (k, id) => { k = (k || "").toString().trim().toLowerCase(); if (k && !(k in byName)) byName[k] = id; };
+  (emps || []).forEach((e) => {
+    addKey(e.nickname, e.id);
+    addKey(e.name, e.id);
+    addKey(e.last_name, e.id);
+    addKey((e.name || "").trim() + " " + (e.last_name || "").trim(), e.id);
+  });
   const t = (v) => (v == null ? "" : v.toString().trim());
   let shifts = 0; const unmatched = [];
   for (const r of rows) {

@@ -73,6 +73,7 @@
       <button class="nb" id="nextW" type="button">Next ›</button>
       <button class="nb" id="thisW" type="button">This week</button>
       <button class="btn ghost" id="copyW" type="button">Copy previous week →</button>
+      <button class="btn ghost" id="clearW" type="button" style="color:#8a3d1c;border-color:rgba(138,61,28,.4)">Clear week</button>
       <button class="btn" id="scanW" type="button">📷 Scan schedule</button>
       <button class="btn ghost" id="uploadW" type="button">⬆ Upload</button>
       <input type="file" id="scanCam" accept="image/*" capture="environment" style="display:none" />
@@ -122,6 +123,7 @@
     document.getElementById("nextW").addEventListener("click",function(){ START=addDays(START,7); load(); });
     document.getElementById("thisW").addEventListener("click",function(){ START=sundayOf(new Date()); load(); });
     document.getElementById("copyW").addEventListener("click", copyPrev);
+    document.getElementById("clearW").addEventListener("click", clearWeek);
     document.getElementById("scanW").addEventListener("click",function(){ document.getElementById("scanCam").click(); });
     document.getElementById("uploadW").addEventListener("click",function(){ document.getElementById("scanFile").click(); });
     document.getElementById("scanCam").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
@@ -225,6 +227,14 @@
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Copy previous week →";
         var m=document.getElementById("msg"); if(d&&d.ok){ m.className="msg ok"; m.textContent="Copied "+d.copied+" shift"+(d.copied===1?"":"s")+" from last week."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't copy."; } })
       .catch(function(){ b.disabled=false; b.textContent="Copy previous week →"; });
+  }
+  function clearWeek(){
+    if(!confirm("Clear every shift for this week ("+document.getElementById("range").textContent+")? This can't be undone.")) return;
+    var b=document.getElementById("clearW"); b.disabled=true; b.textContent="Clearing…";
+    fetch("/api/schedule/clear",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID,start:ymd(START)})})
+      .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Clear week";
+        var m=document.getElementById("msg"); if(d&&d.ok){ m.className="msg ok"; m.textContent="Cleared the week."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't clear."; } })
+      .catch(function(){ b.disabled=false; b.textContent="Clear week"; });
   }
 </script>
 <script src="/upload-zone.js"></script>
