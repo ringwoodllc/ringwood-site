@@ -116,9 +116,11 @@
   function sundayOf(d){ var x=new Date(d); x.setHours(12,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
   function toMin(t){ if(!t) return null; var p=t.split(":"); return (+p[0])*60+(+p[1]); }
   function shiftHrs(inT,outT){ var a=toMin(inT),b=toMin(outT); if(a==null||b==null) return 0; if(b<a) b+=1440; return (b-a)/60; }
-  // Color by shift start: open/morning (before 2PM) blue, afternoon (after 2PM) orange,
-  // closing (9PM and later) purple.
-  function startColor(inT){ if(!inT) return ""; var p=inT.split(":"); var mins=(+p[0])*60+(+(p[1]||0)); if(isNaN(mins)) return ""; if(mins>=1260) return "#e6dcf0"; if(mins>840) return "#f9d6b0"; return "#cfeaf2"; }
+  function minsOf(s){ if(!s) return NaN; var p=s.split(":"); return (+p[0])*60+(+(p[1]||0)); }
+  // Color the IN cell: opener (start at or before 6AM) blue, afternoon (2PM-3PM) orange.
+  function startColor(inT){ var m=minsOf(inT); if(isNaN(m)) return ""; if(m<=360) return "#cfeaf2"; if(m>=840&&m<=900) return "#f9d6b0"; return ""; }
+  // Color the OUT cell: closer (ends after 8PM) purple.
+  function endColor(outT){ var m=minsOf(outT); if(isNaN(m)) return ""; if(m>1200) return "#e6dcf0"; return ""; }
   var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
   var CLIENT_ID="", START=sundayOf(new Date()), DATA=null, CKEY="rw_emp_client", SHOWMODE="all", CUR_EMPS=[], CUR_DATES=[];
@@ -227,7 +229,7 @@
         var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
         h+="<td class='day'>"+
           "<span class='tiwrap'><input type='time' class='ti tin"+(sh.in?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.in)+"' style='background:"+(startColor(sh.in)||"var(--bg)")+"' /><button type='button' class='tix' tabindex='-1' title='Clear'>×</button></span>"+
-          "<span class='tiwrap'><input type='time' class='ti tout"+(sh.out?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' /><button type='button' class='tix' tabindex='-1' title='Clear'>×</button></span>"+
+          "<span class='tiwrap'><input type='time' class='ti tout"+(sh.out?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' style='background:"+(endColor(sh.out)||"var(--bg)")+"' /><button type='button' class='tix' tabindex='-1' title='Clear'>×</button></span>"+
         "</td>";
       });
       h+="<td class='hrs' id='hrs_"+esc(e.id)+"'>"+rowHrs(e.id,dates).toFixed(1)+"</td></tr>";
@@ -249,6 +251,7 @@
     cell.querySelector(".tin").classList.toggle("empty", !inT);
     cell.querySelector(".tout").classList.toggle("empty", !outT);
     cell.querySelector(".tin").style.background = startColor(inT)||"var(--bg)";
+    cell.querySelector(".tout").style.background = endColor(outT)||"var(--bg)";
     DATA.shifts[emp]=DATA.shifts[emp]||{}; DATA.shifts[emp][date]={in:inT,out:outT};
     var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
     var hc=document.getElementById("hrs_"+emp); if(hc) hc.textContent=rowHrs(emp,dates).toFixed(1);
