@@ -138,6 +138,26 @@
       </div>
     </div>
 
+    <div class="citem" id="payBox" style="margin-bottom:12px">
+      <div class="csum" onclick="togglePay()">
+        <div><span class="nm">Sync pay from QuickBooks</span><div class="cs">Upload a screenshot of the QuickBooks Payroll employees screen — AI reads names, pay rates, and phones.</div></div>
+        <span class="caret">›</span>
+      </div>
+      <div class="cbody" id="payBody">
+        <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">QuickBooks doesn't let apps read payroll, so we read the screen instead. Snap or upload screenshots of <b>Payroll → Employees</b> (add a few if the list scrolls). We match each person to the roster and fill the <b>pay rate</b>, phone, and name. The green <b>$</b> marks a pay rate that came from QuickBooks.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+          <button class="btn sm" id="payScanBtn" type="button">📷 Scan / upload screenshot</button>
+          <input type="file" id="payFile" accept="image/*,application/pdf" multiple style="display:none" />
+        </div>
+        <label id="payDrop" for="payFile" style="display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:14px;text-align:center;cursor:pointer;color:var(--green-deep);background:var(--bg);margin-bottom:8px">
+          <div style="font-weight:600">Drop the QuickBooks payroll screenshot(s) here</div>
+          <div style="font-size:.84rem;color:var(--muted);margin-top:3px">or paste (Ctrl/Cmd+V), or tap to choose</div>
+        </label>
+        <div class="msg" id="pay_msg"></div>
+        <div id="pay_out" style="margin-top:8px"></div>
+      </div>
+    </div>
+
     <div class="citem" id="bulkBox" style="margin-bottom:12px">
       <div class="csum" onclick="toggleBulk()">
         <div><span class="nm">Bulk fill from a list</span><div class="cs">Paste Name / Payroll Name / Phone to fill the whole roster at once.</div></div>
@@ -212,6 +232,9 @@
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
     var bb=document.getElementById("bulkBtn"); if(bb) bb.addEventListener("click", bulkFill);
+    var psb=document.getElementById("payScanBtn"); if(psb) psb.addEventListener("click", function(){ var fi=document.getElementById("payFile"); if(fi) fi.click(); });
+    var pf=document.getElementById("payFile"); if(pf) pf.addEventListener("change", function(e){ var fs=e.target.files; e.target.value=""; syncPayFiles(fs); });
+    if(window.RWUploadZone){ var pd=document.getElementById("payDrop"); if(pd) RWUploadZone(pd, function(fs){ syncPayFiles(fs); }); }
     loadClients();
   }).catch(function(){});
 
@@ -337,7 +360,7 @@
     list.forEach(wire);
   }
   // A small QuickBooks badge (QB green) when this person is linked to a QBO record.
-  function qbBadge(e){ return e.qb ? " <span title='In QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
+  function qbBadge(e){ return (e.qb||e.payrollName) ? " <span title='From QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
   function renderItem(e){
     var k=ukey(e.id);
     var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
@@ -354,7 +377,7 @@
     var qbPicker="";
     if(!ql && QB_CONNECTED){ var opts=qbUnlinked().map(function(q){ return "<option value='"+esc(q.qboId)+"'>"+esc(q.display||((q.first+" "+q.last).trim()))+"</option>"; }).join(""); qbPicker="<div class='field' style='margin-top:8px;margin-bottom:0'><label>Link to QuickBooks</label><select onchange=\"if(this.value)setQbLink('"+esc(e.id)+"',this.value)\"><option value=''>— not linked —</option>"+opts+"</select></div>"; }
     var rateBadge=(e.rate!==""&&e.rate!=null)?" <span title='Pay rate set' style='color:#2ca01c;font-weight:800'>$</span>":"";
-    var idHead=ql?("● "+qbName+" · QuickBooks"):(QB_CONNECTED?"Full Name · not in QuickBooks":"Full Name");
+    var idHead=ql?("● "+qbName+" · QuickBooks"):(e.payrollName?"Full Name · from QuickBooks":(QB_CONNECTED?"Full Name · not in QuickBooks":"Full Name"));
     var corner=ql?("<a href='#' onclick=\"event.preventDefault();event.stopPropagation();setQbLink('"+esc(e.id)+"','')\" style='color:#8a3d1c;font-weight:600;border-bottom:1px solid rgba(138,61,28,.4)'>Unlink</a>"):"";
     var qbChip=
       "<div class='qbchip"+(ql?" linked":"")+"' id='qbc_"+k+"'>"+
@@ -365,7 +388,6 @@
         "<div class='qbchip-b' id='qbb_"+k+"' style='display:none'>"+
           "<div class='row2'><div class='field'><label>First name"+roTag+"</label><input id='nm_"+k+"'"+roAttr+" value='"+esc(fnVal)+"'/></div>"+
           "<div class='field'><label>Last name"+roTag+"</label><input id='ls_"+k+"'"+roAttr+" value='"+esc(lnVal)+"'/></div></div>"+
-          "<div class='field'><label>Address"+roTag+"</label><input id='ar_"+k+"'"+roAttr+" value='"+esc(adVal)+"'/></div>"+
           "<div class='field' style='margin-bottom:0'><label>Rate ($/hr)</label><input id='rt_"+k+"' type='number' min='0' step='0.01' value='"+esc(e.rate)+"'/></div>"+
           qbPicker+
         "</div>"+
@@ -409,6 +431,26 @@
   window.tog=function(k){ var it=document.getElementById("it_"+k),b=document.getElementById("b_"+k); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; it.classList.toggle("open",open); };
   window.toggleAdd=function(){ var box=document.getElementById("addBox"), b=document.getElementById("addBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
   window.toggleBulk=function(){ var box=document.getElementById("bulkBox"), b=document.getElementById("bulkBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
+  window.togglePay=function(){ var box=document.getElementById("payBox"), b=document.getElementById("payBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
+  // Read a QuickBooks Payroll screenshot with AI and sync pay rate / phone / name.
+  function syncPayFiles(fileList){
+    var files=Array.prototype.slice.call(fileList||[]).filter(function(f){return f;});
+    if(!files.length) return;
+    var m=document.getElementById("pay_msg"), out=document.getElementById("pay_out"), b=document.getElementById("payScanBtn");
+    m.className="msg"; out.innerHTML="";
+    if(!CLIENT_ID){ m.className="msg err"; m.textContent="Pick a location first."; return; }
+    m.style.color="var(--muted)"; m.textContent="Reading "+files.length+" screenshot"+(files.length===1?"":"s")+" with AI…"; b.disabled=true;
+    Promise.all(files.slice(0,6).map(fileToScaledBase64)).then(function(parts){
+      parts=parts.filter(Boolean);
+      return fetch("/api/employees/scan-payroll",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, files:parts})});
+    }).then(function(r){return r.json();}).then(function(d){ b.disabled=false;
+      if(!d||!d.ok){ m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't read that."; return; }
+      m.className="msg ok"; m.textContent="Synced "+d.synced+" employee"+(d.synced===1?"":"s")+" from QuickBooks."+((d.unmatched&&d.unmatched.length)?(" "+d.unmatched.length+" not matched."):"");
+      var rows=(d.applied||[]).map(function(a){ return "<div style='font-size:.85rem'>"+esc(a.name)+(a.rate!=null?(" — <b style='color:#2ca01c'>$"+esc(a.rate)+"/hr</b>"):"")+"</div>"; }).join("");
+      if(d.unmatched&&d.unmatched.length) rows+="<div style='font-size:.85rem;color:#8a3d1c;margin-top:6px'>Not matched: "+d.unmatched.map(esc).join(", ")+"</div>";
+      out.innerHTML=rows; load();
+    }).catch(function(){ b.disabled=false; m.className="msg err"; m.textContent="Couldn't reach the server."; });
+  }
   // Paste rows (Name [tab] Payroll Name [tab] Phone) and fill the roster in one go.
   function parseBulk(text){
     return (text||"").split(/\r?\n/).map(function(line){
@@ -446,7 +488,7 @@
       if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
       b.disabled=true; b.textContent="Saving…";
       var pe=document.getElementById("ps_"+k); var posKey=(pe.getAttribute("data-prefix")||"")+(pe.value||"").trim();
-      var payload={ id:e.id, name:name, nickname:document.getElementById("nk_"+k).value, lastName:document.getElementById("ls_"+k).value, address:document.getElementById("ar_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:posKey, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, active:document.getElementById("ac_"+k).checked };
+      var payload={ id:e.id, name:name, nickname:document.getElementById("nk_"+k).value, lastName:document.getElementById("ls_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:posKey, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, active:document.getElementById("ac_"+k).checked };
       fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })
@@ -577,6 +619,7 @@
     }).catch(function(){ b.disabled=false; b.textContent="Check against QuickBooks"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
 </script>
+<script src="/upload-zone.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

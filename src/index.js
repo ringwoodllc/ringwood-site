@@ -188,6 +188,7 @@ export default {
     if (url.pathname === "/api/employees/reorder" && request.method === "POST") return reorderEmployees(request, env, session);
     if (url.pathname === "/api/employees/scan" && request.method === "POST") return scanEmployees(request, env, session);
     if (url.pathname === "/api/employees/bulk-fill" && request.method === "POST") return bulkFillEmployees(request, env, session);
+    if (url.pathname === "/api/employees/scan-payroll" && request.method === "POST") return scanPayrollEmployees(request, env, session);
     if (url.pathname === "/api/employees/roles" && request.method === "GET") return listEmployeeRoles(url, env, session);
     if (url.pathname === "/api/employees/role" && request.method === "POST") return addEmployeeRole(request, env, session);
     if (url.pathname === "/api/employees/role/delete" && request.method === "POST") return deleteEmployeeRole(request, env, session);
@@ -882,6 +883,69 @@ async function bulkFillEmployees(request, env, session) {
     if (res.ok) { updated++; delete byKey[keyOf(payroll)]; delete byKey[keyOf((nm.first + " " + nm.last))]; delete byKey[keyOf(nick)]; }
   }
   return json({ ok: true, updated, unmatched });
+}
+
+// Read a QuickBooks Online Payroll employee screenshot with AI and sync it onto the
+// roster. Intuit blocks the Payroll API, so this is the screen-reading path: it
+// pulls names, pay rates, and phones and matches them to the roster by name. The
+// pay rate is the value QuickBooks shows; we mark it as QB-sourced (payroll_name).
+async function scanPayrollEmployees(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body; try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString();
+  const files = (Array.isArray(body.files) ? body.files : []).filter((f) => f && f.base64).slice(0, 6);
+  if (!clientId) return json({ ok: false, error: "Pick a location first." }, 400);
+  if (!files.length) return json({ ok: false, error: "No screenshot." }, 400);
+  const content = files.map((f) => {
+    const pdf = (f.contentType || "").indexOf("pdf") >= 0;
+    return { type: pdf ? "document" : "image", source: { type: "base64", media_type: pdf ? "application/pdf" : (f.contentType || "image/jpeg"), data: f.base64 } };
+  });
+  const prompt =
+    "These are screenshots of a QuickBooks Online Payroll employee list. Each row has a Name formatted 'Last, First', and may show a Phone number, a Status (Active or Inactive), and a Pay rate like '$17.00/hour'. For each employee row extract:\n" +
+    "- name: exactly as shown, 'Last, First'.\n" +
+    "- payRate: the hourly rate as a number (17 from '$17.00/hour'); 0 if not shown.\n" +
+    "- phone: the phone number as shown, or empty.\n" +
+    "- active: true if Status is Active, false if Inactive (true if not shown).\n" +
+    "Skip header rows, totals, and any Contractors section. Read only what is printed.";
+  const schema = { type: "object", properties: { employees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, payRate: { type: "number" }, phone: { type: "string" }, active: { type: "boolean" } }, required: ["name", "payRate", "phone", "active"], additionalProperties: false } } }, required: ["employees"], additionalProperties: false };
+  let list = [];
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 2500, messages: [{ role: "user", content: content.concat([{ type: "text", text: prompt }]) }], output_config: { format: { type: "json_schema", schema } } }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't read that screenshot." }, 502);
+    const data = await res.json();
+    const tb = (data.content || []).find((b) => b.type === "text");
+    if (!tb) return json({ ok: false, error: "Couldn't read that screenshot." }, 502);
+    let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read that screenshot." }, 502); }
+    list = Array.isArray(out.employees) ? out.employees : [];
+  } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=*`);
+  if (emps === null) return json({ ok: false, error: "Couldn't read the roster." }, 502);
+  const keyOf = (s) => (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" ");
+  const splitName = (p) => { p = (p || "").toString().trim(); if (!p) return { first: "", last: "" }; if (p.indexOf(",") >= 0) { const a = p.split(","); return { last: a[0].trim(), first: a.slice(1).join(",").trim() }; } const a = p.split(/\s+/); return a.length >= 2 ? { first: a.slice(0, -1).join(" "), last: a[a.length - 1] } : { first: p, last: "" }; };
+  const cleanPhone = (p) => { let d = (p || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); if (d.length === 10) return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); return (p || "").toString().trim(); };
+  const byKey = {}; const addKey = (k, e) => { if (k && !byKey[k]) byKey[k] = e; };
+  (emps || []).forEach((e) => { addKey(keyOf((e.name || "") + " " + (e.last_name || "")), e); addKey(keyOf(e.payroll_name), e); addKey(keyOf(e.name), e); });
+  let synced = 0; const unmatched = []; const applied = [];
+  for (const r of list) {
+    const nm = splitName(r.name);
+    const e = byKey[keyOf(r.name)] || byKey[keyOf(nm.first + " " + nm.last)];
+    if (!e) { unmatched.push(r.name); continue; }
+    const patch = { payroll_name: r.name };
+    if (nm.first) patch.name = nm.first;
+    if (nm.last) patch.last_name = nm.last;
+    const rate = Number(r.payRate); if (!isNaN(rate) && rate > 0) patch.rate = rate;
+    const ph = cleanPhone(r.phone); if (ph) patch.phone = ph;
+    if (r.active === false && e.active !== false) patch.active = false;
+    let res2 = await sbUpdate(env, "employees", e.id, patch);
+    for (let g = 0; !res2.ok && g < 4; g++) { const m = /'([a-zA-Z_]+)' column|column "?([a-zA-Z_]+)"? (?:of|does not)/.exec(res2.error || ""); const col = m && (m[1] || m[2]); if (col && (col in patch)) { delete patch[col]; res2 = await sbUpdate(env, "employees", e.id, patch); } else break; }
+    if (res2.ok) { synced++; applied.push({ name: ((nm.first + " " + nm.last).trim()) || r.name, rate: patch.rate != null ? patch.rate : (e.rate != null ? e.rate : null) }); delete byKey[keyOf(r.name)]; delete byKey[keyOf(nm.first + " " + nm.last)]; }
+  }
+  return json({ ok: true, synced, unmatched, applied });
 }
 
 async function deleteEmployee(request, env, session) {
