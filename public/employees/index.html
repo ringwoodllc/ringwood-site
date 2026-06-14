@@ -84,9 +84,19 @@
   <div id="setupNote" class="note" style="display:none"></div>
 
   <div id="body" style="display:none">
+    <h2 id="rosterHead">Roster</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: First name A–Z</option><option value="last">Sort: Last name A–Z</option><option value="manual">Sort: Custom order</option></select>
+      <select id="filt" style="width:auto;min-width:120px"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select>
+    </div>
+    <div id="list"><div class="lead">Loading…</div></div>
+
+    <div style="border-top:1px solid var(--line);margin:26px 0 14px;padding-top:16px">
+      <div style="font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);font-weight:700;margin-bottom:12px">Setup &amp; import</div>
+
     <div class="citem" id="addBox" style="margin-bottom:12px">
       <div class="csum" onclick="toggleAdd()">
-        <div><span class="nm">Add someone manually</span><div class="cs">Most people come from QuickBooks. Use this for anyone not in QuickBooks, or to scan an ID.</div></div>
+        <div><span class="nm">Add someone manually</span><div class="cs">For anyone not in QuickBooks, or to scan an ID.</div></div>
         <span class="caret">›</span>
       </div>
       <div class="cbody" id="addBody">
@@ -107,7 +117,6 @@
           <div class="field"><label>Nickname (schedule)</label><input id="n_nick" type="text" autocomplete="off" placeholder="e.g. Alam" /></div>
           <div class="field"><label>Phone</label><input id="n_phone" type="tel" autocomplete="off" placeholder="(555) 555-5555" /></div>
         </div>
-        <div class="field"><label>Address</label><input id="n_addr" type="text" autocomplete="off" placeholder="Street, City, ST ZIP" /></div>
         <div class="row2">
           <div class="field"><label>Crew #</label><input id="n_crew" type="text" autocomplete="off" placeholder="e.g. Crew 3" /></div>
           <div class="field"><label>POS # / key</label><input id="n_pos" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 8011" /></div>
@@ -121,23 +130,6 @@
       </div>
     </div>
 
-    <div class="citem" id="qboBox" style="margin-bottom:12px">
-      <div class="csum" onclick="toggleQbo()">
-        <div><span class="nm">QuickBooks</span><span id="qbo_hstat" style="color:var(--muted);font-size:.84rem"> · checking…</span></div>
-        <span style="display:flex;align-items:center;gap:8px">
-          <button class="btn sm" id="qbo_sync" type="button" style="display:none" onclick="event.stopPropagation();syncQbo()">↻ Sync</button>
-          <span class="caret">›</span>
-        </span>
-      </div>
-      <div class="cbody" id="qboBody">
-        <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">Connect this location to its QuickBooks company, then check the roster against the QBO employees: who is in both, who is in the app but not yet in QuickBooks, and who is in QuickBooks but not the app.</div>
-        <div id="qbo_conn" style="font-size:.88rem;margin-bottom:9px;color:var(--green-deep)">Checking QuickBooks…</div>
-        <div id="qbo_actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
-        <div class="msg" id="qbo_msg"></div>
-        <div id="qbo_out" style="margin-top:10px"></div>
-      </div>
-    </div>
-
     <div class="citem" id="payBox" style="margin-bottom:12px">
       <div class="csum" onclick="togglePay()">
         <div><span class="nm">Sync pay from QuickBooks</span><div class="cs">Upload a screenshot of the QuickBooks Payroll employees screen — AI reads names, pay rates, and phones.</div></div>
@@ -146,7 +138,7 @@
       <div class="cbody" id="payBody">
         <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">QuickBooks doesn't let apps read payroll, so we read the screen instead. Snap or upload screenshots of <b>Payroll → Employees</b> (add a few if the list scrolls). We match each person to the roster and fill the <b>pay rate</b>, phone, and name. The green <b>$</b> marks a pay rate that came from QuickBooks.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-          <button class="btn sm" id="payScanBtn" type="button">📷 Scan / upload screenshot</button>
+          <label class="btn sm" id="payScanBtn" for="payFile" style="cursor:pointer;display:inline-block">📷 Scan / upload screenshot</label>
           <input type="file" id="payFile" accept="image/*,application/pdf" multiple style="display:none" />
         </div>
         <label id="payDrop" for="payFile" style="display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:14px;text-align:center;cursor:pointer;color:var(--green-deep);background:var(--bg);margin-bottom:8px">
@@ -172,12 +164,7 @@
       </div>
     </div>
 
-    <h2 id="rosterHead">Roster</h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-      <select id="sortBy" style="width:auto;min-width:170px"><option value="nick">Sort: First name A–Z</option><option value="last">Sort: Last name A–Z</option><option value="manual">Sort: Custom order</option></select>
-      <select id="filt" style="width:auto;min-width:120px"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select>
     </div>
-    <div id="list"><div class="lead">Loading…</div></div>
   </div>
 </main>
 <script>
@@ -232,7 +219,6 @@
     document.getElementById("filt").addEventListener("change",function(){ FILT=this.value; render(); });
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
     var bb=document.getElementById("bulkBtn"); if(bb) bb.addEventListener("click", bulkFill);
-    var psb=document.getElementById("payScanBtn"); if(psb) psb.addEventListener("click", function(){ var fi=document.getElementById("payFile"); if(fi) fi.click(); });
     var pf=document.getElementById("payFile"); if(pf) pf.addEventListener("change", function(e){ var fs=e.target.files; e.target.value=""; syncPayFiles(fs); });
     if(window.RWUploadZone){ var pd=document.getElementById("payDrop"); if(pd) RWUploadZone(pd, function(fs){ syncPayFiles(fs); }); }
     loadClients();
@@ -277,7 +263,6 @@
 
   function load(){
     loadRoles();
-    loadQboStatus();
     fetch("/api/employees?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       var note=document.getElementById("setupNote");
       if(!d||!d.ok){ document.getElementById("list").innerHTML="<div class='empty'>Couldn't load.</div>"; return; }
