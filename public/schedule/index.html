@@ -50,7 +50,8 @@
   /* Each time field with a value gets a small X to clear it. */
   .tiwrap{position:relative;display:block}
   .tix{position:absolute;top:50%;right:3px;transform:translateY(-50%);border:none;background:transparent;color:#8a3d1c;font-size:.95rem;line-height:1;cursor:pointer;padding:0 2px;display:none}
-  .ti:not(.empty)+.tix{display:block}
+  /* Show the clear-X only when the cell is hovered or focused, so it isn't distracting. */
+  .tiwrap:hover .ti:not(.empty)+.tix,.ti:not(.empty):focus+.tix{display:block}
   td.hrs{font-weight:700;color:var(--green-deep);min-width:48px;background:#efe8d8}
   .dnum{font-size:.74rem;color:var(--muted);font-weight:600}
   .msg{font-size:.86rem;margin:10px 0;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
@@ -115,7 +116,9 @@
   function sundayOf(d){ var x=new Date(d); x.setHours(12,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
   function toMin(t){ if(!t) return null; var p=t.split(":"); return (+p[0])*60+(+p[1]); }
   function shiftHrs(inT,outT){ var a=toMin(inT),b=toMin(outT); if(a==null||b==null) return 0; if(b<a) b+=1440; return (b-a)/60; }
-  function startColor(inT){ if(!inT) return ""; var h=+inT.split(":")[0]; if(h<8) return "#cfeaf2"; if(h>=15) return "#e6dcf0"; return ""; }
+  // Color by shift start: open/morning (before 2PM) blue, afternoon (after 2PM) orange,
+  // closing (9PM and later) purple.
+  function startColor(inT){ if(!inT) return ""; var p=inT.split(":"); var mins=(+p[0])*60+(+(p[1]||0)); if(isNaN(mins)) return ""; if(mins>=1260) return "#e6dcf0"; if(mins>840) return "#f9d6b0"; return "#cfeaf2"; }
   var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
   var CLIENT_ID="", START=sundayOf(new Date()), DATA=null, CKEY="rw_emp_client", SHOWMODE="all", CUR_EMPS=[], CUR_DATES=[];

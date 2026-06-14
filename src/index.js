@@ -279,7 +279,7 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v201";
+const APP_VERSION = "rw-v202";
 const SCHEMA_VERSION = 5;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
@@ -1316,10 +1316,17 @@ async function scanSchedule(request, env, session) {
     addKey((e.name || "").trim() + " " + (e.last_name || "").trim(), e.id);
   });
   const t = (v) => (v == null ? "" : v.toString().trim());
-  let shifts = 0, failed = 0; const unmatched = [];
+  const end = addDaysYmd(start, 6);
+  let shifts = 0, failed = 0; const unmatched = []; const cleared = {};
   for (const r of rows) {
     const nm = t(r.name); const empId = byName[nm.toLowerCase()];
     if (!empId) { if (nm) unmatched.push(nm); continue; }
+    // A scan replaces this employee's week, so clear it first — otherwise a day the
+    // scan doesn't include (an old phantom shift) would linger and inflate the hours.
+    if (!cleared[empId]) {
+      try { await fetch(`${env.SUPABASE_URL}/rest/v1/schedule_shifts?employee_id=eq.${empId}&work_date=gte.${start}&work_date=lte.${end}`, { method: "DELETE", headers: sbHeaders(env) }); } catch { /* best effort */ }
+      cleared[empId] = true;
+    }
     const days = Array.isArray(r.days) ? r.days : [];
     for (let i = 0; i < 7 && i < days.length; i++) {
       const inT = t(days[i] && days[i].in) || null, outT = t(days[i] && days[i].out) || null;
