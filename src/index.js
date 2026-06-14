@@ -279,7 +279,7 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v203";
+const APP_VERSION = "rw-v204";
 const SCHEMA_VERSION = 5;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
@@ -1180,7 +1180,7 @@ async function getSchedule(url, env, session) {
   const start = url.searchParams.get("start") || "";
   const end = url.searchParams.get("end") || "";
   if (!clientId || !start || !end || !sbReady(env)) return json({ ok: true, employees: [], shifts: {} });
-  let emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,nickname,payroll_name,rate&order=sort.asc,created_at.asc`);
+  let emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,nickname,payroll_name,rate,phone&order=sort.asc,created_at.asc`);
   if (emps === null) emps = await sbSelect(env, `employees?client_id=eq.${clientId}&active=eq.true&select=id,name,payroll_name,rate&order=sort.asc,created_at.asc`);
   if (emps === null) return noStore({ ok: true, employees: [], shifts: {}, missing: true });
   const ids = (emps || []).map((e) => e.id);
@@ -1194,7 +1194,7 @@ async function getSchedule(url, env, session) {
     if (rows === null) scheduleMissing = true;
     else (rows || []).forEach((s) => { (shifts[s.employee_id] = shifts[s.employee_id] || {})[s.work_date] = { in: s.in_time || "", out: s.out_time || "" }; });
   }
-  return noStore({ ok: true, scheduleMissing, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "" })), shifts });
+  return noStore({ ok: true, scheduleMissing, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "", phone: e.phone || "" })), shifts });
 }
 
 async function saveScheduleShift(request, env, session) {

@@ -41,7 +41,7 @@
   td.emp a{color:var(--green-deep);text-decoration:none;border-bottom:1px solid var(--clay)}
   thead th.emp{background:#e7e0d0;z-index:2}
   td.day{min-width:92px}
-  td.day input{width:78px;font-size:.8rem;padding:4px 16px 4px 5px;text-align:center;margin:1px 0}
+  td.day input{width:84px;font-size:.8rem;padding:4px 4px;text-align:center;margin:1px 0}
   /* Drop the native time-picker clock icon. */
   td.day input::-webkit-calendar-picker-indicator{display:none}
   /* Empty time cells recede: hide the distracting "--:-- --" and dim the box, unless focused for editing. */
@@ -58,7 +58,24 @@
   .empty{color:var(--muted);padding:14px}
   .note{background:#f6eccf;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:#7a5a12;font-size:.9rem;margin-bottom:14px}
   tfoot td{font-weight:700;color:var(--green-deep);background:#e7e0d0}
-</style>
+  /* Printable audit sheet: blank In/Out grid to fill in at the store. Hidden on screen. */
+  #auditSheet{display:none}
+  @media print{
+    body *{visibility:hidden}
+    #auditSheet,#auditSheet *{visibility:visible}
+    #auditSheet{display:block;position:absolute;left:0;top:0;width:100%;padding:8px;color:#000}
+    #auditSheet h2{font-family:"Fraunces",Georgia,serif;font-size:18px;margin:0 0 2px}
+    #auditSheet .sub{font-size:12px;margin-bottom:8px;color:#333}
+    .audittbl{width:100%;border-collapse:collapse;table-layout:fixed}
+    .audittbl th,.audittbl td{border:1px solid #444;font-size:10px;padding:2px 4px}
+    .audittbl th{background:#eee}
+    .audittbl .nm{text-align:left;font-weight:bold;white-space:normal;width:90px}
+    .audittbl .ph{text-align:left;width:78px;font-weight:normal}
+    .audittbl .cell{height:38px;padding:0}
+    .audittbl .cell .io{height:18px;border-bottom:1px dotted #999}
+    .audittbl .cell .io:last-child{border-bottom:none}
+    @page{size:landscape;margin:10mm}
+  }
 </head>
 <body>
 <header>
@@ -78,7 +95,6 @@
     <a href="https://ors-idm.dunk.oraclerestaurants.com/oidc-ui/" target="_blank" rel="noopener" style="font-weight:700;color:#21443a;border-bottom:1px solid var(--clay,#a9633a);text-decoration:none">⏱ Time clock · Oracle Simphony ↗</a>
     <span style="font-size:.86rem;color:#5f5d52">User <b style="color:#23282a">Tsoliman</b> <button type="button" class="ccopy" data-v="Tsoliman" style="font:inherit;font-size:.74rem;font-weight:600;color:#21443a;background:transparent;border:1px solid var(--line,rgba(35,40,42,.2));border-radius:5px;padding:2px 7px;cursor:pointer">Copy</button></span>
     <span style="font-size:.86rem;color:#5f5d52">Enterprise <b style="color:#23282a">Dunkin Brands</b> <button type="button" class="ccopy" data-v="Dunkin Brands" style="font:inherit;font-size:.74rem;font-weight:600;color:#21443a;background:transparent;border:1px solid var(--line,rgba(35,40,42,.2));border-radius:5px;padding:2px 7px;cursor:pointer">Copy</button></span>
-    <span style="font-size:.76rem;color:#8a7a52">Password isn't stored — enter it on the Oracle page.</span>
   </div>
 
   <div class="field"><label>Location (client)</label><select id="clientPick"><option value="">Choose a location…</option></select></div>
@@ -96,6 +112,8 @@
       <input type="file" id="scanCam" accept="image/*" capture="environment" style="display:none" />
       <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
       <select id="showMode" style="width:auto"><option value="all">All active</option><option value="sched">Scheduled only</option></select>
+      <button class="btn ghost" id="auditBtn" type="button">🖨 Audit sheet</button>
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:.84rem;color:#5f5d52;cursor:pointer"><input type="checkbox" id="auditPhone" style="width:16px;height:16px;accent-color:var(--green)"/> Show phone</label>
     </div>
     <label id="schedDrop" for="scanFile" style="display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:13px;text-align:center;cursor:pointer;color:#21443a;background:rgba(47,93,80,.05);margin-bottom:12px">
       <span style="font-weight:600">Drop a schedule photo or PDF here</span>
@@ -105,6 +123,7 @@
     <div class="msg" id="msg"></div>
     <div class="scrollx"><div id="grid"><div class="empty">Loading…</div></div></div>
   </div>
+  <div id="auditSheet"></div>
 </main>
 <script src="/upload-zone.js"></script>
 <script>
@@ -167,6 +186,7 @@
       });
     })();
     document.getElementById("showMode").addEventListener("change",function(){ SHOWMODE=this.value; if(DATA) render(); });
+    var ab=document.getElementById("auditBtn"); if(ab) ab.addEventListener("click", printAudit);
     loadClients();
   }).catch(function(){});
 
@@ -188,11 +208,36 @@
     }).catch(function(e){ b.disabled=false; m.className="msg err"; m.textContent=(e&&e.message)||"Couldn't reach the server."; });
   }
 
+  // Printable blank audit sheet: employee rows x day columns, two write lines per cell
+  // (In on top, Out below). No hours or scheduled times. Phone column optional.
+  function printAudit(){
+    if(!DATA||!DATA.employees||!DATA.employees.length) return;
+    var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
+    var showPhone=document.getElementById("auditPhone")&&document.getElementById("auditPhone").checked;
+    var sel=document.getElementById("clientPick"); var loc=(sel&&sel.options[sel.selectedIndex])?sel.options[sel.selectedIndex].textContent:"";
+    var range=document.getElementById("range").textContent;
+    var h="<h2>Time Audit"+(loc?(" — "+esc(loc)):"")+"</h2><div class='sub'>Week of "+esc(range)+" · write actual In (top) and Out (bottom)</div>";
+    h+="<table class='audittbl'><thead><tr><th class='nm'>Employee</th>"+(showPhone?"<th class='ph'>Phone</th>":"")+dates.map(function(d){ return "<th>"+DAYS[d.getDay()]+" "+fmtMD(d)+"</th>"; }).join("")+"</tr></thead><tbody>";
+    DATA.employees.forEach(function(e){
+      h+="<tr><td class='nm'>"+esc(e.nickname||e.name||"")+"</td>"+(showPhone?("<td class='ph'>"+esc(e.phone||"")+"</td>"):"")+dates.map(function(){ return "<td class='cell'><div class='io'></div><div class='io'></div></td>"; }).join("")+"</tr>";
+    });
+    h+="</tbody></table>";
+    document.getElementById("auditSheet").innerHTML=h;
+    window.print();
+  }
+
   function loadClients(){
     fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok) return;
       var sel=document.getElementById("clientPick");
       (d.clients||[]).forEach(function(c){ var o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+      // Scoped to one client (top-bar): pick it and hide the redundant location field.
+      var act=[]; try{ var a=JSON.parse(localStorage.getItem("rw_active_clients")||"[]"); if(Array.isArray(a)) act=a.filter(function(x){return x;}); }catch(e){}
+      if(act.length===1){
+        var want=(act[0]||"").trim().toLowerCase(), mid="";
+        for(var i=0;i<sel.options.length;i++){ if((sel.options[i].textContent||"").trim().toLowerCase()===want){ mid=sel.options[i].value; break; } }
+        if(mid){ sel.value=mid; CLIENT_ID=mid; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} var fld=sel.closest?sel.closest(".field"):null; if(fld) fld.style.display="none"; document.getElementById("body").style.display="block"; load(); return; }
+      }
       var saved=""; try{ saved=localStorage.getItem(CKEY)||""; }catch(e){}
       if(saved){ sel.value=saved; if(sel.value===saved){ CLIENT_ID=saved; document.getElementById("body").style.display="block"; load(); } }
       sel.addEventListener("change",function(){ CLIENT_ID=sel.value; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} if(CLIENT_ID){ document.getElementById("body").style.display="block"; load(); } else document.getElementById("body").style.display="none"; });
