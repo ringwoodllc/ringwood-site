@@ -1330,7 +1330,7 @@ async function googleConnect(request, env) {
   u.searchParams.set("response_type", "code");
   u.searchParams.set("scope", GOOGLE_SCOPES);
   u.searchParams.set("access_type", "offline");
-  u.searchParams.set("prompt", "consent");
+  u.searchParams.set("prompt", "select_account consent");
   u.searchParams.set("state", state);
   return new Response(null, { status: 302, headers: { Location: u.toString(), "Set-Cookie": `rw_goauth=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600` } });
 }
