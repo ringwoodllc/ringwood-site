@@ -201,6 +201,9 @@ export default {
     if (url.pathname === "/api/schedule/scan" && request.method === "POST") return scanSchedule(request, env, session);
     if (url.pathname === "/api/schedule/targets" && request.method === "POST") return saveScheduleTargets(request, env, session);
     if (url.pathname === "/api/schedule/note" && request.method === "POST") return saveScheduleNote(request, env, session);
+    if (url.pathname === "/api/payroll/file" && request.method === "POST") return filePayrollDoc(request, env, session);
+    if (url.pathname === "/api/payroll/history" && request.method === "GET") return listPayrollDocs(url, env, session);
+    if (url.pathname === "/api/payroll/history/delete" && request.method === "POST") return deletePayrollDoc(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/migrate" && request.method === "POST") return adminMigrate(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
@@ -281,11 +284,13 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v208";
-const SCHEMA_VERSION = 7;
+const APP_VERSION = "rw-v209";
+const SCHEMA_VERSION = 8;
 const MIGRATIONS = [
   // Per-client expected hours by day-of-week (universal across weeks).
   "create table if not exists schedule_targets (client_id uuid primary key references clients(id) on delete cascade, hours jsonb, comment text, updated_at timestamptz not null default now())",
+  // Payroll history: published schedule PDFs filed for the record (like the Red Book binder).
+  "create table if not exists payroll_docs (id uuid primary key default gen_random_uuid(), client_id uuid references clients(id) on delete cascade, title text, file_url text, week_start date, uploaded_by text, created_at timestamptz not null default now())",
   // Notes that belong to a specific week.
   "create table if not exists schedule_notes (client_id uuid references clients(id) on delete cascade, week_start date not null, comment text, updated_at timestamptz not null default now(), primary key (client_id, week_start))",
   "create table if not exists app_meta (k text primary key, v text)",
@@ -1255,6 +1260,49 @@ async function saveScheduleNote(request, env, session) {
   if ((await sbSelect(env, `schedule_notes?select=client_id&limit=1`)) === null) await runMigrations(env, true);
   const up = await sbUpsert(env, "schedule_notes", { client_id: clientId, week_start: weekStart, comment, updated_at: new Date().toISOString() }, "client_id,week_start");
   if (!up.ok) return json({ ok: false, error: "Couldn't save." }, 502);
+  return json({ ok: true });
+}
+
+// Payroll history: file a published schedule PDF and list/delete them (Red Book style).
+async function filePayrollDoc(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  if (!sbReady(env)) return json({ ok: false, error: "Not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const base64 = (body.base64 || "").toString();
+  if (!clientId) return json({ ok: false, error: "Pick a location first." }, 400);
+  if (!base64) return json({ ok: false, error: "No PDF." }, 400);
+  const title = (body.title || "Schedule").toString().slice(0, 160);
+  const weekStart = (body.weekStart || "").toString().slice(0, 10) || null;
+  const path = `payroll/${clientId}/${Date.now()}-${Math.floor(Math.random() * 1e4)}.pdf`;
+  const fileUrl = await uploadToStorage(env, path, base64, "application/pdf");
+  if (!fileUrl) return json({ ok: false, error: "Upload failed." }, 502);
+  if ((await sbSelect(env, `payroll_docs?select=id&limit=1`)) === null) await runMigrations(env, true);
+  const a = authorOf(session);
+  const res = await sbInsert(env, "payroll_docs", { client_id: clientId, title, file_url: fileUrl, week_start: weekStart, uploaded_by: a.author });
+  if (!res.ok) return json({ ok: false, error: "Saved the file, but couldn't record it." }, 502);
+  return json({ ok: true, doc: res.data || null });
+}
+
+async function listPayrollDocs(url, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  const clientId = (url.searchParams.get("clientId") || "").trim();
+  if (!clientId || !sbReady(env)) return noStore({ ok: true, docs: [] });
+  const rows = await sbSelect(env, `payroll_docs?client_id=eq.${clientId}&select=id,title,file_url,week_start,uploaded_by,created_at&order=created_at.desc`);
+  return noStore({ ok: true, docs: (rows || []).map((d) => ({ id: d.id, title: d.title || "", url: d.file_url || "", weekStart: d.week_start || "", by: d.uploaded_by || "", created: d.created_at || "" })) });
+}
+
+async function deletePayrollDoc(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  if (!id) return json({ ok: false, error: "No id." }, 400);
+  const rows = await sbSelect(env, `payroll_docs?id=eq.${id}&select=file_url`);
+  await fetch(`${env.SUPABASE_URL}/rest/v1/payroll_docs?id=eq.${id}`, { method: "DELETE", headers: sbHeaders(env) });
+  const url2 = rows && rows[0] && rows[0].file_url;
+  if (url2) { const m = url2.match(/\/object\/public\/photos\/(.+)$/); if (m) { try { await fetch(`${env.SUPABASE_URL}/storage/v1/object/photos/${m[1]}`, { method: "DELETE", headers: sbHeaders(env) }); } catch { /* ignore */ } } }
   return json({ ok: true });
 }
 

@@ -116,6 +116,8 @@
       <button class="btn ghost" id="auditBtn" type="button">🖨 Audit sheet</button>
       <button class="btn ghost" id="schedPdfBtn" type="button">📄 PDF / Print</button>
       <button class="btn ghost" id="schedEmailBtn" type="button">✉ Email</button>
+      <button class="btn ghost" id="schedSaveBtn" type="button">📕 Save to history</button>
+      <button class="btn ghost" id="histBtn" type="button">📚 History</button>
       <label style="display:inline-flex;align-items:center;gap:5px;font-size:.84rem;color:#5f5d52;cursor:pointer"><input type="checkbox" id="auditPhone" style="width:16px;height:16px;accent-color:var(--green)"/> Show phone</label>
     </div>
     <label id="schedDrop" for="scanFile" style="display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:13px;text-align:center;cursor:pointer;color:#21443a;background:rgba(47,93,80,.05);margin-bottom:12px">
@@ -128,6 +130,11 @@
     <div style="margin-top:14px;max-width:560px">
       <label for="schedComment" style="display:block;font-weight:600;font-size:.84rem;color:#21443a;margin-bottom:4px">Notes</label>
       <textarea id="schedComment" placeholder="Notes about the schedule (saved)…" style="width:100%;min-height:60px;font:inherit;font-size:.9rem;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;resize:vertical"></textarea>
+    </div>
+    <div id="histPanel" style="display:none;margin-top:14px;background:var(--bg-2,#efe8d8);border:1px solid var(--line);border-radius:10px;padding:14px 16px">
+      <div style="font-family:'Fraunces',serif;font-size:1.05rem;color:var(--green-deep);margin-bottom:2px">Payroll history</div>
+      <div style="font-size:.84rem;color:var(--muted);margin-bottom:10px">Published schedules, filed for the record. Newest first.</div>
+      <div id="histList"><div style="color:var(--muted);font-size:.88rem">Loading…</div></div>
     </div>
   </div>
   <div id="auditSheet"></div>
@@ -235,6 +242,8 @@
     var spb=document.getElementById("schedPdfBtn"); if(spb) spb.addEventListener("click", function(){ var doc=buildSchedulePdf(); var m=document.getElementById("msg"); if(!doc){ m.className="msg err"; m.textContent="Open a week with employees first."; return; } doc.save(schedFileName()); });
     var seb=document.getElementById("schedEmailBtn"); if(seb) seb.addEventListener("click", function(){ var doc=buildSchedulePdf(); var m=document.getElementById("msg"); if(!doc){ m.className="msg err"; m.textContent="Open a week with employees first."; return; } m.className="msg"; m.style.color="var(--muted)"; m.textContent="Creating the Gmail draft…"; var b64=doc.output("datauristring").split(",")[1]; var range=document.getElementById("range").textContent; fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:"",subject:"Weekly Schedule — "+range,body:"Weekly schedule attached.",attachment:{filename:schedFileName(),base64:b64,contentType:"application/pdf"}})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ m.className="msg ok"; m.innerHTML="Draft created in Gmail"+(d.link?(" — <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>open it</a>"):"")+"."; } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't create the draft (is Gmail connected?)."; } }).catch(function(){ m.className="msg err"; m.textContent="Couldn't reach the server."; }); });
     document.addEventListener("change", function(e){ if(e.target&&e.target.classList&&e.target.classList.contains("exp")) saveTargets(); });
+    var ssb=document.getElementById("schedSaveBtn"); if(ssb) ssb.addEventListener("click", function(){ var doc=buildSchedulePdf(); var m=document.getElementById("msg"); if(!doc){ m.className="msg err"; m.textContent="Open a week with employees first."; return; } m.className="msg"; m.style.color="var(--muted)"; m.textContent="Saving to Payroll history…"; ssb.disabled=true; var b64=doc.output("datauristring").split(",")[1]; var range=document.getElementById("range").textContent; fetch("/api/payroll/file",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, weekStart:ymd(START), title:"Schedule — "+range, base64:b64})}).then(function(r){return r.json();}).then(function(d){ ssb.disabled=false; if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved to Payroll history ✓"; if(document.getElementById("histPanel").style.display!=="none") loadHistory(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't save."; } }).catch(function(){ ssb.disabled=false; m.className="msg err"; m.textContent="Couldn't reach the server."; }); });
+    var hb=document.getElementById("histBtn"); if(hb) hb.addEventListener("click", function(){ var p=document.getElementById("histPanel"); if(p.style.display==="none"){ p.style.display="block"; loadHistory(); p.scrollIntoView({behavior:"smooth",block:"nearest"}); } else { p.style.display="none"; } });
     var sc=document.getElementById("schedComment"); if(sc) sc.addEventListener("change", saveNote);
     var ap=document.getElementById("auditPhone"); if(ap) ap.addEventListener("change", function(){ if(DATA) render(); });
     loadClients();
@@ -331,6 +340,16 @@
     return doc;
   }
   function schedFileName(){ return ("Schedule "+document.getElementById("range").textContent).replace(/[^A-Za-z0-9 ._-]/g,"")+".pdf"; }
+
+  function loadHistory(){
+    if(!CLIENT_ID) return;
+    var el=document.getElementById("histList"); el.innerHTML="<div style='color:var(--muted);font-size:.88rem'>Loading…</div>";
+    fetch("/api/payroll/history?clientId="+encodeURIComponent(CLIENT_ID),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.ok||!d.docs||!d.docs.length){ el.innerHTML="<div style='color:var(--muted);font-size:.88rem'>Nothing saved yet. Use “Save to history” to file the published schedule.</div>"; return; }
+      el.innerHTML=d.docs.map(function(x){ var when=x.created?new Date(x.created).toLocaleString(undefined,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):""; return "<div style='display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)'><span style='font-size:1.1rem'>📄</span><a href='"+esc(x.url)+"' target='_blank' rel='noopener' style='flex:1;color:var(--green-deep);font-weight:600;text-decoration:none;word-break:break-word'>"+esc(x.title||"Schedule")+"</a><span style='font-size:.78rem;color:var(--muted)'>"+esc(when)+(x.by?(" · "+esc(x.by)):"")+"</span><button type='button' class='histdel' data-id='"+esc(x.id)+"' title='Delete' style='background:transparent;border:none;color:#8a3d1c;font-size:1.05rem;cursor:pointer;padding:0 4px'>×</button></div>"; }).join("");
+      Array.prototype.forEach.call(el.querySelectorAll(".histdel"),function(b){ b.addEventListener("click",function(){ if(!confirm("Remove this saved schedule?")) return; fetch("/api/payroll/history/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:b.getAttribute("data-id")})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) loadHistory(); }); }); });
+    }).catch(function(){ el.innerHTML="<div style='color:#8a3d1c;font-size:.88rem'>Couldn't load.</div>"; });
+  }
 
   function loadClients(){
     fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
