@@ -411,7 +411,10 @@
   window.toggleBulk=function(){ var box=document.getElementById("bulkBox"), b=document.getElementById("bulkBody"); var open=b.style.display!=="block"; b.style.display=open?"block":"none"; box.classList.toggle("open",open); };
   // Paste rows (Name [tab] Payroll Name [tab] Phone) and fill the roster in one go.
   function parseBulk(text){
-    return (text||"").split(/\r?\n/).map(function(line){ return line.split("\t"); })
+    return (text||"").split(/\r?\n/).map(function(line){
+      // Accept tab-separated (pasted from a sheet) or pipe-separated columns.
+      return line.indexOf("\t")>=0 ? line.split("\t") : (line.indexOf("|")>=0 ? line.split("|") : [line]);
+    })
       .filter(function(c){ return (c[0]||c[1]) && !/^name$/i.test((c[0]||"").trim()); })
       .map(function(c){ return { nickname:(c[0]||"").trim(), payrollName:(c[1]||"").trim(), phone:(c[2]||"").trim() }; });
   }

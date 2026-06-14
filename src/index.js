@@ -842,7 +842,8 @@ async function bulkFillEmployees(request, env, session) {
   const clientId = (body.clientId || "").toString();
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!clientId || !sbReady(env)) return json({ ok: false, error: "Pick a location first." }, 400);
-  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,last_name,payroll_name`);
+  // select=* so a not-yet-migrated column (e.g. last_name) can't fail the read.
+  const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=*`);
   if (emps === null) return json({ ok: false, error: "Couldn't read the roster." }, 502);
   const keyOf = (s) => (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" ");
   // Split a payroll name into first/last. "Chowdhury, Dilara" -> first Dilara, last
