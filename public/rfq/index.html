@@ -99,7 +99,7 @@
     var t=RFQ.ticket, doc=new JS({unit:"pt",format:"letter"});
     var W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=56, y=70;
     function need(h){ if(y+h>H-50){ doc.addPage(); y=60; } }
-    pdfRings(doc,M+10,y-4,11); doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58); doc.text("Ringwood Holding LLC",M+30,y); y+=34;
+    pdfRings(doc,M+10,y-4,11); doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58); doc.text("Ringwood",M+30,y); y+=34;
     doc.setFontSize(22); doc.text("Request for Quote",M,y); y+=8; doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(95,93,82); doc.text(t.title||"",M,y+14); y+=24;
     doc.setDrawColor(210); doc.setLineWidth(0.8); doc.line(M,y,W-M,y); y+=22;
     function sec(label,body){ need(40); doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(169,99,58); doc.text(label,M,y); y+=14; doc.setFont("helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(40,40,40); var ls=doc.splitTextToSize(body,W-2*M); need(ls.length*14); doc.text(ls,M,y); y+=ls.length*14+14; }
@@ -158,7 +158,7 @@
     var t=RFQ.ticket;
     var h="<div style='display:flex;align-items:center;gap:11px;margin-bottom:16px'>"+
       "<svg width='30' height='30' viewBox='0 0 26 26' aria-hidden='true'><g fill='none' stroke='#2f5d50' stroke-width='1.4'><circle cx='13' cy='13' r='3'/><circle cx='13' cy='13' r='7'/><circle cx='13' cy='13' r='11'/></g></svg>"+
-      "<div style='font-family:Spectral,serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)'>Ringwood Holding LLC</div></div>";
+      "<div style='font-family:Spectral,serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)'>Ringwood</div></div>";
     h+="<h1>Request for Quote</h1><div class='sub'>"+esc(t.title||"")+"</div>";
     h+="<div class='meta'>"+
       "<div><div class='lbl'>RFQ</div><div>"+(t.ref?("Ref "+esc(t.ref)):"—")+"</div></div>"+
@@ -175,7 +175,7 @@
       h+="<div class='sec'><div class='lbl'>Photos</div><div class='photos'>"+t.photos.map(function(u){ return "<img src='"+esc(u)+"' alt='job photo' />"; }).join("")+"</div></div>";
     }
     h+="<div class='sec'><div class='lbl'>What we need from you</div><div class='desc'>"+(INSTR?esc(INSTR):"")+"</div></div>";
-    h+="<div class='foot'>This is a request for quote, not an order. Please send your pricing to Ringwood Holding LLC."+(CONTACT?(" Reply to: "+esc(CONTACT)+"."):"")+" Thank you.</div>";
+    h+="<div class='foot'>This is a request for quote, not an order. Please send your pricing to Ringwood."+(CONTACT?(" Reply to: "+esc(CONTACT)+"."):"")+" Thank you.</div>";
     document.getElementById("doc").innerHTML=h;
   }
 
@@ -186,7 +186,7 @@
     var lines=[];
     lines.push("Hello,");
     lines.push("");
-    lines.push("Ringwood Holding LLC is requesting a quote for the following work.");
+    lines.push("Ringwood is requesting a quote for the following work.");
     lines.push("");
     lines.push("Scope of work:"); lines.push(SCOPE||"(see attached)");
     if(SHOW_EQ && t.asset && (t.asset.name||t.asset.make)){ lines.push(""); lines.push("Equipment: "+[t.asset.name,[t.asset.make,t.asset.model].filter(Boolean).join(" "),t.asset.serial?("Serial "+t.asset.serial):""].filter(Boolean).join(", ")); }
@@ -194,7 +194,7 @@
     if(DUE){ lines.push(""); lines.push("Please respond by: "+fmtDate(DUE)); }
     lines.push(""); lines.push(INSTR||"");
     if(t.photos && t.photos.length){ lines.push(""); lines.push("Photos of the job are attached (or available on request)."); }
-    lines.push(""); lines.push("Thank you,"); lines.push("Ringwood Holding LLC"); if(CONTACT) lines.push(CONTACT);
+    lines.push(""); lines.push("Thank you,"); lines.push("Ringwood"); if(CONTACT) lines.push(CONTACT);
     var body=lines.join("\n");
     // Rich HTML version, styled like the PDF, with small photos that link to full res.
     function sec(label,content){ return "<div style='margin:15px 0 0'><div style='color:#a9633a;font-weight:bold;font-size:12px;letter-spacing:.05em;text-transform:uppercase'>"+label+"</div><div style='margin-top:3px;color:#1f3d2b;font-size:14px;line-height:1.5'>"+content+"</div></div>"; }
@@ -207,13 +207,13 @@
     }
     var html="<div style='font-family:Arial,Helvetica,sans-serif;color:#1f3d2b;font-size:14px;line-height:1.5'>"+
       (t.ref?("<div style='font-size:12px;color:#5c6b60'>Ref "+esc(t.ref)+(DUE?(" &middot; respond by "+esc(fmtDate(DUE))):"")+"</div>"):"")+
-      "<p>Hello,</p><p>Ringwood Holding LLC is requesting a quote for the following work.</p>"+
+      "<p>Hello,</p><p>Ringwood is requesting a quote for the following work.</p>"+
       sec("Scope of work",(SCOPE?esc(SCOPE):"(see attached)").replace(/\n/g,"<br>"))+
       ((SHOW_EQ&&eqLine)?sec("Equipment",eqLine):"")+
       ((SHOW_LOC&&t.location)?sec("Site location",esc(t.location)):"")+
       sec("What we need from you",(INSTR?esc(INSTR):"Please reply with your price, lead time, and earliest availability.").replace(/\n/g,"<br>"))+
       photosHtml+
-      "<p style='margin-top:18px'>Thank you,<br>Ringwood Holding LLC"+(CONTACT?("<br>"+esc(CONTACT)):"")+"</p></div>";
+      "<p style='margin-top:18px'>Thank you,<br>Ringwood"+(CONTACT?("<br>"+esc(CONTACT)):"")+"</p></div>";
     var vendor=(RFQ.vendors||[]).filter(function(v){return v.email===to;})[0];
     var note=document.getElementById("sendNote");
     // Pre-create a pending quote for this vendor on the ticket, so you can fill

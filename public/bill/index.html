@@ -93,7 +93,7 @@
     var W=doc.internal.pageSize.getWidth(), M=56, y=70;
     pdfRings(doc,M+10,y-4,11);
     doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58);
-    doc.text("Ringwood Holding LLC", M+30, y); y+=34;
+    doc.text("Ringwood", M+30, y); y+=34;
     doc.setFontSize(24); doc.text(DOCTYPE, M, y); y+=10;
     doc.setDrawColor(210); doc.setLineWidth(0.8); doc.line(M,y,W-M,y); y+=24;
     function lbl(t,x){ doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(169,99,58); doc.text(t,x,y); }
@@ -107,7 +107,7 @@
     doc.setDrawColor(33,68,58); doc.setLineWidth(1.4); doc.line(M,y,W-M,y); y+=20;
     doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(33,68,58);
     doc.text(DOCTYPE==="Invoice"?"Amount due":"Estimated total",M,y); doc.text(money(b.total),W-M,y,{align:"right"}); y+=28;
-    if(DOCTYPE==="Invoice"){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(95,93,82); doc.text("Thank you for your business. Please remit payment to Ringwood Holding LLC.",M,y); }
+    if(DOCTYPE==="Invoice"){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(95,93,82); doc.text("Thank you for your business. Please remit payment to Ringwood.",M,y); }
     return doc.output("datauristring").split(",")[1];
   }
   function money(n){ return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -160,9 +160,9 @@
     lines.push("");
     lines.push((DOCTYPE==="Invoice"?"Amount due: ":"Estimated total: ") + money(b.total));
     lines.push("");
-    if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood Holding LLC."); lines.push(""); }
+    if(DOCTYPE==="Invoice"){ lines.push("Thank you for your business. Please remit payment to Ringwood."); lines.push(""); }
     lines.push("Thank you,");
-    lines.push("Ringwood Holding LLC");
+    lines.push("Ringwood");
     var note=document.getElementById("sendNote"), bodyV=lines.join("\n");
     // If Gmail is connected, create the draft server-side (it lands in your
     // Gmail automatically). Otherwise open a pre-filled Gmail compose window.
@@ -193,7 +193,7 @@
   function letterhead(){
     return "<div style='display:flex;align-items:center;gap:11px;margin-bottom:16px'>"+
       "<svg width='30' height='30' viewBox='0 0 26 26' aria-hidden='true'><g fill='none' stroke='#2f5d50' stroke-width='1.4'><circle cx='13' cy='13' r='3'/><circle cx='13' cy='13' r='7'/><circle cx='13' cy='13' r='11'/></g></svg>"+
-      "<div style='font-family:Spectral,serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)'>Ringwood Holding LLC</div>"+
+      "<div style='font-family:Spectral,serif;font-size:1.3rem;font-weight:600;color:var(--green-deep)'>Ringwood</div>"+
     "</div>";
   }
   function metaRow(b){
@@ -244,7 +244,7 @@
       h+="</table>";
     }
     h+="<div class='line big'><span>"+(DOCTYPE==="Invoice"?"Amount due":"Estimated total")+"</span><span>"+money(b.total)+"</span></div>";
-    if(DOCTYPE==="Invoice") h+="<div class='foot'>Thank you for your business. Please remit payment to Ringwood Holding LLC.</div>";
+    if(DOCTYPE==="Invoice") h+="<div class='foot'>Thank you for your business. Please remit payment to Ringwood.</div>";
     return h;
   }
 
