@@ -41,11 +41,16 @@
   td.emp a{color:var(--green-deep);text-decoration:none;border-bottom:1px solid var(--clay)}
   thead th.emp{background:#e7e0d0;z-index:2}
   td.day{min-width:92px}
-  td.day input{width:78px;font-size:.8rem;padding:4px 5px;text-align:center;margin:1px 0}
+  td.day input{width:78px;font-size:.8rem;padding:4px 16px 4px 5px;text-align:center;margin:1px 0}
+  /* Drop the native time-picker clock icon. */
+  td.day input::-webkit-calendar-picker-indicator{display:none}
   /* Empty time cells recede: hide the distracting "--:-- --" and dim the box, unless focused for editing. */
   .ti.empty:not(:focus){background:transparent !important;border-color:rgba(35,40,42,.07)}
   .ti.empty:not(:focus)::-webkit-datetime-edit{color:transparent}
-  .ti.empty:not(:focus)::-webkit-calendar-picker-indicator{opacity:.18}
+  /* Each time field with a value gets a small X to clear it. */
+  .tiwrap{position:relative;display:block}
+  .tix{position:absolute;top:50%;right:3px;transform:translateY(-50%);border:none;background:transparent;color:#8a3d1c;font-size:.95rem;line-height:1;cursor:pointer;padding:0 2px;display:none}
+  .ti:not(.empty)+.tix{display:block}
   td.hrs{font-weight:700;color:var(--green-deep);min-width:48px;background:#efe8d8}
   .dnum{font-size:.74rem;color:var(--muted);font-weight:600}
   .msg{font-size:.86rem;margin:10px 0;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
@@ -67,6 +72,13 @@
 <main class="wrap">
   <div class="eyebrow">Food service · Admin</div>
   <h1>Weekly schedule</h1>
+
+  <div class="clockcard" style="background:var(--bg-2,#efe8d8);border:1px solid var(--line,rgba(35,40,42,.16));border-radius:10px;padding:11px 14px;margin:4px 0 14px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
+    <a href="https://ors-idm.dunk.oraclerestaurants.com/oidc-ui/" target="_blank" rel="noopener" style="font-weight:700;color:#21443a;border-bottom:1px solid var(--clay,#a9633a);text-decoration:none">⏱ Time clock · Oracle Simphony ↗</a>
+    <span style="font-size:.86rem;color:#5f5d52">User <b style="color:#23282a">Tsoliman</b> <button type="button" class="ccopy" data-v="Tsoliman" style="font:inherit;font-size:.74rem;font-weight:600;color:#21443a;background:transparent;border:1px solid var(--line,rgba(35,40,42,.2));border-radius:5px;padding:2px 7px;cursor:pointer">Copy</button></span>
+    <span style="font-size:.86rem;color:#5f5d52">Enterprise <b style="color:#23282a">Dunkin Brands</b> <button type="button" class="ccopy" data-v="Dunkin Brands" style="font:inherit;font-size:.74rem;font-weight:600;color:#21443a;background:transparent;border:1px solid var(--line,rgba(35,40,42,.2));border-radius:5px;padding:2px 7px;cursor:pointer">Copy</button></span>
+    <span style="font-size:.76rem;color:#8a7a52">Password isn't stored — enter it on the Oracle page.</span>
+  </div>
 
   <div class="field"><label>Location (client)</label><select id="clientPick"><option value="">Choose a location…</option></select></div>
 
@@ -96,6 +108,8 @@
 <script src="/upload-zone.js"></script>
 <script>
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  // Copy buttons (time-clock username / enterprise).
+  document.addEventListener("click", function(e){ var b=e.target&&e.target.closest&&e.target.closest(".ccopy"); if(!b) return; var v=b.getAttribute("data-v")||""; var done=function(){ var o=b.textContent; b.textContent="Copied"; setTimeout(function(){ b.textContent=o; },1100); }; if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(done).catch(function(){}); } else { try{ var ta=document.createElement("textarea"); ta.value=v; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done(); }catch(_){} } });
   function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
   function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
   function sundayOf(d){ var x=new Date(d); x.setHours(12,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
@@ -164,7 +178,7 @@
     fileToScaledBase64(file).then(function(p){ if(!p) throw new Error("Couldn't read the file.");
       return fetch("/api/schedule/scan",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, start:ymd(START), base64:p.base64, contentType:p.contentType})});
     }).then(function(r){return r.json();}).then(function(d){ b.disabled=false;
-      if(d&&d.ok){ m.className="msg ok"; m.textContent="Imported "+d.shifts+" shift"+(d.shifts===1?"":"s")+" into this week."+((d.unmatched&&d.unmatched.length)?(" Not matched to the roster: "+d.unmatched.join(", ")+"."):""); load(); }
+      if(d&&d.ok){ m.className="msg ok"; m.textContent="Imported "+d.shifts+" shift"+(d.shifts===1?"":"s")+" into this week."+(d.failed?(" "+d.failed+" didn't save — scan again to retry."):"")+((d.unmatched&&d.unmatched.length)?(" Not matched to the roster: "+d.unmatched.join(", ")+"."):""); load(); }
       else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't read that."; }
     }).catch(function(e){ b.disabled=false; m.className="msg err"; m.textContent=(e&&e.message)||"Couldn't reach the server."; });
   }
@@ -209,8 +223,8 @@
       dates.forEach(function(d){
         var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
         h+="<td class='day'>"+
-          "<input type='time' class='ti tin"+(sh.in?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.in)+"' style='background:"+(startColor(sh.in)||"var(--bg)")+"' />"+
-          "<input type='time' class='ti tout"+(sh.out?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' />"+
+          "<span class='tiwrap'><input type='time' class='ti tin"+(sh.in?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.in)+"' style='background:"+(startColor(sh.in)||"var(--bg)")+"' /><button type='button' class='tix' tabindex='-1' title='Clear'>×</button></span>"+
+          "<span class='tiwrap'><input type='time' class='ti tout"+(sh.out?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' /><button type='button' class='tix' tabindex='-1' title='Clear'>×</button></span>"+
         "</td>";
       });
       h+="<td class='hrs' id='hrs_"+esc(e.id)+"'>"+rowHrs(e.id,dates).toFixed(1)+"</td></tr>";
@@ -219,13 +233,15 @@
     h+="</tbody><tfoot id='sfoot'>"+footerInner()+"</tfoot></table>";
     g.innerHTML=h;
     g.querySelectorAll(".ti").forEach(function(inp){ inp.addEventListener("change", onCell); });
+    // The X clears that time field (and saves the clear).
+    g.querySelectorAll(".tix").forEach(function(btn){ btn.addEventListener("click", function(){ var inp=btn.parentNode.querySelector(".ti"); if(!inp) return; inp.value=""; inp.dispatchEvent(new Event("change",{bubbles:true})); }); });
   }
   function rowHrs(empId,dates){ var t=0; dates.forEach(function(d){ var sh=(DATA.shifts[empId]&&DATA.shifts[empId][ymd(d)])||{}; t+=shiftHrs(sh.in,sh.out); }); return t; }
   function grandHrs(dates){ var t=0; DATA.employees.forEach(function(e){ t+=rowHrs(e.id,dates); }); return t; }
 
   function onCell(ev){
     var inp=ev.target, emp=inp.getAttribute("data-emp"), date=inp.getAttribute("data-date");
-    var cell=inp.parentNode;
+    var cell=inp.closest("td");
     var inT=cell.querySelector(".tin").value, outT=cell.querySelector(".tout").value;
     cell.querySelector(".tin").classList.toggle("empty", !inT);
     cell.querySelector(".tout").classList.toggle("empty", !outT);

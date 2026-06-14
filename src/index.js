@@ -279,7 +279,7 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v200";
+const APP_VERSION = "rw-v201";
 const SCHEMA_VERSION = 5;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
@@ -1205,16 +1205,14 @@ async function saveScheduleShift(request, env, session) {
   const empId = c(body.employeeId), date = c(body.date);
   if (!empId || !date) return json({ ok: false, error: "Missing employee or date." }, 400);
   const inT = c(body.in) || null, outT = c(body.out) || null;
-  const existing = await sbSelect(env, `schedule_shifts?employee_id=eq.${empId}&work_date=eq.${date}&select=id`);
-  if (existing === null) return json({ ok: false, error: "Run supabase/schedule_shifts.sql once." }, 502);
+  // Self-heal the table if it isn't there yet, so manual edits never hit "run SQL".
+  if ((await sbSelect(env, `schedule_shifts?select=id&limit=1`)) === null) await runMigrations(env, true);
   if (!inT && !outT) {
-    if (existing && existing[0]) await fetch(`${env.SUPABASE_URL}/rest/v1/schedule_shifts?id=eq.${existing[0].id}`, { method: "DELETE", headers: sbHeaders(env) });
+    await fetch(`${env.SUPABASE_URL}/rest/v1/schedule_shifts?employee_id=eq.${empId}&work_date=eq.${date}`, { method: "DELETE", headers: sbHeaders(env) });
     return json({ ok: true });
   }
-  let res;
-  if (existing && existing[0]) res = await sbUpdate(env, "schedule_shifts", existing[0].id, { in_time: inT, out_time: outT });
-  else res = await sbInsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT });
-  if (!res.ok) return json({ ok: false, error: "Couldn't save. Run supabase/schedule_shifts.sql once." }, 502);
+  const up = await sbUpsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT }, "employee_id,work_date");
+  if (!up.ok) return json({ ok: false, error: "Couldn't save." }, 502);
   return json({ ok: true });
 }
 
@@ -1318,7 +1316,7 @@ async function scanSchedule(request, env, session) {
     addKey((e.name || "").trim() + " " + (e.last_name || "").trim(), e.id);
   });
   const t = (v) => (v == null ? "" : v.toString().trim());
-  let shifts = 0; const unmatched = [];
+  let shifts = 0, failed = 0; const unmatched = [];
   for (const r of rows) {
     const nm = t(r.name); const empId = byName[nm.toLowerCase()];
     if (!empId) { if (nm) unmatched.push(nm); continue; }
@@ -1327,14 +1325,13 @@ async function scanSchedule(request, env, session) {
       const inT = t(days[i] && days[i].in) || null, outT = t(days[i] && days[i].out) || null;
       if (!inT && !outT) continue;
       const date = addDaysYmd(start, i);
-      const ex = await sbSelect(env, `schedule_shifts?employee_id=eq.${empId}&work_date=eq.${date}&select=id`);
-      if (ex === null) return json({ ok: false, error: "Run supabase/schedule_shifts.sql once." }, 502);
-      if (ex && ex[0]) await sbUpdate(env, "schedule_shifts", ex[0].id, { in_time: inT, out_time: outT });
-      else await sbInsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT });
-      shifts++;
+      // Single upsert per shift — no select-then-write, so one hiccup can't abort the
+      // whole scan partway through.
+      const up = await sbUpsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT }, "employee_id,work_date");
+      if (up.ok) shifts++; else failed++;
     }
   }
-  return json({ ok: true, shifts, unmatched });
+  return json({ ok: true, shifts, failed, unmatched });
 }
 
 /* ===================== Google / Gmail (OAuth) ===================== */
@@ -2179,12 +2176,17 @@ async function fetchT(url, opts, ms) {
 
 // GET rows. `path` is everything after /rest/v1/ , e.g. "clients?select=name".
 async function sbSelect(env, path) {
-  try {
-    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch {
-    return null;
+  // Retry once on a transient failure (network/timeout/5xx) so a brief hiccup isn't
+  // mistaken for a missing table. A real 4xx (e.g. table absent) returns null at once.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
+      if (r.ok) return await r.json();
+      if (r.status < 500 || attempt >= 1) return null;
+    } catch {
+      if (attempt >= 1) return null;
+    }
+    await new Promise((res) => setTimeout(res, 250));
   }
 }
 
@@ -2214,6 +2216,23 @@ async function sbInsert(env, table, row) {
     if (!r.ok) return { ok: false, status: r.status, error: await r.text() };
     const data = await r.json();
     return { ok: true, data: Array.isArray(data) ? data[0] : data };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+// Insert-or-update on a unique constraint in one round-trip (PostgREST upsert), so we
+// never need a fragile select-then-write. `onConflict` names the unique columns.
+async function sbUpsert(env, table, row, onConflict) {
+  try {
+    const q = onConflict ? `?on_conflict=${onConflict}` : "";
+    const r = await fetchT(`${env.SUPABASE_URL}/rest/v1/${table}${q}`, {
+      method: "POST",
+      headers: sbHeaders(env, { Prefer: "resolution=merge-duplicates,return=minimal" }),
+      body: JSON.stringify(row),
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: await r.text() };
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
