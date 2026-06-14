@@ -1670,16 +1670,19 @@ async function gmailCreateDraft(request, env) {
   const to = (body.to || "").toString().trim();
   const subject = (body.subject || "").toString();
   const text = (body.body || "").toString();
+  const html = (body.html || "").toString();           // optional rich-text body
+  const bodyCt = html ? "text/html" : "text/plain";
+  const bodyContent = html || text;
   const att = body.attachment && body.attachment.base64 ? body.attachment : null;
   const token = await getGoogleAccessToken(env);
   if (!token) return json({ ok: false, error: "Gmail is not connected." }, 409);
   let raw;
   if (att) {
-    // multipart/mixed: a text part plus the (PDF) attachment, both base64.
+    // multipart/mixed: a body part (plain or html) plus the (PDF) attachment.
     const boundary = "rwb_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     const attB64 = (att.base64 || "").replace(/\s+/g, "");
     const attWrapped = (attB64.match(/.{1,76}/g) || []).join("\r\n");
-    const textWrapped = (b64stdUtf8(text).match(/.{1,76}/g) || []).join("\r\n");
+    const textWrapped = (b64stdUtf8(bodyContent).match(/.{1,76}/g) || []).join("\r\n");
     const fn = (att.filename || "document.pdf").replace(/["\r\n]/g, "");
     const lines = [];
     if (to) lines.push("To: " + to);
@@ -1688,7 +1691,7 @@ async function gmailCreateDraft(request, env) {
     lines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
     lines.push("");
     lines.push("--" + boundary);
-    lines.push("Content-Type: text/plain; charset=UTF-8");
+    lines.push("Content-Type: " + bodyCt + "; charset=UTF-8");
     lines.push("Content-Transfer-Encoding: base64");
     lines.push("");
     lines.push(textWrapped);
@@ -1705,8 +1708,8 @@ async function gmailCreateDraft(request, env) {
     if (to) h.push("To: " + to);
     h.push("Subject: " + rfc2047(subject));
     h.push("MIME-Version: 1.0");
-    h.push("Content-Type: text/plain; charset=UTF-8");
-    raw = h.join("\r\n") + "\r\n\r\n" + text;
+    h.push("Content-Type: " + bodyCt + "; charset=UTF-8");
+    raw = h.join("\r\n") + "\r\n\r\n" + bodyContent;
   }
   try {
     const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {

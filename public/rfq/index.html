@@ -196,6 +196,24 @@
     if(t.photos && t.photos.length){ lines.push(""); lines.push("Photos of the job are attached (or available on request)."); }
     lines.push(""); lines.push("Thank you,"); lines.push("Ringwood Holding LLC"); if(CONTACT) lines.push(CONTACT);
     var body=lines.join("\n");
+    // Rich HTML version, styled like the PDF, with small photos that link to full res.
+    function sec(label,content){ return "<div style='margin:15px 0 0'><div style='color:#a9633a;font-weight:bold;font-size:12px;letter-spacing:.05em;text-transform:uppercase'>"+label+"</div><div style='margin-top:3px;color:#1f3d2b;font-size:14px;line-height:1.5'>"+content+"</div></div>"; }
+    var eqLine=[ (t.asset&&t.asset.name)||"", (t.asset?[t.asset.make,t.asset.model].filter(Boolean).join(" "):""), (t.asset&&t.asset.serial)?("Serial "+t.asset.serial):"" ].filter(Boolean).map(esc).join(" &middot; ");
+    var photosHtml="";
+    if(t.photos&&t.photos.length){
+      photosHtml="<div style='margin:15px 0 0'><div style='color:#a9633a;font-weight:bold;font-size:12px;letter-spacing:.05em;text-transform:uppercase'>Photos</div><div style='margin-top:6px'>"+
+        t.photos.map(function(u){ return "<a href='"+esc(u)+"' target='_blank' style='text-decoration:none'><img src='"+esc(u)+"' width='140' style='width:140px;height:auto;border-radius:6px;border:1px solid #d9d3c5;margin:0 6px 6px 0;vertical-align:top'/></a>"; }).join("")+
+        "</div><div style='font-size:12px;color:#5c6b60;margin-top:2px'>Click any photo for full resolution.</div></div>";
+    }
+    var html="<div style='font-family:Arial,Helvetica,sans-serif;color:#1f3d2b;font-size:14px;line-height:1.5'>"+
+      (t.ref?("<div style='font-size:12px;color:#5c6b60'>Ref "+esc(t.ref)+(DUE?(" &middot; respond by "+esc(fmtDate(DUE))):"")+"</div>"):"")+
+      "<p>Hello,</p><p>Ringwood Holding LLC is requesting a quote for the following work.</p>"+
+      sec("Scope of work",(SCOPE?esc(SCOPE):"(see attached)").replace(/\n/g,"<br>"))+
+      ((SHOW_EQ&&eqLine)?sec("Equipment",eqLine):"")+
+      ((SHOW_LOC&&t.location)?sec("Site location",esc(t.location)):"")+
+      sec("What we need from you",(INSTR?esc(INSTR):"Please reply with your price, lead time, and earliest availability.").replace(/\n/g,"<br>"))+
+      photosHtml+
+      "<p style='margin-top:18px'>Thank you,<br>Ringwood Holding LLC"+(CONTACT?("<br>"+esc(CONTACT)):"")+"</p></div>";
     var vendor=(RFQ.vendors||[]).filter(function(v){return v.email===to;})[0];
     var note=document.getElementById("sendNote");
     // Pre-create a pending quote for this vendor on the ticket, so you can fill
@@ -210,7 +228,7 @@
       if(note){ note.style.display="block"; note.style.color="var(--muted)"; note.textContent=pre+"Building the RFQ PDF and Gmail draft…"; }
       buildRfqPdf().then(function(p){
         var att=p ? { filename:("RFQ "+(t.ref||"Ringwood")+".pdf").replace(/[^A-Za-z0-9 ._-]/g,""), base64:p, contentType:"application/pdf" } : null;
-        return fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:body,attachment:att})}).then(function(r){return r.json();}).then(function(d){
+        return fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:to,subject:subject,body:body,html:html,attachment:att})}).then(function(r){return r.json();}).then(function(d){
           if(d&&d.ok){ if(note){ note.style.color="var(--green-deep)"; note.innerHTML=pre+"Draft created in your Gmail"+(att?" with the RFQ PDF attached":"")+". <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>Open it</a>."; } }
           else if(note){ note.style.color="#8a3d1c"; note.textContent=(d&&d.error)||"Couldn't create the draft."; }
         });
