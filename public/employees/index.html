@@ -167,6 +167,7 @@
     </div>
   </div>
 </main>
+<script src="/upload-zone.js"></script>
 <script>
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function ukey(id){ return (id||"").toString().replace(/[^a-zA-Z0-9]/g,""); }
@@ -254,6 +255,18 @@
       if(!d||!d.ok) return;
       var sel=document.getElementById("clientPick");
       (d.clients||[]).forEach(function(c){ var o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+      // Global client context (top-bar switcher). Scoped to exactly one client:
+      // select it and hide this redundant "Location (client)" field.
+      var act=[]; try{ var a=JSON.parse(localStorage.getItem("rw_active_clients")||"[]"); if(Array.isArray(a)) act=a.filter(function(x){return x;}); }catch(e){}
+      if(act.length===1){
+        var mid=""; for(var i=0;i<sel.options.length;i++){ if(sel.options[i].textContent===act[0]){ mid=sel.options[i].value; break; } }
+        if(mid){
+          sel.value=mid; CLIENT_ID=mid; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){}
+          var fld=sel.closest?sel.closest(".field"):null; if(fld) fld.style.display="none";
+          document.getElementById("body").style.display="block"; load();
+          return;
+        }
+      }
       var saved=""; try{ saved=localStorage.getItem(CKEY)||""; }catch(e){}
       if(URL_CLIENT) saved=URL_CLIENT;
       if(saved){ sel.value=saved; if(sel.value===saved){ CLIENT_ID=saved; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){} document.getElementById("body").style.display="block"; load(); } }
@@ -612,7 +625,6 @@
     }).catch(function(){ b.disabled=false; b.textContent="Check against QuickBooks"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
 </script>
-<script src="/upload-zone.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

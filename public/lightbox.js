@@ -40,6 +40,30 @@
     o.style.display = "flex";
   };
 
+  // PDF (or any document) in a full-screen in-app overlay, so you never leave the app.
+  window.openPdfOverlay = function (src) {
+    if (!src) return;
+    var o = document.getElementById("rw-pdfbox");
+    if (!o) {
+      o = document.createElement("div");
+      o.id = "rw-pdfbox";
+      o.style.cssText = "position:fixed;inset:0;background:rgba(20,25,22,.93);display:none;flex-direction:column;z-index:9999;padding:14px";
+      o.innerHTML =
+        "<div style='display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-bottom:10px'>" +
+          "<a class='rw-pdf-open' target='_blank' rel='noopener' style='color:#f6f2e8;font-size:.85rem;text-decoration:none;border-bottom:1px solid rgba(246,242,232,.55);padding-bottom:1px'>Open in new tab ↗</a>" +
+          "<button type='button' aria-label='Close' style='width:42px;height:42px;border-radius:999px;border:none;background:rgba(246,242,232,.16);color:#f6f2e8;font-size:24px;line-height:1;cursor:pointer'>×</button>" +
+        "</div>" +
+        "<iframe title='Document' style='flex:1;width:100%;border:none;border-radius:6px;background:#fff'></iframe>";
+      document.body.appendChild(o);
+      function closePdf() { o.style.display = "none"; o.querySelector("iframe").src = "about:blank"; }
+      o.querySelector("button").addEventListener("click", closePdf);
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && o.style.display !== "none") closePdf(); });
+    }
+    o.querySelector("iframe").src = src;
+    o.querySelector(".rw-pdf-open").href = src;
+    o.style.display = "flex";
+  };
+
   // Capture phase so a photo opens the viewer even if it sits inside a row that
   // has its own click handler.
   document.addEventListener("click", function (e) {

@@ -459,7 +459,7 @@
           : "<span style='font-size:1.4rem'>📄</span>";
         return "<div class='docrow' data-url='"+esc(dc.url)+"' style='display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)'>"+
           thumb+
-          "<a class='docname' href='"+esc(dc.url)+"' "+(isImg?("data-lb='"+esc(dc.url)+"'"):"target='_blank' rel='noopener'")+" style='flex:1;color:var(--green-deep);font-weight:600;word-break:break-word;cursor:"+(isImg?"zoom-in":"pointer")+"'>"+esc(dc.name||"File")+"</a>"+
+          "<a class='docname' href='"+esc(dc.url)+"' "+(isImg?("data-lb='"+esc(dc.url)+"'"):("data-pdf='"+esc(dc.url)+"'"))+" style='flex:1;color:var(--green-deep);font-weight:600;word-break:break-word;cursor:"+(isImg?"zoom-in":"pointer")+"'>"+esc(dc.name||"File")+"</a>"+
           "<span class='docwhen' style='font-size:.8rem;color:var(--muted)'>"+esc(when)+"</span>"+
           "<button type='button' class='docedit' data-url='"+esc(dc.url)+"' data-name=\""+esc(dc.name||"")+"\" title='Rename' style='background:transparent;border:none;color:var(--green-deep);font-size:1rem;cursor:pointer;padding:0 4px'>✎</button>"+
           "<button type='button' class='docdel' data-url='"+esc(dc.url)+"' title='Remove' style='background:transparent;border:none;color:#8a3d1c;font-size:1.1rem;cursor:pointer;padding:0 4px'>×</button>"+
@@ -600,8 +600,9 @@
       fetch("/api/asset/docs/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, url:b.getAttribute("data-url") })})
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); } });
     }); });
-    // Image files open in the in-app photo viewer (overlay), not a new tab.
+    // Images and PDFs both open in an in-app overlay, never a new tab.
     Array.prototype.slice.call(document.querySelectorAll(".docname[data-lb]")).forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); if(window.openLightbox) window.openLightbox(a.getAttribute("data-lb")); else window.open(a.getAttribute("data-lb"),"_blank"); }); });
+    Array.prototype.slice.call(document.querySelectorAll(".docname[data-pdf]")).forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); if(window.openPdfOverlay) window.openPdfOverlay(a.getAttribute("data-pdf")); else window.open(a.getAttribute("data-pdf"),"_blank"); }); });
     // Tidy all titles at once: AI-clean every file name and apply.
     var dta=document.getElementById("docTidyAll");
     if(dta) dta.addEventListener("click", function(){
