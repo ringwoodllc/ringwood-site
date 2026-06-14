@@ -42,6 +42,10 @@
   thead th.emp{background:#e7e0d0;z-index:2}
   td.day{min-width:92px}
   td.day input{width:78px;font-size:.8rem;padding:4px 5px;text-align:center;margin:1px 0}
+  /* Empty time cells recede: hide the distracting "--:-- --" and dim the box, unless focused for editing. */
+  .ti.empty:not(:focus){background:transparent !important;border-color:rgba(35,40,42,.07)}
+  .ti.empty:not(:focus)::-webkit-datetime-edit{color:transparent}
+  .ti.empty:not(:focus)::-webkit-calendar-picker-indicator{opacity:.18}
   td.hrs{font-weight:700;color:var(--green-deep);min-width:48px;background:#efe8d8}
   .dnum{font-size:.74rem;color:var(--muted);font-weight:600}
   .msg{font-size:.86rem;margin:10px 0;min-height:14px}.msg.err{color:#8a3d1c}.msg.ok{color:var(--green-deep)}
@@ -205,8 +209,8 @@
       dates.forEach(function(d){
         var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
         h+="<td class='day'>"+
-          "<input type='time' class='ti tin' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.in)+"' style='background:"+(startColor(sh.in)||"var(--bg)")+"' />"+
-          "<input type='time' class='ti tout' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' />"+
+          "<input type='time' class='ti tin"+(sh.in?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.in)+"' style='background:"+(startColor(sh.in)||"var(--bg)")+"' />"+
+          "<input type='time' class='ti tout"+(sh.out?"":" empty")+"' data-emp='"+esc(e.id)+"' data-date='"+ds+"' value='"+esc(sh.out)+"' />"+
         "</td>";
       });
       h+="<td class='hrs' id='hrs_"+esc(e.id)+"'>"+rowHrs(e.id,dates).toFixed(1)+"</td></tr>";
@@ -223,6 +227,8 @@
     var inp=ev.target, emp=inp.getAttribute("data-emp"), date=inp.getAttribute("data-date");
     var cell=inp.parentNode;
     var inT=cell.querySelector(".tin").value, outT=cell.querySelector(".tout").value;
+    cell.querySelector(".tin").classList.toggle("empty", !inT);
+    cell.querySelector(".tout").classList.toggle("empty", !outT);
     cell.querySelector(".tin").style.background = startColor(inT)||"var(--bg)";
     DATA.shifts[emp]=DATA.shifts[emp]||{}; DATA.shifts[emp][date]={in:inT,out:outT};
     var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
