@@ -345,7 +345,7 @@
     list.forEach(wire);
   }
   // A small QuickBooks badge (QB green) when this person is linked to a QBO record.
-  function qbBadge(e){ return (e.qb||e.payrollName) ? " <span title='From QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
+  function qbBadge(e){ return (e.qb||e.qbSynced) ? " <span title='Synced from QuickBooks' style='display:inline-block;background:#2ca01c;color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;vertical-align:middle;letter-spacing:.04em'>QB</span>" : ""; }
   function renderItem(e){
     var k=ukey(e.id);
     var sub=[e.crewNo,e.role,fmtPhone(e.phone)].filter(Boolean).map(esc).join(" · ")||"No details yet";
@@ -362,7 +362,7 @@
     var qbPicker="";
     if(!ql && QB_CONNECTED){ var opts=qbUnlinked().map(function(q){ return "<option value='"+esc(q.qboId)+"'>"+esc(q.display||((q.first+" "+q.last).trim()))+"</option>"; }).join(""); qbPicker="<div class='field' style='margin-top:8px;margin-bottom:0'><label>Link to QuickBooks</label><select onchange=\"if(this.value)setQbLink('"+esc(e.id)+"',this.value)\"><option value=''>— not linked —</option>"+opts+"</select></div>"; }
     var rateBadge=(e.rate!==""&&e.rate!=null)?" <span title='Pay rate set' style='color:#2ca01c;font-weight:800'>$</span>":"";
-    var idHead=ql?("● "+qbName+" · QuickBooks"):(e.payrollName?"Full Name · from QuickBooks":(QB_CONNECTED?"Full Name · not in QuickBooks":"Full Name"));
+    var idHead=ql?("● "+qbName+" · QuickBooks"):(e.qbSynced?"Full Name · from QuickBooks":"Full Name");
     var corner=ql?("<a href='#' onclick=\"event.preventDefault();event.stopPropagation();setQbLink('"+esc(e.id)+"','')\" style='color:#8a3d1c;font-weight:600;border-bottom:1px solid rgba(138,61,28,.4)'>Unlink</a>"):"";
     var qbChip=
       "<div class='qbchip"+(ql?" linked":"")+"' id='qbc_"+k+"'>"+

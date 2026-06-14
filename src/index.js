@@ -198,6 +198,7 @@ export default {
     if (url.pathname === "/api/schedule/clear" && request.method === "POST") return clearScheduleWeek(request, env, session);
     if (url.pathname === "/api/schedule/scan" && request.method === "POST") return scanSchedule(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
+    if (url.pathname === "/api/admin/migrate" && request.method === "POST") return adminMigrate(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
     if (url.pathname === "/api/admin/users" && request.method === "GET") return adminListUsers(request, env);
     if (url.pathname === "/api/admin/user" && request.method === "POST") return adminSaveUser(request, env);
@@ -264,8 +265,45 @@ export default {
   // and only fills a round at 6/10/14/18 ET for Demo-enabled clients.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runScheduledTemps(env).catch(function () {}));
+    ctx.waitUntil(runMigrations(env).catch(function () {}));
   },
 };
+
+// ---- Schema auto-migrations -------------------------------------------------
+// Idempotent DDL the app needs. Applied via a locked-down exec_ddl() function in
+// Postgres (only the server's service key can call it), so we never hand-paste SQL
+// again. New columns/tables go here; they apply on the hourly cron and on demand
+// from Admin. Every statement must be safe to re-run.
+const MIGRATIONS = [
+  "alter table employees add column if not exists last_name text",
+  "alter table employees add column if not exists pos_password text",
+  "alter table employees add column if not exists address text",
+  "alter table employees add column if not exists qbo_id text",
+  "alter table employees add column if not exists nickname text",
+  "alter table employees add column if not exists qb_synced boolean not null default false",
+  "create table if not exists qbo_connections (client_id uuid primary key references clients(id) on delete cascade, realm_id text not null, company_name text, refresh_token text, access_token text, expires_at timestamptz, updated_at timestamptz not null default now())",
+];
+
+async function runMigrations(env) {
+  if (!sbReady(env)) return { ok: false, error: "Not connected.", results: [] };
+  const results = [];
+  for (const stmt of MIGRATIONS) {
+    try {
+      const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/exec_ddl`, { method: "POST", headers: sbHeaders(env), body: JSON.stringify({ stmt }) });
+      results.push({ ok: r.ok, status: r.status });
+    } catch { results.push({ ok: false, status: 0 }); }
+  }
+  return { ok: results.every((x) => x.ok), applied: results.length, results };
+}
+
+async function adminMigrate(request, env) {
+  if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
+  const out = await runMigrations(env);
+  if (!out.ok && (out.results || []).some((x) => x.status === 404)) {
+    return json({ ok: false, error: "The one-time exec_ddl function isn't set up yet. Run supabase/exec_ddl.sql once (see setup), then click again." }, 409);
+  }
+  return json(out);
+}
 
 function rewrite(url, pathname, request) {
   const u = new URL(url);
@@ -787,7 +825,7 @@ async function listEmployees(url, env, session) {
   return noStore({
     ok: true,
     employees: (rows || []).map((e) => ({
-      id: e.id, name: e.name || "", nickname: e.nickname || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "", qboId: e.qbo_id || "",
+      id: e.id, name: e.name || "", nickname: e.nickname || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "", qboId: e.qbo_id || "", qbSynced: e.qb_synced === true,
       phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
       role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
     })),
@@ -938,7 +976,7 @@ async function scanPayrollEmployees(request, env, session) {
     const nm = splitName(r.name);
     const e = byKey[keyOf(r.name)] || byKey[keyOf(nm.first + " " + nm.last)];
     if (!e) { unmatched.push(r.name); continue; }
-    const patch = { payroll_name: r.name };
+    const patch = { payroll_name: r.name, qb_synced: true };
     if (nm.first) patch.name = nm.first;
     if (nm.last) patch.last_name = nm.last;
     const rate = Number(r.payRate); if (!isNaN(rate) && rate > 0) patch.rate = rate;
