@@ -845,10 +845,20 @@ async function bulkFillEmployees(request, env, session) {
   const emps = await sbSelect(env, `employees?client_id=eq.${clientId}&select=id,name,last_name,payroll_name`);
   if (emps === null) return json({ ok: false, error: "Couldn't read the roster." }, 502);
   const keyOf = (s) => (s || "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" ");
+  // Split a payroll name into first/last. "Chowdhury, Dilara" -> first Dilara, last
+  // Chowdhury. "Sabrina Lopa" -> first Sabrina, last Lopa.
+  const splitName = (p) => {
+    p = (p || "").toString().trim();
+    if (!p) return { first: "", last: "" };
+    if (p.indexOf(",") >= 0) { const a = p.split(","); return { last: a[0].trim(), first: a.slice(1).join(",").trim() }; }
+    const a = p.split(/\s+/); return a.length >= 2 ? { first: a.slice(0, -1).join(" "), last: a[a.length - 1] } : { first: p, last: "" };
+  };
   const byKey = {};
+  const addKey = (k, e) => { if (k && !byKey[k]) byKey[k] = e; };
   (emps || []).forEach((e) => {
-    const k1 = keyOf((e.name || "") + " " + (e.last_name || "")); if (k1 && !byKey[k1]) byKey[k1] = e;
-    const k2 = keyOf(e.payroll_name); if (k2 && !byKey[k2]) byKey[k2] = e;
+    addKey(keyOf((e.name || "") + " " + (e.last_name || "")), e);
+    addKey(keyOf(e.payroll_name), e);
+    addKey(keyOf(e.name), e);  // first name alone — current records often have name = nickname
   });
   const cleanPhone = (p) => { let d = (p || "").replace(/\D/g, ""); if (d.length === 11 && d[0] === "1") d = d.slice(1); if (d.length === 10) return "(" + d.slice(0, 3) + ") " + d.slice(3, 6) + "-" + d.slice(6); return (p || "").toString().trim(); };
   let updated = 0; const unmatched = [];
@@ -856,16 +866,19 @@ async function bulkFillEmployees(request, env, session) {
     const nick = (r.nickname || "").toString().trim();
     const payroll = (r.payrollName || "").toString().trim();
     const phone = cleanPhone(r.phone);
-    const e = byKey[keyOf(payroll)] || byKey[keyOf(nick)];
+    const nm = splitName(payroll);
+    const e = byKey[keyOf(payroll)] || byKey[keyOf((nm.first + " " + nm.last))] || byKey[keyOf(nick)];
     if (!e) { unmatched.push(payroll || nick); continue; }
     const patch = {};
     if (nick) patch.nickname = nick;
     if (payroll) patch.payroll_name = payroll;
     if (phone) patch.phone = phone;
+    if (nm.first) patch.name = nm.first;          // fix the first/last that were set to the nickname
+    if (nm.last) patch.last_name = nm.last;
     if (!Object.keys(patch).length) continue;
     let res = await sbUpdate(env, "employees", e.id, patch);
     for (let g = 0; !res.ok && g < 4; g++) { const m = /'([a-zA-Z_]+)' column|column "?([a-zA-Z_]+)"? (?:of|does not)/.exec(res.error || ""); const col = m && (m[1] || m[2]); if (col && (col in patch)) { delete patch[col]; res = await sbUpdate(env, "employees", e.id, patch); } else break; }
-    if (res.ok) { updated++; delete byKey[keyOf(payroll)]; delete byKey[keyOf(nick)]; }
+    if (res.ok) { updated++; delete byKey[keyOf(payroll)]; delete byKey[keyOf((nm.first + " " + nm.last))]; delete byKey[keyOf(nick)]; }
   }
   return json({ ok: true, updated, unmatched });
 }

@@ -144,7 +144,7 @@
         <span class="caret">›</span>
       </div>
       <div class="cbody" id="bulkBody">
-        <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">Copy the three columns (Name, Payroll Name, Phone) from your sheet and paste below. Each row is matched to the roster by name, then the nickname, payroll name, and phone are filled in. POS pins, roles, and rates are left as they are.</div>
+        <div style="font-size:.84rem;color:var(--muted);margin-bottom:8px">Copy the three columns (Name, Payroll Name, Phone) from your sheet and paste below. Each row is matched to the roster, then it fills the nickname and phone and fixes the first/last name from the payroll name (so "Dilara Dilara" becomes "Dilara Chowdhury"). POS pins, roles, and rates are left as they are.</div>
         <textarea id="bulkText" rows="6" style="width:100%;font:inherit;font-size:.9rem;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg)" placeholder="Dilara&#9;Chowdhury, Dilara&#9;347-615-8265"></textarea>
         <div style="margin-top:8px"><button class="btn sm" id="bulkBtn" type="button">Match &amp; fill</button></div>
         <div class="msg" id="bulk_msg"></div>
@@ -307,18 +307,23 @@
     persistQbLink(empId, e.qboId); render();
   }
   function viewList(){
-    if(SORT==="manual") return EMP.slice(); // server (sort) order, unfiltered, for reordering
+    // Always honor the active/inactive filter; custom order just keeps server order.
     var list=EMP.filter(function(e){ return FILT==="all"?true:(FILT==="active"?e.active:!e.active); });
+    if(SORT==="manual") return list;
     list.sort(function(a,b){ return SORT==="last" ? lastName(a).toLowerCase().localeCompare(lastName(b).toLowerCase()) : (a.name||"").toLowerCase().localeCompare((b.name||"").toLowerCase()); });
     return list;
   }
-  // Reorder the roster (the schedule follows this order). Optimistic UI, saved
-  // in the background.
+  // Reorder the roster (the schedule follows this order). Swap the two visible
+  // (filtered) neighbors within the full list, so reordering works with a filter on.
   function reorderEmp(id, dir){
     if(SORT!=="manual") return;
-    var i=-1; for(var x=0;x<EMP.length;x++){ if(EMP[x].id===id){ i=x; break; } }
-    if(i<0) return; var t=i+dir; if(t<0||t>=EMP.length) return;
-    var tmp=EMP[i]; EMP[i]=EMP[t]; EMP[t]=tmp; render();
+    var view=viewList(), vi=-1;
+    for(var x=0;x<view.length;x++){ if(view[x].id===id){ vi=x; break; } }
+    if(vi<0) return; var tj=vi+dir; if(tj<0||tj>=view.length) return;
+    var idA=view[vi].id, idB=view[tj].id, ia=-1, ib=-1;
+    for(var y=0;y<EMP.length;y++){ if(EMP[y].id===idA)ia=y; if(EMP[y].id===idB)ib=y; }
+    if(ia<0||ib<0) return;
+    var tmp=EMP[ia]; EMP[ia]=EMP[ib]; EMP[ib]=tmp; render();
     fetch("/api/employees/reorder",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({order:EMP.map(function(e){return e.id;})})}).catch(function(){});
   }
   window.mv=reorderEmp;
