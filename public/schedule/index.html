@@ -89,6 +89,7 @@
     <div class="scrollx"><div id="grid"><div class="empty">Loading…</div></div></div>
   </div>
 </main>
+<script src="/upload-zone.js"></script>
 <script>
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
   function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -237,7 +238,6 @@
       .catch(function(){ b.disabled=false; b.textContent="Clear week"; });
   }
 </script>
-<script src="/upload-zone.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>
