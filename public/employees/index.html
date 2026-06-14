@@ -221,7 +221,20 @@
     var mr=document.getElementById("manageRolesLink"); if(mr) mr.addEventListener("click",function(e){ e.preventDefault(); var p=document.getElementById("rolePanel"); p.style.display = p.style.display==="none" ? "block" : "none"; });
     var bb=document.getElementById("bulkBtn"); if(bb) bb.addEventListener("click", bulkFill);
     var pf=document.getElementById("payFile"); if(pf) pf.addEventListener("change", function(e){ var fs=e.target.files; e.target.value=""; syncPayFiles(fs); });
-    if(window.RWUploadZone){ var pd=document.getElementById("payDrop"); if(pd) RWUploadZone(pd, function(fs){ syncPayFiles(fs); }); }
+    // Payroll drop-zone: self-contained drag / drop / paste so it never depends on
+    // another script loading first.
+    (function(){
+      var pd=document.getElementById("payDrop"); if(!pd) return;
+      function stop(e){ e.preventDefault(); e.stopPropagation(); }
+      ["dragenter","dragover"].forEach(function(ev){ pd.addEventListener(ev,function(e){ stop(e); pd.style.outline="2px dashed var(--green-deep)"; }); });
+      ["dragleave","dragend"].forEach(function(ev){ pd.addEventListener(ev,function(e){ stop(e); pd.style.outline=""; }); });
+      pd.addEventListener("drop",function(e){ stop(e); pd.style.outline=""; var fs=Array.prototype.slice.call((e.dataTransfer&&e.dataTransfer.files)||[]); if(fs.length) syncPayFiles(fs); });
+      document.addEventListener("paste",function(e){
+        var items=(e.clipboardData&&e.clipboardData.items)||[], fs=[];
+        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f) fs.push(f); } }
+        if(fs.length){ e.preventDefault(); syncPayFiles(fs); }
+      });
+    })();
     loadClients();
   }).catch(function(){});
 

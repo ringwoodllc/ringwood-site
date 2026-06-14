@@ -129,7 +129,20 @@
     document.getElementById("uploadW").addEventListener("click",function(){ document.getElementById("scanFile").click(); });
     document.getElementById("scanCam").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
     document.getElementById("scanFile").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanSchedulePhoto(f); });
-    if(window.RWUploadZone) RWUploadZone(document.getElementById("schedDrop"), function(fs){ if(fs[0]) scanSchedulePhoto(fs[0]); });
+    // Schedule drop-zone: self-contained drag / drop / paste, no dependency on
+    // another script loading first.
+    (function(){
+      var dz=document.getElementById("schedDrop"); if(!dz) return;
+      function stop(e){ e.preventDefault(); e.stopPropagation(); }
+      ["dragenter","dragover"].forEach(function(ev){ dz.addEventListener(ev,function(e){ stop(e); dz.style.outline="2px dashed var(--green-deep)"; }); });
+      ["dragleave","dragend"].forEach(function(ev){ dz.addEventListener(ev,function(e){ stop(e); dz.style.outline=""; }); });
+      dz.addEventListener("drop",function(e){ stop(e); dz.style.outline=""; var fs=Array.prototype.slice.call((e.dataTransfer&&e.dataTransfer.files)||[]); if(fs[0]) scanSchedulePhoto(fs[0]); });
+      document.addEventListener("paste",function(e){
+        var items=(e.clipboardData&&e.clipboardData.items)||[], f=null;
+        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ f=items[i].getAsFile(); if(f) break; } }
+        if(f){ e.preventDefault(); scanSchedulePhoto(f); }
+      });
+    })();
     document.getElementById("showMode").addEventListener("change",function(){ SHOWMODE=this.value; if(DATA) render(); });
     loadClients();
   }).catch(function(){});
