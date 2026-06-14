@@ -176,7 +176,7 @@
   // POS number: dim the standard 362538 prefix, show the short part in the accent
   // color so it's easy to spot. If the prefix isn't there, the whole number is accent.
   var POS_STD="362538";
-  function posChip(num){ num=(num||"").toString(); if(!num) return ""; var html; if(num.indexOf(POS_STD)===0 && num.length>POS_STD.length){ html="<span style='color:var(--muted);font-weight:600'>"+esc(POS_STD)+"</span><span style='color:var(--green-deep);font-weight:800'>"+esc(num.slice(POS_STD.length))+"</span>"; } else { html="<span style='color:var(--green-deep);font-weight:800'>"+esc(num)+"</span>"; } return "<span class='key'>"+html+"</span> "; }
+  function posChip(num){ num=(num||"").toString(); if(!num) return ""; var html; if(num.indexOf(POS_STD)===0 && num.length>POS_STD.length){ html="<span style='color:var(--muted);font-weight:500;font-size:.82em'>"+esc(POS_STD)+"</span><span style='color:var(--green-deep);font-weight:800;background:rgba(47,93,80,.12);padding:0 5px;border-radius:4px;margin-left:4px'>"+esc(num.slice(POS_STD.length))+"</span>"; } else { html="<span style='color:var(--green-deep);font-weight:800'>"+esc(num)+"</span>"; } return "<span class='key'>"+html+"</span> "; }
   // Roles: a managed list per location, stored in the DB so it syncs across
   // devices. Merged with whatever roles are already in use. Typically just a few.
   var ROLES=[]; // [{id,name}]

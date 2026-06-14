@@ -199,6 +199,7 @@ export default {
     if (url.pathname === "/api/schedule/copy" && request.method === "POST") return copyScheduleWeek(request, env, session);
     if (url.pathname === "/api/schedule/clear" && request.method === "POST") return clearScheduleWeek(request, env, session);
     if (url.pathname === "/api/schedule/scan" && request.method === "POST") return scanSchedule(request, env, session);
+    if (url.pathname === "/api/schedule/targets" && request.method === "POST") return saveScheduleTargets(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/migrate" && request.method === "POST") return adminMigrate(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
@@ -279,9 +280,11 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v204";
-const SCHEMA_VERSION = 5;
+const APP_VERSION = "rw-v205";
+const SCHEMA_VERSION = 6;
 const MIGRATIONS = [
+  // Per-client expected hours by day-of-week (universal across weeks) + a notes field.
+  "create table if not exists schedule_targets (client_id uuid primary key references clients(id) on delete cascade, hours jsonb, comment text, updated_at timestamptz not null default now())",
   "create table if not exists app_meta (k text primary key, v text)",
   "alter table employees add column if not exists last_name text",
   "alter table employees add column if not exists pos_password text",
@@ -1194,7 +1197,10 @@ async function getSchedule(url, env, session) {
     if (rows === null) scheduleMissing = true;
     else (rows || []).forEach((s) => { (shifts[s.employee_id] = shifts[s.employee_id] || {})[s.work_date] = { in: s.in_time || "", out: s.out_time || "" }; });
   }
-  return noStore({ ok: true, scheduleMissing, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "", phone: e.phone || "" })), shifts });
+  let targets = { hours: [], comment: "" };
+  const tg = await sbSelect(env, `schedule_targets?client_id=eq.${clientId}&select=hours,comment`);
+  if (tg && tg[0]) targets = { hours: Array.isArray(tg[0].hours) ? tg[0].hours : [], comment: tg[0].comment || "" };
+  return noStore({ ok: true, scheduleMissing, targets, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "", phone: e.phone || "" })), shifts });
 }
 
 async function saveScheduleShift(request, env, session) {
@@ -1212,6 +1218,21 @@ async function saveScheduleShift(request, env, session) {
     return json({ ok: true });
   }
   const up = await sbUpsert(env, "schedule_shifts", { employee_id: empId, work_date: date, in_time: inT, out_time: outT }, "employee_id,work_date");
+  if (!up.ok) return json({ ok: false, error: "Couldn't save." }, 502);
+  return json({ ok: true });
+}
+
+// Universal per-client expected hours by day (Sun..Sat) plus a notes comment.
+async function saveScheduleTargets(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  if (!clientId) return json({ ok: false, error: "Pick a location first." }, 400);
+  const hours = Array.isArray(body.hours) ? body.hours.slice(0, 7).map((x) => { const n = parseFloat(x); return isNaN(n) ? null : n; }) : [];
+  const comment = (body.comment == null ? "" : String(body.comment)).slice(0, 2000);
+  if ((await sbSelect(env, `schedule_targets?select=client_id&limit=1`)) === null) await runMigrations(env, true);
+  const up = await sbUpsert(env, "schedule_targets", { client_id: clientId, hours, comment, updated_at: new Date().toISOString() }, "client_id");
   if (!up.ok) return json({ ok: false, error: "Couldn't save." }, 502);
   return json({ ok: true });
 }

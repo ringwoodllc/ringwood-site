@@ -122,6 +122,10 @@
     <div id="setupNote" class="note" style="display:none"></div>
     <div class="msg" id="msg"></div>
     <div class="scrollx"><div id="grid"><div class="empty">Loading…</div></div></div>
+    <div style="margin-top:14px;max-width:560px">
+      <label for="schedComment" style="display:block;font-weight:600;font-size:.84rem;color:#21443a;margin-bottom:4px">Notes</label>
+      <textarea id="schedComment" placeholder="Notes about the schedule (saved)…" style="width:100%;min-height:60px;font:inherit;font-size:.9rem;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;resize:vertical"></textarea>
+    </div>
   </div>
   <div id="auditSheet"></div>
 </main>
@@ -145,18 +149,33 @@
   var CLIENT_ID="", START=sundayOf(new Date()), DATA=null, CKEY="rw_emp_client", SHOWMODE="all", CUR_EMPS=[], CUR_DATES=[];
   // Daily rollups (the standard view): total hours, head count, and how many are
   // on a morning / afternoon / evening shift, by shift start time.
-  function bucketOf(sh){ var t=(sh&&(sh.in||sh.out))||""; if(!t) return null; var h=+t.split(":")[0]; return h<12?"m":(h<17?"a":"e"); }
+  function bucketOf(sh){ var t=(sh&&(sh.in||sh.out))||""; if(!t) return null; var h=+t.split(":")[0]; return h<12?"m":"a"; }
   function shOf(e,d){ return (DATA.shifts[e.id]&&DATA.shifts[e.id][ymd(d)])||{}; }
   function footerInner(){
     var emps=CUR_EMPS, dates=CUR_DATES;
     function cells(fn){ var s=""; dates.forEach(function(d){ s+="<td>"+fn(d)+"</td>"; }); return s; }
+    var exp=(DATA.targets&&DATA.targets.hours)||[];
+    // Total hrs (computed), colored green/orange/red vs the expected for that weekday.
     var weekTot=0, hrsCells="";
-    dates.forEach(function(d){ var t=0; emps.forEach(function(e){ var sh=shOf(e,d); t+=shiftHrs(sh.in,sh.out); }); weekTot+=t; hrsCells+="<td>"+(t?t.toFixed(1):"")+"</td>"; });
+    dates.forEach(function(d){ var dow=d.getDay(); var t=0; emps.forEach(function(e){ var sh=shOf(e,d); t+=shiftHrs(sh.in,sh.out); }); weekTot+=t; var ev=exp[dow]; var bg=""; if(ev!=null&&ev!==""){ var diff=t-(+ev); bg=Math.abs(diff)<0.05?"#cdebd4":(diff>0?"#f3c9c9":"#fbe0c2"); } hrsCells+="<td style='"+(bg?("background:"+bg+";font-weight:700"):"")+"'>"+(t?t.toFixed(1):"0")+"</td>"; });
     var rows="<tr><td class='emp'>Total hrs</td>"+hrsCells+"<td>"+weekTot.toFixed(1)+"</td></tr>";
+    // Expected hrs (manual, universal per weekday). Edit to set the target.
+    var expTot=0, expCells="";
+    dates.forEach(function(d){ var dow=d.getDay(); var v=(exp[dow]!=null?exp[dow]:""); if(v!=="") expTot+=(+v||0); expCells+="<td><input type='number' class='exp' data-dow='"+dow+"' value='"+esc(v)+"' min='0' step='0.5' style='width:48px;font:inherit;font-size:.78rem;text-align:center;padding:2px;border:1px solid var(--line);border-radius:4px;background:#fff'/></td>"; });
+    rows+="<tr><td class='emp'>Expected</td>"+expCells+"<td>"+(expTot?expTot.toFixed(1):"")+"</td></tr>";
     rows+="<tr><td class='emp'>Workers</td>"+cells(function(d){ var n=0; emps.forEach(function(e){ var sh=shOf(e,d); if(sh.in||sh.out) n++; }); return n||""; })+"<td></td></tr>";
-    var L={m:"Morning",a:"Afternoon",e:"Evening"};
-    ["m","a","e"].forEach(function(bk){ rows+="<tr><td class='emp'>"+L[bk]+"</td>"+cells(function(d){ var n=0; emps.forEach(function(e){ var sh=shOf(e,d); if((sh.in||sh.out)&&bucketOf(sh)===bk) n++; }); return n||""; })+"<td></td></tr>"; });
+    var L={m:"Morning",a:"Afternoon"};
+    ["m","a"].forEach(function(bk){ rows+="<tr><td class='emp'>"+L[bk]+"</td>"+cells(function(d){ var n=0; emps.forEach(function(e){ var sh=shOf(e,d); if((sh.in||sh.out)&&bucketOf(sh)===bk) n++; }); return n||""; })+"<td></td></tr>"; });
     return rows;
+  }
+  function saveTargets(){
+    if(!CLIENT_ID||!DATA) return;
+    var hours=[]; for(var i=0;i<7;i++) hours[i]=null;
+    Array.prototype.forEach.call(document.querySelectorAll(".exp"),function(inp){ var dow=+inp.getAttribute("data-dow"); var v=inp.value; hours[dow]=(v===""?null:(+v)); });
+    var comment=(document.getElementById("schedComment")||{}).value||"";
+    DATA.targets=DATA.targets||{}; DATA.targets.hours=hours; DATA.targets.comment=comment;
+    var sf=document.getElementById("sfoot"); if(sf) sf.innerHTML=footerInner();
+    fetch("/api/schedule/targets",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, hours:hours, comment:comment})}).catch(function(){});
   }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
@@ -187,6 +206,8 @@
     })();
     document.getElementById("showMode").addEventListener("change",function(){ SHOWMODE=this.value; if(DATA) render(); });
     var ab=document.getElementById("auditBtn"); if(ab) ab.addEventListener("click", printAudit);
+    document.addEventListener("change", function(e){ if(e.target&&e.target.classList&&e.target.classList.contains("exp")) saveTargets(); });
+    var sc=document.getElementById("schedComment"); if(sc) sc.addEventListener("change", saveTargets);
     loadClients();
   }).catch(function(){});
 
@@ -254,7 +275,7 @@
       if(d.missing){ note.style.display="block"; note.textContent="No employees here yet — add them in Payroll first."; }
       else if(d.scheduleMissing){ note.style.display="block"; note.textContent="The schedule table isn't set up yet. Run supabase/schedule_shifts.sql once, then reload."; }
       else note.style.display="none";
-      DATA=d; render();
+      DATA=d; var sc=document.getElementById("schedComment"); if(sc) sc.value=(d.targets&&d.targets.comment)||""; render();
     }).catch(function(){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
