@@ -407,6 +407,7 @@
           "<div class='row3'><div class='field'><label>Crew #</label><input id='cr_"+k+"' value='"+esc(e.crewNo)+"'/></div>"+
           posField+
           "<div class='field'><label>Role</label><select id='rl_"+k+"'></select></div></div></div>"+
+        "<div class='field'><label>Clock buffer (min) <span style='font-weight:400;color:var(--muted)'>· 0 = exact times</span></label><input id='bf_"+k+"' type='number' min='0' step='1' value='"+esc(e.bufferMin||0)+"'/></div>"+
         qbChip+
         "<label style='display:flex;align-items:center;gap:8px;font-weight:400;margin:4px 0 12px'><input type='checkbox' id='ac_"+k+"' "+(e.active?"checked":"")+" style='width:18px;height:18px;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--green)'/> Active</label>"+
         "<div style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn sm' id='sv_"+k+"' type='button'>Save</button>"+
@@ -480,7 +481,7 @@
       if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
       b.disabled=true; b.textContent="Saving…";
       var pe=document.getElementById("ps_"+k); var posKey=(pe.getAttribute("data-prefix")||"")+(pe.value||"").trim();
-      var payload={ id:e.id, name:name, nickname:document.getElementById("nk_"+k).value, lastName:document.getElementById("ls_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:posKey, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, active:document.getElementById("ac_"+k).checked };
+      var payload={ id:e.id, name:name, nickname:document.getElementById("nk_"+k).value, lastName:document.getElementById("ls_"+k).value, phone:document.getElementById("ph_"+k).value, posKey:posKey, crewNo:document.getElementById("cr_"+k).value, role:document.getElementById("rl_"+k).value, rate:document.getElementById("rt_"+k).value, bufferMin:document.getElementById("bf_"+k).value, active:document.getElementById("ac_"+k).checked };
       fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
         .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Save";
           if(d&&d.ok){ m.className="msg ok"; m.textContent="Saved."; load(); } else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not save."; } })

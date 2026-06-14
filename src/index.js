@@ -277,7 +277,7 @@ export default {
 // again. New columns/tables go here, and SCHEMA_VERSION is bumped. The hourly cron
 // only runs the list when the stored version is behind, so it isn't busywork; the
 // Admin button forces a run. Every statement must be safe to re-run.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
   "alter table employees add column if not exists last_name text",
@@ -286,7 +286,10 @@ const MIGRATIONS = [
   "alter table employees add column if not exists qbo_id text",
   "alter table employees add column if not exists nickname text",
   "alter table employees add column if not exists qb_synced boolean not null default false",
+  "alter table employees add column if not exists buffer_min integer not null default 0",
   "create table if not exists qbo_connections (client_id uuid primary key references clients(id) on delete cascade, realm_id text not null, company_name text, refresh_token text, access_token text, expires_at timestamptz, updated_at timestamptz not null default now())",
+  // Actual clock punches captured for the audit (scheduled vs actual).
+  "create table if not exists time_punches (id uuid primary key default gen_random_uuid(), employee_id uuid references employees(id) on delete cascade, work_date date not null, in_time text, out_time text, created_at timestamptz not null default now(), unique(employee_id, work_date))",
 ];
 
 async function runMigrations(env, force) {
@@ -842,7 +845,7 @@ async function listEmployees(url, env, session) {
     employees: (rows || []).map((e) => ({
       id: e.id, name: e.name || "", nickname: e.nickname || "", lastName: e.last_name || lastFromPayroll(e.payroll_name), address: e.address || "", qboId: e.qbo_id || "", qbSynced: e.qb_synced === true,
       phone: e.phone || "", posKey: e.pos_key || "", posPassword: e.pos_password || "", payrollName: e.payroll_name || "",
-      role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", active: e.active !== false,
+      role: e.role || "", crewNo: e.crew_no || "", rate: e.rate != null ? e.rate : "", otRate: e.ot_rate != null ? e.ot_rate : "", bufferMin: e.buffer_min != null ? e.buffer_min : 0, active: e.active !== false,
     })),
   });
 }
@@ -866,6 +869,7 @@ async function saveEmployee(request, env, session) {
   if ("role" in body) patch.role = c(body.role) || null;
   if ("crewNo" in body) patch.crew_no = c(body.crewNo) || null;
   if ("rate" in body) { const n = Number(body.rate); patch.rate = body.rate === "" || isNaN(n) ? null : n; }
+  if ("bufferMin" in body) { const n = parseInt(body.bufferMin, 10); patch.buffer_min = isNaN(n) || n < 0 ? 0 : n; }
   if ("otRate" in body) { const n = Number(body.otRate); patch.ot_rate = body.otRate === "" || isNaN(n) ? null : n; }
   if ("active" in body) patch.active = body.active !== false;
   const clientId = c(body.clientId);
