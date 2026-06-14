@@ -456,10 +456,11 @@
         var thumb = dc.type==="pdf"
           ? "<span style='font-size:1.4rem'>📄</span>"
           : "<img src='"+esc(dc.url)+"' alt='' style='width:40px;height:40px;object-fit:cover;border-radius:5px'/>";
-        return "<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)'>"+
+        return "<div class='docrow' data-url='"+esc(dc.url)+"' style='display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)'>"+
           thumb+
-          "<a href='"+esc(dc.url)+"' target='_blank' rel='noopener' style='flex:1;color:var(--green-deep);font-weight:600;word-break:break-word'>"+esc(dc.name||"File")+"</a>"+
-          "<span style='font-size:.8rem;color:var(--muted)'>"+esc(when)+"</span>"+
+          "<a class='docname' href='"+esc(dc.url)+"' target='_blank' rel='noopener' style='flex:1;color:var(--green-deep);font-weight:600;word-break:break-word'>"+esc(dc.name||"File")+"</a>"+
+          "<span class='docwhen' style='font-size:.8rem;color:var(--muted)'>"+esc(when)+"</span>"+
+          "<button type='button' class='docedit' data-url='"+esc(dc.url)+"' data-name=\""+esc(dc.name||"")+"\" title='Rename' style='background:transparent;border:none;color:var(--green-deep);font-size:1rem;cursor:pointer;padding:0 4px'>✎</button>"+
           "<button type='button' class='docdel' data-url='"+esc(dc.url)+"' title='Remove' style='background:transparent;border:none;color:#8a3d1c;font-size:1.1rem;cursor:pointer;padding:0 4px'>×</button>"+
         "</div>";
       }).join("");
@@ -592,6 +593,32 @@
       if(!confirm("Remove this file?")) return;
       fetch("/api/asset/docs/delete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, url:b.getAttribute("data-url") })})
         .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); } });
+    }); });
+    // Rename a troubleshoot file: inline edit with a Save, an AI ✨ Tidy suggestion, and Cancel.
+    Array.prototype.slice.call(document.querySelectorAll(".docedit")).forEach(function(b){ b.addEventListener("click", function(){
+      var row=b.closest(".docrow"); if(!row || row.querySelector(".docedit-wrap")) return;
+      var url=b.getAttribute("data-url"), cur=b.getAttribute("data-name")||"";
+      var nameEl=row.querySelector(".docname"), whenEl=row.querySelector(".docwhen"), delEl=row.querySelector(".docdel");
+      if(nameEl) nameEl.style.display="none"; if(whenEl) whenEl.style.display="none"; b.style.display="none"; if(delEl) delEl.style.display="none";
+      var wrap=document.createElement("span"); wrap.className="docedit-wrap"; wrap.style.cssText="flex:1;display:flex;gap:6px;flex-wrap:wrap;align-items:center";
+      wrap.innerHTML="<input class='de-in' type='text' value=\""+cur.replace(/"/g,"&quot;")+"\" style='flex:1;min-width:140px;font:inherit;font-size:.92rem;padding:6px 9px;border:1px solid var(--green);border-radius:6px'/>"+
+        "<button type='button' class='de-save' style='background:var(--green);color:#f6f2e8;border:none;border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer'>Save</button>"+
+        "<button type='button' class='de-tidy' style='background:transparent;border:1px solid var(--clay);color:var(--clay);border-radius:6px;padding:6px 11px;font:inherit;font-weight:600;cursor:pointer'>✨ Tidy</button>"+
+        "<button type='button' class='de-cancel' style='background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 11px;font:inherit;cursor:pointer'>Cancel</button>";
+      row.appendChild(wrap);
+      var inp=wrap.querySelector(".de-in"); inp.focus();
+      wrap.querySelector(".de-cancel").addEventListener("click", function(){ renderRead(curAsset); });
+      wrap.querySelector(".de-tidy").addEventListener("click", function(){
+        var t=this; t.disabled=true; var ot=t.textContent; t.textContent="…";
+        fetch("/api/asset/docs/tidy",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ title:inp.value })})
+          .then(function(r){return r.json();}).then(function(d){ t.disabled=false; t.textContent=ot; if(d&&d.ok&&d.title) inp.value=d.title; }).catch(function(){ t.disabled=false; t.textContent=ot; });
+      });
+      wrap.querySelector(".de-save").addEventListener("click", function(){
+        var nm=(inp.value||"").trim(); if(!nm){ inp.focus(); return; }
+        this.disabled=true;
+        fetch("/api/asset/docs/rename",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:curId, url:url, name:nm })})
+          .then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ curAsset.adminDocs=d.docs; renderRead(curAsset); } else { alert((d&&d.error)||"Couldn't rename."); renderRead(curAsset); } }).catch(function(){ renderRead(curAsset); });
+      });
     }); });
   }
 

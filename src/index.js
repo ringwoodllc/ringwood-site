@@ -60,6 +60,8 @@ export default {
     if (url.pathname === "/api/asset/scan-warranty" && request.method === "POST") return scanWarranty(request, env, session);
     if (url.pathname === "/api/asset/docs/add" && request.method === "POST") return addAssetDocs(request, env, session);
     if (url.pathname === "/api/asset/docs/delete" && request.method === "POST") return deleteAssetDoc(request, env, session);
+    if (url.pathname === "/api/asset/docs/rename" && request.method === "POST") return renameAssetDoc(request, env, session);
+    if (url.pathname === "/api/asset/docs/tidy" && request.method === "POST") return tidyAssetTitle(request, env, session);
     if (url.pathname === "/api/asset/qr/generate" && request.method === "POST") return generateAssetQr(request, env, session);
     if (url.pathname === "/api/asset/delete" && request.method === "POST") return deleteAsset(request, env, session);
     if (url.pathname === "/api/assets/review" && request.method === "GET") return assetsForReview(request, env);
@@ -4507,6 +4509,52 @@ async function addAssetDocs(request, env, session) {
 }
 
 // Remove one troubleshoot file from an asset (and from storage, best-effort).
+async function renameAssetDoc(request, env, session) {
+  if (!can(session, "assets", "edit")) return deny("assets");
+  if (scopeName(session) != null) return json({ ok: false, error: "Admin only." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const id = (body.id || "").toString().trim();
+  const url = (body.url || "").toString().trim();
+  const name = (body.name || "").toString().trim().slice(0, 120);
+  if (!id || !url || !name || !(await ownsRecord(env, session, "assets", id))) return json({ ok: false, error: "Not found." }, 404);
+  const cur = await sbSelect(env, `assets?id=eq.${id}&select=admin_docs`);
+  const docs = (cur && cur[0] && Array.isArray(cur[0].admin_docs) ? cur[0].admin_docs : []).map((d) => (d && d.url === url) ? Object.assign({}, d, { name }) : d);
+  const res = await sbUpdate(env, "assets", id, { admin_docs: docs });
+  if (!res.ok) return json({ ok: false, error: "Couldn't update." }, 502);
+  return json({ ok: true, docs });
+}
+
+// AI: clean up a troubleshoot file's name into a short, clear document title.
+async function tidyAssetTitle(request, env, session) {
+  if (!can(session, "assets", "edit")) return deny("assets");
+  if (!env.ANTHROPIC_API_KEY) return json({ ok: false, error: "The assistant is not connected." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const title = (body.title || "").toString().trim();
+  if (!title) return json({ ok: false, error: "Enter a name first." }, 400);
+  const schema = { type: "object", properties: { title: { type: "string" } }, required: ["title"], additionalProperties: false };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6", max_tokens: 120,
+        messages: [{ role: "user", content:
+          "Tidy the file name of an equipment reference document (a spec sheet, manual, drawing, data sheet, invoice, or photo). Fix spelling and capitalization, drop the file extension and redundant junk, and make it a short clear document title (for example a model or brand plus the document type). Do NOT add facts that are not already in the name. Keep it concise, no surrounding quotes, no trailing period.\n\nName: " + title }],
+        output_config: { format: { type: "json_schema", schema } },
+      }),
+    });
+    if (!res.ok) return json({ ok: false, error: "The assistant couldn't respond." }, 502);
+    const data = await res.json();
+    const block = (data.content || []).find((b) => b.type === "text");
+    if (!block) return json({ ok: false, error: "No suggestion." }, 502);
+    let out; try { out = JSON.parse(block.text); } catch { return json({ ok: false, error: "Couldn't read the suggestion." }, 502); }
+    const cleaned = (out.title || "").trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").slice(0, 120);
+    return json({ ok: true, title: cleaned || title });
+  } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
+}
+
 async function deleteAssetDoc(request, env, session) {
   if (!can(session, "assets", "edit")) return deny("assets");
   if (scopeName(session) != null) return json({ ok: false, error: "Admin only." }, 403);
