@@ -274,9 +274,12 @@ export default {
 // ---- Schema auto-migrations -------------------------------------------------
 // Idempotent DDL the app needs. Applied via a locked-down exec_ddl() function in
 // Postgres (only the server's service key can call it), so we never hand-paste SQL
-// again. New columns/tables go here; they apply on the hourly cron and on demand
-// from Admin. Every statement must be safe to re-run.
+// again. New columns/tables go here, and SCHEMA_VERSION is bumped. The hourly cron
+// only runs the list when the stored version is behind, so it isn't busywork; the
+// Admin button forces a run. Every statement must be safe to re-run.
+const SCHEMA_VERSION = 2;
 const MIGRATIONS = [
+  "create table if not exists app_meta (k text primary key, v text)",
   "alter table employees add column if not exists last_name text",
   "alter table employees add column if not exists pos_password text",
   "alter table employees add column if not exists address text",
@@ -286,8 +289,14 @@ const MIGRATIONS = [
   "create table if not exists qbo_connections (client_id uuid primary key references clients(id) on delete cascade, realm_id text not null, company_name text, refresh_token text, access_token text, expires_at timestamptz, updated_at timestamptz not null default now())",
 ];
 
-async function runMigrations(env) {
+async function runMigrations(env, force) {
   if (!sbReady(env)) return { ok: false, error: "Not connected.", results: [] };
+  // Version guard: skip the whole list when we're already current (so the hourly
+  // job is a single tiny read, not repeated DDL).
+  if (!force) {
+    const rows = await sbSelect(env, "app_meta?k=eq.schema_version&select=v");
+    if (rows && rows[0] && Number(rows[0].v) >= SCHEMA_VERSION) return { ok: true, applied: 0, skipped: true };
+  }
   const results = [];
   for (const stmt of MIGRATIONS) {
     try {
@@ -295,12 +304,16 @@ async function runMigrations(env) {
       results.push({ ok: r.ok, status: r.status });
     } catch { results.push({ ok: false, status: 0 }); }
   }
-  return { ok: results.every((x) => x.ok), applied: results.length, results };
+  const ok = results.every((x) => x.ok);
+  if (ok) {
+    try { await fetch(`${env.SUPABASE_URL}/rest/v1/app_meta`, { method: "POST", headers: sbHeaders(env, { Prefer: "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify({ k: "schema_version", v: String(SCHEMA_VERSION) }) }); } catch { /* version note is best-effort */ }
+  }
+  return { ok, applied: results.length, results };
 }
 
 async function adminMigrate(request, env) {
   if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
-  const out = await runMigrations(env);
+  const out = await runMigrations(env, true);
   if (!out.ok && (out.results || []).some((x) => x.status === 404)) {
     return json({ ok: false, error: "The one-time exec_ddl function isn't set up yet. Run supabase/exec_ddl.sql once (see setup), then click again." }, 409);
   }
