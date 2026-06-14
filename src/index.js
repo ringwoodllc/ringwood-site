@@ -277,7 +277,7 @@ export default {
 // again. New columns/tables go here, and SCHEMA_VERSION is bumped. The hourly cron
 // only runs the list when the stored version is behind, so it isn't busywork; the
 // Admin button forces a run. Every statement must be safe to re-run.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
   "alter table employees add column if not exists last_name text",
@@ -287,6 +287,10 @@ const MIGRATIONS = [
   "alter table employees add column if not exists nickname text",
   "alter table employees add column if not exists qb_synced boolean not null default false",
   "alter table employees add column if not exists buffer_min integer not null default 0",
+  // Backfill the QuickBooks flag for people already synced before the flag existed:
+  // those with a payroll name AND a pay rate are real roster pulled from QuickBooks.
+  // A manually-added test entry (no rate) stays unflagged. Idempotent.
+  "update employees set qb_synced = true where qb_synced = false and payroll_name is not null and rate is not null",
   "create table if not exists qbo_connections (client_id uuid primary key references clients(id) on delete cascade, realm_id text not null, company_name text, refresh_token text, access_token text, expires_at timestamptz, updated_at timestamptz not null default now())",
   // Actual clock punches captured for the audit (scheduled vs actual).
   "create table if not exists time_punches (id uuid primary key default gen_random_uuid(), employee_id uuid references employees(id) on delete cascade, work_date date not null, in_time text, out_time text, created_at timestamptz not null default now(), unique(employee_id, work_date))",
