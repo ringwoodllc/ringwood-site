@@ -277,6 +277,9 @@ export default {
 // again. New columns/tables go here, and SCHEMA_VERSION is bumped. The hourly cron
 // only runs the list when the stored version is behind, so it isn't busywork; the
 // Admin button forces a run. Every statement must be safe to re-run.
+// Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
+// browser is actually running. Bump together with public/sw.js VERSION on each deploy.
+const APP_VERSION = "rw-v198";
 const SCHEMA_VERSION = 5;
 const MIGRATIONS = [
   "create table if not exists app_meta (k text primary key, v text)",
@@ -2351,7 +2354,7 @@ async function diag(env, request) {
   if (await hasAnyUser(env)) {
     if (!(await requireMaster(request, env))) return json({ ok: false, error: "Master only." }, 403);
   }
-  const out = { hasUrl: !!env.SUPABASE_URL, hasKey: !!env.SUPABASE_SERVICE_KEY, hasAnon: !!env.SUPABASE_ANON_KEY };
+  const out = { version: APP_VERSION, hasUrl: !!env.SUPABASE_URL, hasKey: !!env.SUPABASE_SERVICE_KEY, hasAnon: !!env.SUPABASE_ANON_KEY };
   if (sbReady(env)) {
     const lists = await getLists(env);
     out.counts = {
