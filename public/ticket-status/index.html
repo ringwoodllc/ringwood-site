@@ -688,10 +688,11 @@
               "<div style='margin:2px 0 12px'><a href='#' id='e_partsToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Parts &amp; materials ▾</a></div>" +
               "<div id='e_partsField' style='display:none;margin-bottom:12px'>" +
                 "<div style='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-bottom:6px'>" +
-                  "<button type='button' class='aibtn' id='p_scanInv'>📷 Scan invoice</button>" +
+                  "<button type='button' class='aibtn' id='p_scanInv'>📷 Scan invoice or product</button>" +
                   "<button type='button' class='aibtn' id='p_suggest'>✨ Suggest from the ticket</button>" +
                 "</div>" +
                 "<input type='file' id='p_invFile' accept='image/*,application/pdf' style='display:none' />" +
+                "<div style='font-size:.8rem;color:var(--muted);margin-bottom:6px'>Drag a product photo, invoice, or receipt anywhere in this section, or paste it while hovering. AI fills the item and estimated cost.</div>" +
                 "<div id='p_invMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:6px'></div>" +
                 "<div id='e_parts'></div></div>" +
               "<div style='margin:2px 0 12px'><a href='#' id='e_laborToggle' style='font-size:.85rem;color:var(--green-deep);border-bottom:1px solid var(--clay)'>Labor ▾</a></div>" +
@@ -705,6 +706,7 @@
                   "<button type='button' class='aibtn' id='q_scan'>📷 Scan card / quote</button>" +
                 "</div>" +
                 "<input type='file' id='q_scanFile' accept='image/*,application/pdf' style='display:none' />" +
+                "<div style='font-size:.8rem;color:var(--muted);margin-bottom:6px'>Drag a quote (image or PDF) anywhere in this section, or paste it (Ctrl/Cmd+V) while hovering here. AI reads the vendor and amount.</div>" +
                 "<div id='q_scanMsg' style='font-size:.82rem;color:var(--muted);margin-bottom:6px'></div>" +
                 "<div id='e_quotes'></div>" +
                 "<div style='margin-top:8px'><button type='button' class='qbtn rev' id='q_addToggle'>+ Add quote manually</button></div>" +
@@ -757,6 +759,7 @@
             "<div id='e_notethumbs' style='display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px'></div>" +
             "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px'>" +
               "<label class='qbtn' for='e_notefile' style='cursor:pointer;display:inline-block'>📷 Add photo</label>" +
+              "<span style='font-size:.8rem;color:var(--muted)'>or drag / paste a screenshot</span>" +
               "<input type='file' id='e_notefile' accept='image/*' multiple style='display:none' />" +
               "<button type='button' class='qbtn' id='e_polish' style='border-color:var(--clay);color:var(--clay)'>✨ Clean up with AI</button>" +
               "<label class='chk' style='font-weight:400;font-size:.9rem;display:flex;align-items:center;gap:7px;margin:0'><input type='checkbox' id='e_notetop' /> Also add these to the main photos at the top</label>" +
@@ -1267,16 +1270,9 @@
     window.__curQuoteScan = scanQuoteToTicket;
     var qScanBtn=document.getElementById("q_scan"); if(qScanBtn) qScanBtn.addEventListener("click", function(){ var fi=document.getElementById("q_scanFile"); if(fi) fi.click(); });
     var qScanFile=document.getElementById("q_scanFile"); if(qScanFile) qScanFile.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanQuoteToTicket(f); });
-    // Paste a screenshot of a card/quote while the Vendor quotes section is open.
-    if(!window.__quoteScanPaste){
-      window.__quoteScanPaste=function(e){
-        var qf=document.getElementById("e_quotesField"); if(!qf || qf.style.display==="none") return;
-        var pn=document.getElementById("q_vendPanel"); if(pn && pn.style.display!=="none") return; // the manual panel handles its own paste
-        var items=(e.clipboardData&&e.clipboardData.items)||[];
-        for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f && window.__curQuoteScan){ e.preventDefault(); window.__curQuoteScan(f); return; } } }
-      };
-      document.addEventListener("paste", window.__quoteScanPaste);
-    }
+    // Drag a quote onto the section, or paste it while hovering. Lets you take an
+    // emailed/texted quote straight in without downloading it first.
+    if(window.RWUploadZone){ var qf=document.getElementById("e_quotesField"); if(qf) RWUploadZone(qf, function(fs){ if(fs[0]) scanQuoteToTicket(fs[0]); }); }
     // New vendor straight from the quote flow: scan a card/quote/ID, the AI
     var qnv=document.getElementById("q_newVendor");
     if(qnv) qnv.addEventListener("click", function(e){ e.preventDefault(); var pn=document.getElementById("q_vendPanel"); var open=pn.style.display!=="none"; pn.style.display=open?"none":"block"; qnv.textContent="＋ New vendor — scan a card or quote "+(open?"▾":"▴"); });
@@ -1797,7 +1793,7 @@
       // (paint, rollers, tape…) as a part with its line total, for real job cost.
       function scanPartsInvoice(file){
         if(!file) return;
-        var msg=document.getElementById("p_invMsg"); if(msg){ msg.style.color="var(--muted)"; msg.textContent="Reading the invoice…"; }
+        var msg=document.getElementById("p_invMsg"); if(msg){ msg.style.color="var(--muted)"; msg.textContent="Reading with AI…"; }
         var btn=document.getElementById("p_scanInv"); if(btn) btn.disabled=true;
         var isPdf=/pdf/i.test(file.type||"");
         var toPayload = isPdf
@@ -1807,12 +1803,15 @@
           return fetch("/api/tickets/parts/scan-invoice",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ id:t.id, base64:p.base64, contentType:p.contentType })});
         }).then(function(r){return r.json();}).then(function(d){
           if(btn) btn.disabled=false;
-          if(d&&d.ok){ if(msg){ msg.style.color="var(--green-deep)"; msg.textContent="Added "+d.added+" item"+(d.added===1?"":"s")+" from the invoice. Check and edit below."; } loadParts(); }
-          else if(msg){ msg.style.color="#8a3d1c"; msg.textContent=(d&&d.error)||"Couldn't read that invoice."; }
+          if(d&&d.ok){ if(msg){ msg.style.color="var(--green-deep)"; msg.textContent="Added "+d.added+" item"+(d.added===1?"":"s")+". Check and edit below."; } loadParts(); }
+          else if(msg){ msg.style.color="#8a3d1c"; msg.textContent=(d&&d.error)||"Couldn't read that."; }
         }).catch(function(){ if(btn) btn.disabled=false; if(msg){ msg.style.color="#8a3d1c"; msg.textContent="Couldn't reach the assistant."; } });
       }
       var scanInvBtn=document.getElementById("p_scanInv"); if(scanInvBtn) scanInvBtn.addEventListener("click", function(){ var fi=document.getElementById("p_invFile"); if(fi) fi.click(); });
       var invFileEl=document.getElementById("p_invFile"); if(invFileEl) invFileEl.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=""; scanPartsInvoice(f); });
+      // Drag or paste (while hovering) a product photo / invoice / receipt onto the
+      // parts section to read it in with AI.
+      if(window.RWUploadZone){ var pf=document.getElementById("e_partsField"); if(pf) RWUploadZone(pf, function(fs){ if(fs[0]) scanPartsInvoice(fs[0]); }); }
       loadParts();
     }
 
@@ -2055,12 +2054,28 @@
       }).join("");
     }
     window.__rmNotePhoto = function(i){ notePhotos.splice(i,1); renderNoteThumbs(); };
-    document.getElementById("e_notefile").addEventListener("change", function(e){
-      var files = Array.prototype.slice.call(e.target.files||[]); e.target.value = "";
+    // Add note photos from the file picker, a drop onto the note box, or a paste
+    // into the note text (scoped so it doesn't collide with other paste targets).
+    function addNotePhotos(files){
+      files = (files||[]).filter(function(f){ return /^image\//.test(f.type||""); });
+      if(!files.length) return;
       Promise.all(files.map(processPhoto)).then(function(arr){
         arr.forEach(function(p){ notePhotos.push(p); }); renderNoteThumbs();
       }).catch(function(){ document.getElementById("e_msg").textContent = "Couldn't read one of the photos."; });
+    }
+    document.getElementById("e_notefile").addEventListener("change", function(e){
+      var files = Array.prototype.slice.call(e.target.files||[]); e.target.value = "";
+      addNotePhotos(files);
     });
+    (function(){
+      var box=document.querySelector(".addnote"), ne=document.getElementById("e_note");
+      if(box){
+        ["dragenter","dragover"].forEach(function(ev){ box.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); box.style.outline="2px dashed var(--green)"; box.style.outlineOffset="3px"; }); });
+        ["dragleave","dragend"].forEach(function(ev){ box.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); box.style.outline=""; }); });
+        box.addEventListener("drop",function(e){ e.preventDefault(); e.stopPropagation(); box.style.outline=""; addNotePhotos(Array.prototype.slice.call((e.dataTransfer&&e.dataTransfer.files)||[])); });
+      }
+      if(ne) ne.addEventListener("paste",function(e){ var items=(e.clipboardData&&e.clipboardData.items)||[], fs=[]; for(var i=0;i<items.length;i++){ if(items[i].kind==="file"){ var f=items[i].getAsFile(); if(f) fs.push(f); } } if(fs.length){ e.preventDefault(); addNotePhotos(fs); } });
+    })();
 
     // Clean up the note with AI: preview before it replaces your text.
     (function(){
@@ -2133,6 +2148,7 @@
 <script src="/lightbox.js"></script>
 <script src="/native-camera.js"></script>
 <script src="/card-crop.js"></script>
+<script src="/upload-zone.js"></script>
 <script src="/whoami-badge.js"></script>
 </body>
 </html>

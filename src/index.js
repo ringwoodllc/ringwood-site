@@ -6835,14 +6835,20 @@ async function scanInvoiceParts(request, env, session) {
   const source = { type: "base64", media_type: isPdf ? "application/pdf" : ct, data: base64 };
   const block = isPdf ? { type: "document", source } : { type: "image", source };
   const prompt =
-    "You are reading a supplier invoice or store receipt for materials bought for a job (for example a paint store receipt). List every purchased line item. For each:\n" +
-    "- item: a short clear name (e.g. 'Interior paint, eggshell white' or 'Paint roller 9in' or 'Painter\\'s tape').\n" +
+    "You are helping a field tech add parts or materials to a job. The image may be one of:\n" +
+    "(a) a supplier invoice or store receipt, (b) a product listing screenshot from a store website (Lowe's, Home Depot, Amazon, Grainger, etc.), or (c) a plain photo of a part or piece of equipment (for example a motor).\n" +
+    "Set kind to 'invoice', 'listing', or 'photo'.\n" +
+    "- invoice/receipt: list every purchased line item. cost is the LINE TOTAL (quantity times unit price). Skip tax, subtotal, grand total, store name, discounts, and payment lines. Read prices as printed; do not invent them, and set estimated false.\n" +
+    "- listing: return the product as one item using its name and the price shown; estimated false.\n" +
+    "- photo with no price visible: return one item with a short clear description (type, a key spec if visible like horsepower, voltage, or size, and the brand if legible), and a reasonable ESTIMATED typical US retail cost as 'cost' with estimated true.\n" +
+    "For each item:\n" +
+    "- item: a short clear name (e.g. 'Condenser fan motor, 1/4 HP 208-230V' or 'Interior paint, eggshell white').\n" +
     "- quantity: a number (1 if not shown).\n" +
-    "- unit: a short unit like 'gal', 'ea', 'box', 'ft', or empty if none.\n" +
-    "- cost: the LINE TOTAL in dollars as a number (quantity times unit price), not the unit price.\n" +
-    "Skip tax, subtotal, grand total, store name, discounts, and payment lines. Only actual materials or products purchased. Read only what is printed; do not invent items or prices.";
-  const schema = { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { item: { type: "string" }, quantity: { type: "number" }, unit: { type: "string" }, cost: { type: "number" } }, required: ["item", "quantity", "unit", "cost"], additionalProperties: false } } }, required: ["items"], additionalProperties: false };
-  let items = [];
+    "- unit: a short unit like 'gal', 'ea', 'box', 'ft' (use 'ea' if none).\n" +
+    "- cost: dollars as a number.\n" +
+    "- estimated: true only when you estimated the price rather than read it.";
+  const schema = { type: "object", properties: { kind: { type: "string" }, items: { type: "array", items: { type: "object", properties: { item: { type: "string" }, quantity: { type: "number" }, unit: { type: "string" }, cost: { type: "number" }, estimated: { type: "boolean" } }, required: ["item", "quantity", "unit", "cost", "estimated"], additionalProperties: false } } }, required: ["kind", "items"], additionalProperties: false };
+  let items = [], kind = "";
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -6853,10 +6859,14 @@ async function scanInvoiceParts(request, env, session) {
     const data = await res.json();
     const tb = (data.content || []).find((b) => b.type === "text");
     if (!tb) return json({ ok: false, error: "The assistant couldn't read that invoice." }, 502);
-    let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read the invoice." }, 502); }
+    let out; try { out = JSON.parse(tb.text); } catch { return json({ ok: false, error: "Couldn't read that." }, 502); }
     items = Array.isArray(out.items) ? out.items : [];
+    kind = (out.kind || "").toString();
   } catch { return json({ ok: false, error: "Couldn't reach the assistant." }, 502); }
   items = items.slice(0, 60);
+  // An invoice/receipt is already bought (Received); a listing or product photo is
+  // something to buy (Needed).
+  const status = kind === "invoice" ? "Received" : "Needed";
   let added = 0;
   const photoArr = invoiceUrl ? [invoiceUrl] : [];
   for (const it of items) {
@@ -6865,9 +6875,10 @@ async function scanInvoiceParts(request, env, session) {
     const q = Number(it.quantity); const quantity = isNaN(q) || q <= 0 ? 1 : q;
     const unit = (it.unit || "").toString().trim().slice(0, 24) || null;
     const cn = Number(it.cost); const est_cost = isNaN(cn) ? null : cn;
-    const row = { ticket_id: ticketId, item, quantity, unit, est_cost, source: "invoice", status: "Received" };
+    const row = { ticket_id: ticketId, item, quantity, unit, est_cost, source: kind || "scan", status };
+    if (it.estimated) row.notes = "AI estimated cost";
     let r2 = await sbInsert(env, "ticket_parts", photoArr.length ? Object.assign({ photo_urls: photoArr }, row) : row);
-    if (!r2.ok && photoArr.length) r2 = await sbInsert(env, "ticket_parts", row);
+    if (!r2.ok) r2 = await sbInsert(env, "ticket_parts", Object.assign({}, row, { notes: undefined, photo_urls: undefined }));
     if (r2.ok) added++;
   }
   if (!added) return json({ ok: false, error: items.length ? "Couldn't save the items. Run supabase/ticket_parts.sql once." : "No line items found on that invoice." }, items.length ? 502 : 200);
