@@ -272,7 +272,8 @@
       // select it and hide this redundant "Location (client)" field.
       var act=[]; try{ var a=JSON.parse(localStorage.getItem("rw_active_clients")||"[]"); if(Array.isArray(a)) act=a.filter(function(x){return x;}); }catch(e){}
       if(act.length===1){
-        var mid=""; for(var i=0;i<sel.options.length;i++){ if(sel.options[i].textContent===act[0]){ mid=sel.options[i].value; break; } }
+        var want=(act[0]||"").trim().toLowerCase();
+        var mid=""; for(var i=0;i<sel.options.length;i++){ if((sel.options[i].textContent||"").trim().toLowerCase()===want){ mid=sel.options[i].value; break; } }
         if(mid){
           sel.value=mid; CLIENT_ID=mid; try{ localStorage.setItem(CKEY,CLIENT_ID); }catch(e){}
           var fld=sel.closest?sel.closest(".field"):null; if(fld) fld.style.display="none";
@@ -450,6 +451,7 @@
     if(!files.length) return;
     var m=document.getElementById("pay_msg"), out=document.getElementById("pay_out"), b=document.getElementById("payScanBtn");
     m.className="msg"; out.innerHTML="";
+    if(!CLIENT_ID){ var cp=document.getElementById("clientPick"); if(cp&&cp.value) CLIENT_ID=cp.value; }
     if(!CLIENT_ID){ m.className="msg err"; m.textContent="Pick a location first."; return; }
     m.style.color="var(--muted)"; m.textContent="Reading "+files.length+" screenshot"+(files.length===1?"":"s")+" with AI…"; b.disabled=true;
     Promise.all(files.slice(0,6).map(fileToScaledBase64)).then(function(parts){
@@ -528,10 +530,10 @@
     var name=document.getElementById("n_name").value.trim();
     if(!name){ m.className="msg err"; m.textContent="Enter a name."; return; }
     b.disabled=true; b.textContent="Adding…";
-    var payload={ clientId:CLIENT_ID, name:name, nickname:document.getElementById("n_nick").value, lastName:document.getElementById("n_last").value, address:document.getElementById("n_addr").value, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, crewNo:document.getElementById("n_crew").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value };
+    var payload={ clientId:CLIENT_ID, name:name, nickname:document.getElementById("n_nick").value, lastName:document.getElementById("n_last").value, phone:document.getElementById("n_phone").value, posKey:document.getElementById("n_pos").value, crewNo:document.getElementById("n_crew").value, role:document.getElementById("n_role").value, rate:document.getElementById("n_rate").value };
     fetch("/api/employees",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(d){ b.disabled=false; b.textContent="Add employee";
-        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_last","n_nick","n_addr","n_phone","n_pos","n_crew","n_role","n_rate"].forEach(function(i){document.getElementById(i).value="";}); load(); }
+        if(d&&d.ok){ m.className="msg ok"; m.textContent="Added."; ["n_name","n_last","n_nick","n_phone","n_pos","n_crew","n_role","n_rate"].forEach(function(i){var el=document.getElementById(i); if(el) el.value="";}); load(); }
         else { m.className="msg err"; m.textContent=(d&&d.error)||"Could not add."; } })
       .catch(function(){ b.disabled=false; b.textContent="Add employee"; m.className="msg err"; m.textContent="Couldn't reach the server."; });
   }
