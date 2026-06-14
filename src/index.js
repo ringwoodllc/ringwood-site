@@ -823,12 +823,14 @@ async function saveEmployee(request, env, session) {
     if (!patch.name) return json({ ok: false, error: "Enter a name." }, 400);
   }
   let res = await doSave(patch);
-  // Degrade gracefully if newer columns haven't been migrated yet (so a save never
-  // fails wholesale). The dropped field just won't persist until the column exists.
-  if (!res.ok) {
-    const p2 = Object.assign({}, patch);
-    ["pos_password", "last_name", "address", "qbo_id", "nickname"].forEach((k) => delete p2[k]);
-    if (Object.keys(p2).length !== Object.keys(patch).length) res = await doSave(p2);
+  // If a newer column hasn't been migrated yet, PostgREST names it in the error
+  // (e.g. "Could not find the 'address' column"). Drop just that column and retry,
+  // so one un-migrated column never blocks saving the others (like nickname).
+  for (let guard = 0; !res.ok && guard < 6; guard++) {
+    const m = /'([a-zA-Z_]+)' column|column "?([a-zA-Z_]+)"? (?:of|does not)/.exec(res.error || "");
+    const col = m && (m[1] || m[2]);
+    if (col && (col in patch)) { delete patch[col]; res = await doSave(patch); }
+    else break;
   }
   if (!res.ok) return json({ ok: false, error: ("Could not save. " + (res.error || "Run supabase/employees.sql once.")).slice(0, 200) }, 502);
   return json({ ok: true });
