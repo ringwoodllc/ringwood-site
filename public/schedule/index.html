@@ -114,6 +114,8 @@
       <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none" />
       <select id="showMode" style="width:auto"><option value="all">All active</option><option value="sched">Scheduled only</option></select>
       <button class="btn ghost" id="auditBtn" type="button">🖨 Audit sheet</button>
+      <button class="btn ghost" id="schedPdfBtn" type="button">📄 PDF / Print</button>
+      <button class="btn ghost" id="schedEmailBtn" type="button">✉ Email</button>
       <label style="display:inline-flex;align-items:center;gap:5px;font-size:.84rem;color:#5f5d52;cursor:pointer"><input type="checkbox" id="auditPhone" style="width:16px;height:16px;accent-color:var(--green)"/> Show phone</label>
     </div>
     <label id="schedDrop" for="scanFile" style="display:block;border:1.5px dashed rgba(47,93,80,.45);border-radius:8px;padding:13px;text-align:center;cursor:pointer;color:#21443a;background:rgba(47,93,80,.05);margin-bottom:12px">
@@ -130,6 +132,7 @@
   </div>
   <div id="auditSheet"></div>
 </main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="/upload-zone.js"></script>
 <script>
   function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
@@ -185,15 +188,20 @@
     if(!CLIENT_ID||!DATA) return;
     var hours=[]; for(var i=0;i<7;i++) hours[i]=null;
     Array.prototype.forEach.call(document.querySelectorAll(".exp"),function(inp){ var dow=+inp.getAttribute("data-dow"); var v=inp.value; hours[dow]=(v===""?null:(+v)); });
-    var comment=(document.getElementById("schedComment")||{}).value||"";
-    DATA.targets=DATA.targets||{}; DATA.targets.hours=hours; DATA.targets.comment=comment;
+    DATA.targets=DATA.targets||{}; DATA.targets.hours=hours;
     // Recolor the Total hrs cells in place — do NOT re-render the footer, or the inputs
     // get recreated and tab/focus jumps back to Sunday.
     var expTot2=0;
     Array.prototype.forEach.call(document.querySelectorAll(".thrs"),function(td){ var dw=+td.getAttribute("data-dow"); var t=parseFloat(td.textContent)||0; var ev=hours[dw]; var bg=""; if(ev!=null){ var diff=t-(+ev); bg=Math.abs(diff)<0.05?"#cdebd4":(diff>0?"#f3c9c9":"#fbe0c2"); } td.style.background=bg; td.style.fontWeight=bg?"700":""; });
     for(var k=0;k<7;k++){ if(hours[k]!=null) expTot2+=hours[k]; }
     var etc=document.getElementById("expTotCell"); if(etc) etc.textContent=expTot2?expTot2.toFixed(1):"";
-    fetch("/api/schedule/targets",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, hours:hours, comment:comment})}).catch(function(){});
+    fetch("/api/schedule/targets",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, hours:hours})}).catch(function(){});
+  }
+  // Notes belong to the specific week being viewed.
+  function saveNote(){
+    if(!CLIENT_ID) return;
+    var comment=(document.getElementById("schedComment")||{}).value||"";
+    fetch("/api/schedule/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:CLIENT_ID, weekStart:ymd(START), comment:comment})}).catch(function(){});
   }
 
   fetch("/api/whoami").then(function(r){return r.json();}).then(function(d){
@@ -224,8 +232,11 @@
     })();
     document.getElementById("showMode").addEventListener("change",function(){ SHOWMODE=this.value; if(DATA) render(); });
     var ab=document.getElementById("auditBtn"); if(ab) ab.addEventListener("click", printAudit);
+    var spb=document.getElementById("schedPdfBtn"); if(spb) spb.addEventListener("click", function(){ var doc=buildSchedulePdf(); var m=document.getElementById("msg"); if(!doc){ m.className="msg err"; m.textContent="Open a week with employees first."; return; } doc.save(schedFileName()); });
+    var seb=document.getElementById("schedEmailBtn"); if(seb) seb.addEventListener("click", function(){ var doc=buildSchedulePdf(); var m=document.getElementById("msg"); if(!doc){ m.className="msg err"; m.textContent="Open a week with employees first."; return; } m.className="msg"; m.style.color="var(--muted)"; m.textContent="Creating the Gmail draft…"; var b64=doc.output("datauristring").split(",")[1]; var range=document.getElementById("range").textContent; fetch("/api/gmail/draft",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({to:"",subject:"Weekly Schedule — "+range,body:"Weekly schedule attached.",attachment:{filename:schedFileName(),base64:b64,contentType:"application/pdf"}})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok){ m.className="msg ok"; m.innerHTML="Draft created in Gmail"+(d.link?(" — <a href='"+d.link+"' target='_blank' style='color:var(--green-deep);border-bottom:1px solid var(--clay)'>open it</a>"):"")+"."; } else { m.className="msg err"; m.textContent=(d&&d.error)||"Couldn't create the draft (is Gmail connected?)."; } }).catch(function(){ m.className="msg err"; m.textContent="Couldn't reach the server."; }); });
     document.addEventListener("change", function(e){ if(e.target&&e.target.classList&&e.target.classList.contains("exp")) saveTargets(); });
-    var sc=document.getElementById("schedComment"); if(sc) sc.addEventListener("change", saveTargets);
+    var sc=document.getElementById("schedComment"); if(sc) sc.addEventListener("change", saveNote);
+    var ap=document.getElementById("auditPhone"); if(ap) ap.addEventListener("change", function(){ if(DATA) render(); });
     loadClients();
   }).catch(function(){});
 
@@ -265,6 +276,62 @@
     window.print();
   }
 
+  // The filled weekly schedule as a clean, centered, single-page landscape PDF.
+  function fmtShort(v){ if(!v) return ""; var p=v.split(":"); var Hh=+p[0],mm=+p[1]||0; var ap=Hh>=12?"p":"a"; var h=Hh%12; if(h===0)h=12; return h+(mm?(":"+(mm<10?"0":"")+mm):"")+ap; }
+  function buildSchedulePdf(){
+    var JS=window.jspdf&&window.jspdf.jsPDF; if(!JS||!DATA||!DATA.employees) return null;
+    var doc=new JS({unit:"pt",format:"letter",orientation:"landscape"});
+    var W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=28;
+    var sel=document.getElementById("clientPick"); var loc=(sel&&sel.options[sel.selectedIndex])?sel.options[sel.selectedIndex].textContent:"";
+    var range=document.getElementById("range").textContent;
+    var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
+    var emps=(CUR_EMPS&&CUR_EMPS.length)?CUR_EMPS:DATA.employees;
+    var showPhone=document.getElementById("auditPhone")&&document.getElementById("auditPhone").checked;
+    var note=(document.getElementById("schedComment")||{}).value||"";
+    // Centered title + week range.
+    doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(33,68,58);
+    doc.text((loc?loc+" — ":"")+"Weekly Schedule", W/2, 30, {align:"center"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(95,93,82);
+    doc.text(range, W/2, 48, {align:"center"});
+    // Geometry — size rows so everything fits on ONE page.
+    var top=60, headH=24, noteH=note?40:0, bottom=18;
+    var nameW=Math.min(118, Math.max(72, W*0.13)), hrsW=34, dayW=(W-2*M-nameW-hrsW)/7;
+    var n=emps.length||1;
+    var rowH=Math.min(30, (H-top-headH-noteH-bottom)/n);
+    var fs=Math.max(5.5, Math.min(9, rowH*0.4)), twoLine=rowH>=15;
+    function colX(i){ return M+nameW+i*dayW; }
+    var y=top;
+    // Header band.
+    doc.setFillColor(231,224,208); doc.rect(M, y, W-2*M, headH, "F");
+    doc.setTextColor(33,68,58);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Name", M+nameW/2, y+15, {align:"center"});
+    dates.forEach(function(d,i){ var cx=colX(i)+dayW/2; doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text(DAYS[d.getDay()], cx, y+10, {align:"center"}); doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.text(fmtMD(d), cx, y+20, {align:"center"}); });
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Hrs", M+nameW+7*dayW+hrsW/2, y+15, {align:"center"});
+    y+=headH;
+    // Rows.
+    doc.setFont("helvetica","normal");
+    emps.forEach(function(e, idx){
+      if(idx%2===1){ doc.setFillColor(247,243,236); doc.rect(M, y, W-2*M, rowH, "F"); }
+      var ry=y+rowH/2;
+      doc.setTextColor(20,20,20); doc.setFontSize(Math.min(8.5, fs+0.5));
+      doc.text((e.nickname||e.name||""), M+5, ry+((showPhone&&e.phone)?-2:2.5));
+      if(showPhone&&e.phone){ doc.setTextColor(120,120,120); doc.setFontSize(Math.max(5,fs-1.5)); doc.text(String(e.phone), M+5, ry+7.5); }
+      doc.setFontSize(fs);
+      dates.forEach(function(d,i){ var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ymd(d)])||{}; var cx=colX(i)+dayW/2; if(!(sh.in||sh.out)) return; if(twoLine){ if(sh.in){ doc.setTextColor(20,20,20); doc.text(fmtShort(sh.in), cx, ry-1, {align:"center"}); } if(sh.out){ doc.setTextColor(110,110,110); doc.text(fmtShort(sh.out), cx, ry+7.5, {align:"center"}); } } else { doc.setTextColor(20,20,20); doc.text((sh.in?fmtShort(sh.in):"")+(sh.out?"-"+fmtShort(sh.out):""), cx, ry+2.5, {align:"center"}); } });
+      doc.setTextColor(20,20,20); doc.setFontSize(fs); doc.text(rowHrs(e.id,dates).toFixed(1), M+nameW+7*dayW+hrsW/2, ry+2.5, {align:"center"});
+      y+=rowH;
+    });
+    // Grid lines.
+    doc.setDrawColor(120,120,120); doc.setLineWidth(0.6); doc.rect(M, top, W-2*M, y-top);
+    doc.setLineWidth(0.4);
+    for(var c=0;c<=7;c++){ var vx=M+nameW+c*dayW; doc.line(vx, top, vx, y); }
+    doc.line(M, top+headH, W-M, top+headH);
+    // Notes.
+    if(note){ var ny=y+15; doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(33,68,58); doc.text("Notes:", M, ny); doc.setFont("helvetica","normal"); doc.setTextColor(40,40,40); doc.text(doc.splitTextToSize(note, W-2*M-40), M+34, ny); }
+    return doc;
+  }
+  function schedFileName(){ return ("Schedule "+document.getElementById("range").textContent).replace(/[^A-Za-z0-9 ._-]/g,"")+".pdf"; }
+
   function loadClients(){
     fetch("/api/admin/clients",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
       if(!d||!d.ok) return;
@@ -293,7 +360,7 @@
       if(d.missing){ note.style.display="block"; note.textContent="No employees here yet — add them in Payroll first."; }
       else if(d.scheduleMissing){ note.style.display="block"; note.textContent="The schedule table isn't set up yet. Run supabase/schedule_shifts.sql once, then reload."; }
       else note.style.display="none";
-      DATA=d; var sc=document.getElementById("schedComment"); if(sc) sc.value=(d.targets&&d.targets.comment)||""; render();
+      DATA=d; var sc=document.getElementById("schedComment"); if(sc) sc.value=d.note||""; render();
     }).catch(function(){ document.getElementById("grid").innerHTML="<div class='empty'>Couldn't reach the server.</div>"; });
   }
 
@@ -304,11 +371,12 @@
     var dates=[]; for(var i=0;i<7;i++) dates.push(addDays(START,i));
     var emps = SHOWMODE==="sched" ? DATA.employees.filter(function(e){ return hasShift(e.id,dates); }) : DATA.employees;
     if(!emps.length){ g.innerHTML="<div class='empty'>No one is scheduled this week yet. Switch to 'All active' to add shifts.</div>"; return; }
+    var showPhone=document.getElementById("auditPhone")&&document.getElementById("auditPhone").checked;
     var h="<table><thead><tr><th class='emp'>Employee</th>";
     dates.forEach(function(d,i){ h+="<th>"+DAYS[i]+"<div class='dnum'>"+fmtMD(d)+"</div></th>"; });
     h+="<th>Hrs</th></tr></thead><tbody>";
     emps.forEach(function(e){
-      h+="<tr><td class='emp'><a href='/payroll?client="+encodeURIComponent(CLIENT_ID)+"&emp="+encodeURIComponent(e.id)+"' title='Open in Payroll'>"+esc(e.nickname||e.name)+"</a></td>";
+      h+="<tr><td class='emp'><a href='/payroll?client="+encodeURIComponent(CLIENT_ID)+"&emp="+encodeURIComponent(e.id)+"' title='Open in Payroll'>"+esc(e.nickname||e.name)+"</a>"+(showPhone&&e.phone?("<div style='font-size:.72rem;color:var(--muted);font-weight:400'>"+esc(e.phone)+"</div>"):"")+"</td>";
       dates.forEach(function(d){
         var ds=ymd(d); var sh=(DATA.shifts[e.id]&&DATA.shifts[e.id][ds])||{in:"",out:""};
         h+="<td class='day'>"+

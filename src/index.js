@@ -200,6 +200,7 @@ export default {
     if (url.pathname === "/api/schedule/clear" && request.method === "POST") return clearScheduleWeek(request, env, session);
     if (url.pathname === "/api/schedule/scan" && request.method === "POST") return scanSchedule(request, env, session);
     if (url.pathname === "/api/schedule/targets" && request.method === "POST") return saveScheduleTargets(request, env, session);
+    if (url.pathname === "/api/schedule/note" && request.method === "POST") return saveScheduleNote(request, env, session);
     if (url.pathname === "/api/admin/stats" && request.method === "GET") return adminStats(request, env);
     if (url.pathname === "/api/admin/migrate" && request.method === "POST") return adminMigrate(request, env);
     if (url.pathname === "/api/admin/qr/clear" && request.method === "POST") return adminClearQr(request, env);
@@ -280,11 +281,13 @@ export default {
 // Admin button forces a run. Every statement must be safe to re-run.
 // Front-end/app build stamp, surfaced at /api/diag so we can confirm which deploy a
 // browser is actually running. Bump together with public/sw.js VERSION on each deploy.
-const APP_VERSION = "rw-v207";
-const SCHEMA_VERSION = 6;
+const APP_VERSION = "rw-v208";
+const SCHEMA_VERSION = 7;
 const MIGRATIONS = [
-  // Per-client expected hours by day-of-week (universal across weeks) + a notes field.
+  // Per-client expected hours by day-of-week (universal across weeks).
   "create table if not exists schedule_targets (client_id uuid primary key references clients(id) on delete cascade, hours jsonb, comment text, updated_at timestamptz not null default now())",
+  // Notes that belong to a specific week.
+  "create table if not exists schedule_notes (client_id uuid references clients(id) on delete cascade, week_start date not null, comment text, updated_at timestamptz not null default now(), primary key (client_id, week_start))",
   "create table if not exists app_meta (k text primary key, v text)",
   "alter table employees add column if not exists last_name text",
   "alter table employees add column if not exists pos_password text",
@@ -1197,10 +1200,13 @@ async function getSchedule(url, env, session) {
     if (rows === null) scheduleMissing = true;
     else (rows || []).forEach((s) => { (shifts[s.employee_id] = shifts[s.employee_id] || {})[s.work_date] = { in: s.in_time || "", out: s.out_time || "" }; });
   }
-  let targets = { hours: [], comment: "" };
-  const tg = await sbSelect(env, `schedule_targets?client_id=eq.${clientId}&select=hours,comment`);
-  if (tg && tg[0]) targets = { hours: Array.isArray(tg[0].hours) ? tg[0].hours : [], comment: tg[0].comment || "" };
-  return noStore({ ok: true, scheduleMissing, targets, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "", phone: e.phone || "" })), shifts });
+  let targets = { hours: [] };
+  const tg = await sbSelect(env, `schedule_targets?client_id=eq.${clientId}&select=hours`);
+  if (tg && tg[0]) targets = { hours: Array.isArray(tg[0].hours) ? tg[0].hours : [] };
+  let note = "";
+  const nt = await sbSelect(env, `schedule_notes?client_id=eq.${clientId}&week_start=eq.${start}&select=comment`);
+  if (nt && nt[0]) note = nt[0].comment || "";
+  return noStore({ ok: true, scheduleMissing, targets, note, employees: (emps || []).map((e) => ({ id: e.id, name: e.name || "", nickname: e.nickname || "", payrollName: e.payroll_name || "", rate: e.rate != null ? e.rate : "", phone: e.phone || "" })), shifts });
 }
 
 async function saveScheduleShift(request, env, session) {
@@ -1233,6 +1239,21 @@ async function saveScheduleTargets(request, env, session) {
   const comment = (body.comment == null ? "" : String(body.comment)).slice(0, 2000);
   if ((await sbSelect(env, `schedule_targets?select=client_id&limit=1`)) === null) await runMigrations(env, true);
   const up = await sbUpsert(env, "schedule_targets", { client_id: clientId, hours, comment, updated_at: new Date().toISOString() }, "client_id");
+  if (!up.ok) return json({ ok: false, error: "Couldn't save." }, 502);
+  return json({ ok: true });
+}
+
+// Notes for one specific week (client_id + week_start).
+async function saveScheduleNote(request, env, session) {
+  if (!session || !can(session, "foodSafety", "edit")) return json({ ok: false, error: "Food-service edit access required." }, 403);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "Bad request." }, 400); }
+  const clientId = (body.clientId || "").toString().trim();
+  const weekStart = (body.weekStart || "").toString().trim();
+  if (!clientId || !weekStart) return json({ ok: false, error: "Pick a location and week." }, 400);
+  const comment = (body.comment == null ? "" : String(body.comment)).slice(0, 2000);
+  if ((await sbSelect(env, `schedule_notes?select=client_id&limit=1`)) === null) await runMigrations(env, true);
+  const up = await sbUpsert(env, "schedule_notes", { client_id: clientId, week_start: weekStart, comment, updated_at: new Date().toISOString() }, "client_id,week_start");
   if (!up.ok) return json({ ok: false, error: "Couldn't save." }, 502);
   return json({ ok: true });
 }
